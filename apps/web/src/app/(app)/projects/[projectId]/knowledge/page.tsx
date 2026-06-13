@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useMemo, useState } from 'react'
+import { use, useMemo, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import {
   AlertTriangle,
@@ -26,7 +26,7 @@ import { Select, SelectOption } from '@/components/ui/select'
 import { useToast } from '@/components/ui/toast'
 
 interface KnowledgePageProps {
-  params: { projectId: string }
+  params: Promise<{ projectId: string }>
 }
 
 type KnowledgeFilter = 'all' | 'ready' | 'gap' | 'conflict' | 'isolated'
@@ -95,7 +95,7 @@ function compactText(value: string, max = 120) {
 }
 
 export default function KnowledgePage({ params }: KnowledgePageProps) {
-  const { projectId } = params
+  const { projectId } = use(params)
   const { addToast } = useToast()
   const [searchQuery, setSearchQuery] = useState('')
   const [filter, setFilter] = useState<KnowledgeFilter>('all')

@@ -1,5 +1,6 @@
 'use client'
 
+import { use } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { projectsApi, Project, ProjectDeliveryNextAction, ProjectDeliveryRisk } from '@/lib/api-client'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -35,7 +36,7 @@ import { getDocumentStatusLabel, getDocumentTypeLabel } from '@/lib/document-lab
 import { useToast } from '@/components/ui/toast'
 
 interface ProjectPageProps {
-  params: { projectId: string }
+  params: Promise<{ projectId: string }>
 }
 
 function getRiskBadgeClass(severity: string) {
@@ -122,7 +123,7 @@ function getLaunchBlueprintLabel(blueprintKey: string) {
 }
 
 export default function ProjectDetailPage({ params }: ProjectPageProps) {
-  const { projectId } = params
+  const { projectId } = use(params)
   const router = useRouter()
   const queryClient = useQueryClient()
   const { addToast } = useToast()

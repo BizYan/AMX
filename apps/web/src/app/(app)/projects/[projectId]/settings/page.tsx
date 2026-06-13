@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { use, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import {
@@ -17,7 +17,7 @@ import { useToast } from '@/components/ui/toast'
 import { ArrowLeft, GitBranch, Loader2, Save, ShieldCheck } from 'lucide-react'
 
 interface ProjectSettingsPageProps {
-  params: { projectId: string }
+  params: Promise<{ projectId: string }>
 }
 
 const STATUS_CATALOG = [
@@ -36,7 +36,7 @@ const clonePolicy = (policy: ProjectDocumentLifecyclePolicy): ProjectDocumentLif
   JSON.parse(JSON.stringify(policy))
 
 export default function ProjectSettingsPage({ params }: ProjectSettingsPageProps) {
-  const { projectId } = params
+  const { projectId } = use(params)
   const router = useRouter()
   const queryClient = useQueryClient()
   const { addToast } = useToast()

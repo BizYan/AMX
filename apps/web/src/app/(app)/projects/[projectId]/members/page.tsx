@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { use, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { identityApi, projectMembersApi } from '@/lib/api-client'
@@ -14,11 +14,11 @@ import { ArrowLeft, Copy, Mail, Send, Trash2, UserPlus, Users } from 'lucide-rea
 import { formatDistanceToNow } from '@/lib/utils'
 
 interface ProjectMembersPageProps {
-  params: { projectId: string }
+  params: Promise<{ projectId: string }>
 }
 
 export default function ProjectMembersPage({ params }: ProjectMembersPageProps) {
-  const { projectId } = params
+  const { projectId } = use(params)
   const router = useRouter()
   const queryClient = useQueryClient()
   const { addToast } = useToast()

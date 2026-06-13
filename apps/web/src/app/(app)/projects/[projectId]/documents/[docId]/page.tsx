@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { use, useEffect, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   documentsApi,
@@ -69,7 +69,7 @@ import {
 } from '@/lib/document-template-placeholders'
 
 interface DocumentDetailPageProps {
-  params: { projectId: string; docId: string }
+  params: Promise<{ projectId: string; docId: string }>
 }
 
 const DOCUMENT_AUTOSAVE_INTERVAL_MS = 5 * 60 * 1000
@@ -134,7 +134,7 @@ function getStatusCapabilityMessage(capability?: DocumentStatusCapability) {
 }
 
 export default function DocumentDetailPage({ params }: DocumentDetailPageProps) {
-  const { projectId, docId } = params
+  const { projectId, docId } = use(params)
   const router = useRouter()
   const [newComment, setNewComment] = useState('')
   const [commentAnchor, setCommentAnchor] = useState('')

@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { use, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertCircle, ArrowLeft, Check, Clock, FileText, GitBranch, Search } from 'lucide-react'
 import { useRouter } from 'next/navigation'
@@ -14,7 +14,7 @@ import type { ChangeRequest } from '@/lib/api-client'
 import { useToast } from '@/components/ui/toast'
 
 interface ChangesPageProps {
-  params: { projectId: string }
+  params: Promise<{ projectId: string }>
 }
 
 type BoardChange = Omit<ChangeRequest, 'status' | 'priority'> & {
@@ -55,7 +55,7 @@ function titleOf(change: BoardChange) {
 }
 
 export default function ChangesPage({ params }: ChangesPageProps) {
-  const { projectId } = params
+  const { projectId } = use(params)
   const router = useRouter()
   const queryClient = useQueryClient()
   const { addToast } = useToast()
