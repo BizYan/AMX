@@ -173,6 +173,8 @@ export const projectsApi = {
     apiClient.post<ProjectMilestone>(`/projects/${id}/milestones`, data),
   updateMilestone: (id: string, milestoneId: string, data: Partial<ProjectMilestoneCreateInput>) =>
     apiClient.patch<ProjectMilestone>(`/projects/${id}/milestones/${milestoneId}`, data),
+  deleteMilestone: (id: string, milestoneId: string) =>
+    apiClient.delete(`/projects/${id}/milestones/${milestoneId}`),
   reorderMilestones: (id: string, milestoneIds: string[]) =>
     apiClient.post<ProjectDeliveryPlan>(`/projects/${id}/milestones/reorder`, { milestone_ids: milestoneIds }),
   startMilestone: (id: string, milestoneId: string) =>
@@ -1393,6 +1395,7 @@ export interface ProjectMilestoneGate {
   key: string
   status: 'passed' | 'blocked' | string
   message: string
+  action_href?: string
 }
 
 export interface ProjectMilestone {

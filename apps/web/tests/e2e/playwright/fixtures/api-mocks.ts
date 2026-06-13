@@ -250,7 +250,7 @@ export async function setupApiMocks(page: Page, options: SetupApiMockOptions = {
     milestones: [
       { id: 'milestone-scope-readiness', key: 'scope-readiness', title: '资料与范围确认', description: '确认项目范围、输入资料和交付责任。', status: 'completed', priority: 'high', order_index: 0, due_at: null, planned_start_at: null, completed_at: '2026-06-08T09:00:00Z', owner_id: MOCK.MOCK_USER.id, required_document_types_json: ['urs'], required_workflow_template_ids_json: [], gate_results_json: [{ key: 'required-documents', status: 'passed', message: '必需文档已就绪' }], metadata_json: {}, tenant_id: 'tenant-e2e-001', project_id: MOCK.MOCK_PROJECT.id, plan_id: 'delivery-plan-e2e-001', created_at: '2026-06-07T09:00:00Z', updated_at: '2026-06-08T09:00:00Z' },
       { id: 'milestone-core-authoring', key: 'core-authoring', title: '核心文档编写', description: '完成核心需求和设计文档。', status: 'planned', priority: 'high', order_index: 1, due_at: '2026-06-20T09:00:00Z', planned_start_at: null, completed_at: null, owner_id: MOCK.MOCK_USER.id, required_document_types_json: ['urs', 'brd'], required_workflow_template_ids_json: [], gate_results_json: [{ key: 'required-documents', status: 'passed', message: '必需文档已就绪' }], metadata_json: {}, tenant_id: 'tenant-e2e-001', project_id: MOCK.MOCK_PROJECT.id, plan_id: 'delivery-plan-e2e-001', created_at: '2026-06-07T09:00:00Z', updated_at: '2026-06-07T09:00:00Z' },
-      { id: 'milestone-review-traceability', key: 'review-traceability', title: '评审与追溯', description: '完成文档评审、批准和追溯关系检查。', status: 'blocked', priority: 'high', order_index: 2, due_at: null, planned_start_at: null, completed_at: null, owner_id: MOCK.MOCK_USER.id, required_document_types_json: ['urs', 'brd'], required_workflow_template_ids_json: [], gate_results_json: [{ key: 'document-approval', status: 'blocked', message: '文档必须批准或发布：BRD' }], metadata_json: {}, tenant_id: 'tenant-e2e-001', project_id: MOCK.MOCK_PROJECT.id, plan_id: 'delivery-plan-e2e-001', created_at: '2026-06-07T09:00:00Z', updated_at: '2026-06-07T09:00:00Z' },
+      { id: 'milestone-review-traceability', key: 'review-traceability', title: '评审与追溯', description: '完成文档评审、批准和追溯关系检查。', status: 'blocked', priority: 'high', order_index: 2, due_at: null, planned_start_at: null, completed_at: null, owner_id: MOCK.MOCK_USER.id, required_document_types_json: ['urs', 'brd'], required_workflow_template_ids_json: [], gate_results_json: [{ key: 'document-approval', status: 'blocked', message: '文档必须批准或发布：BRD', action_href: `/projects/${MOCK.MOCK_PROJECT.id}/documents` }], metadata_json: {}, tenant_id: 'tenant-e2e-001', project_id: MOCK.MOCK_PROJECT.id, plan_id: 'delivery-plan-e2e-001', created_at: '2026-06-07T09:00:00Z', updated_at: '2026-06-07T09:00:00Z' },
       { id: 'milestone-release-delivery', key: 'release-delivery', title: '交付发布', description: '通过交付门禁并发布完整项目成果。', status: 'planned', priority: 'critical', order_index: 3, due_at: null, planned_start_at: null, completed_at: null, owner_id: MOCK.MOCK_USER.id, required_document_types_json: ['urs', 'brd', 'prd'], required_workflow_template_ids_json: [], gate_results_json: [{ key: 'required-documents', status: 'blocked', message: '缺少必需文档' }], metadata_json: {}, tenant_id: 'tenant-e2e-001', project_id: MOCK.MOCK_PROJECT.id, plan_id: 'delivery-plan-e2e-001', created_at: '2026-06-07T09:00:00Z', updated_at: '2026-06-07T09:00:00Z' },
     ],
   }
@@ -1498,6 +1498,26 @@ export async function setupApiMocks(page: Page, options: SetupApiMockOptions = {
       milestone.status = match?.[2] === 'start' ? 'in_progress' : match?.[2] === 'complete' ? 'completed' : 'planned'
       milestone.completed_at = milestone.status === 'completed' ? new Date().toISOString() : null
     }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(milestone) })
+  })
+
+  await page.route(/\/api\/v1\/projects\/[^/]+\/milestones\/([^/]+)$/, async (route) => {
+    const milestoneId = route.request().url().match(/milestones\/([^/]+)$/)?.[1]
+    const index = projectDeliveryPlan.milestones.findIndex((item: any) => item.id === milestoneId)
+    if (route.request().method() === 'DELETE') {
+      projectDeliveryPlan.milestones.splice(index, 1)
+      projectDeliveryPlan.milestones.forEach((item: any, orderIndex: number) => { item.order_index = orderIndex })
+      projectDeliveryPlan.summary.total_count = projectDeliveryPlan.milestones.length
+      await route.fulfill({ status: 204 })
+      return
+    }
+    const payload = JSON.parse(route.request().postData() || '{}')
+    const milestone = Object.assign(projectDeliveryPlan.milestones[index], {
+      ...payload,
+      required_document_types_json: payload.required_document_types,
+      required_workflow_template_ids_json: payload.required_workflow_template_ids,
+      status: projectDeliveryPlan.milestones[index].status === 'blocked' ? 'planned' : projectDeliveryPlan.milestones[index].status,
+    })
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(milestone) })
   })
 

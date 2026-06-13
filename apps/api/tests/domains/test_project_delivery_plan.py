@@ -26,7 +26,11 @@ from app.domains.documents.models import Document
 from app.domains.projects.delivery_plan_service import ProjectDeliveryPlanService
 from app.domains.projects.launch_service import ProjectLaunchService
 from app.domains.projects.models import ProjectDeliveryPlan, ProjectMilestone
-from app.domains.projects.schemas import ProjectLaunchCreate, ProjectMilestoneCreate
+from app.domains.projects.schemas import (
+    ProjectLaunchCreate,
+    ProjectMilestoneCreate,
+    ProjectMilestoneUpdate,
+)
 from app.domains.projects.service import ProjectService
 from app.models.identity import Tenant, User
 
@@ -135,8 +139,16 @@ async def test_completion_is_blocked_until_document_gate_passes_then_can_reopen(
     await db_session.flush()
 
     await service.start(milestone.id, owner.tenant_id, member.id)
-    with pytest.raises(ValueError, match="approved or published"):
-        await service.complete(milestone.id, owner.tenant_id, member.id)
+    blocked = await service.complete(milestone.id, owner.tenant_id, member.id)
+
+    blocked_item = await db_session.scalar(
+        select(CollaborationWorkItem).where(
+            CollaborationWorkItem.source_key == f"milestone:{milestone.id}"
+        )
+    )
+    assert blocked.status == "blocked"
+    assert blocked_item.status == "blocked"
+    assert milestone.gate_results_json[1]["action_href"].endswith("/documents")
 
     documents = (
         await db_session.scalars(
@@ -156,6 +168,67 @@ async def test_completion_is_blocked_until_document_gate_passes_then_can_reopen(
 
     assert reopened.status == "planned"
     assert reopened.completed_at is None
+
+
+@pytest.mark.asyncio
+async def test_editing_blocked_milestone_reopens_execution_and_synchronizes_responsibility(db_session):
+    owner, member, launched = await _seed(db_session)
+    service = ProjectDeliveryPlanService(db_session)
+    plan = await service.get_plan(launched.project.id, owner.tenant_id)
+    milestone = plan.milestones[0]
+    milestone.status = "blocked"
+    await db_session.flush()
+
+    updated = await service.update(
+        milestone.id,
+        owner.tenant_id,
+        owner.id,
+        ProjectMilestoneUpdate(
+            owner_id=member.id,
+            priority="critical",
+            description="Resolve source readiness before authoring.",
+        ),
+        project_id=launched.project.id,
+    )
+    item = await db_session.scalar(
+        select(CollaborationWorkItem).where(
+            CollaborationWorkItem.source_key == f"milestone:{milestone.id}"
+        )
+    )
+
+    assert updated.status == "planned"
+    assert item.status == "open"
+    assert item.assigned_to == member.id
+    assert item.priority == "critical"
+
+
+@pytest.mark.asyncio
+async def test_owner_deletes_custom_milestone_and_reorders_remaining_plan(db_session):
+    owner, _, launched = await _seed(db_session)
+    service = ProjectDeliveryPlanService(db_session)
+    custom = await service.create_milestone(
+        project_id=launched.project.id,
+        tenant_id=owner.tenant_id,
+        requested_by=owner.id,
+        data=ProjectMilestoneCreate(key="customer-signoff", title="Customer signoff"),
+    )
+
+    await service.delete(
+        custom.id,
+        owner.tenant_id,
+        owner.id,
+        project_id=launched.project.id,
+    )
+    plan = await service.get_plan(launched.project.id, owner.tenant_id)
+    work_item = await db_session.scalar(
+        select(CollaborationWorkItem).where(
+            CollaborationWorkItem.source_key == f"milestone:{custom.id}"
+        )
+    )
+
+    assert work_item is None
+    assert [item.order_index for item in plan.milestones] == [0, 1, 2, 3]
+    assert all(item.id != custom.id for item in plan.milestones)
 
 
 @pytest.mark.asyncio

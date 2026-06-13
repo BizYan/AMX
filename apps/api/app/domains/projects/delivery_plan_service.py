@@ -163,9 +163,41 @@ class ProjectDeliveryPlanService:
                 "required_workflow_template_ids": "required_workflow_template_ids_json",
             }.get(key, key)
             setattr(milestone, target, value)
+        if milestone.status == "blocked":
+            milestone.status = "planned"
+            milestone.completed_at = None
         await self.db.flush()
         await self._sync_work_item(milestone, requested_by)
+        await self._set_work_item_status(milestone, "open")
+        await self._refresh_plan(milestone.plan)
         return milestone
+
+    async def delete(
+        self,
+        milestone_id: UUID,
+        tenant_id: UUID,
+        requested_by: UUID,
+        project_id: UUID | None = None,
+    ) -> None:
+        milestone = await self._milestone(milestone_id, tenant_id, project_id)
+        project = await self._project(milestone.project_id, tenant_id)
+        if project.owner_id != requested_by:
+            raise PermissionError("Only project owner can delete a milestone")
+        plan = milestone.plan
+        item = await self.db.scalar(
+            select(CollaborationWorkItem).where(
+                CollaborationWorkItem.tenant_id == tenant_id,
+                CollaborationWorkItem.source_key == f"milestone:{milestone.id}",
+            )
+        )
+        if item:
+            await self.db.delete(item)
+        plan.milestones.remove(milestone)
+        await self.db.delete(milestone)
+        for index, remaining in enumerate(plan.milestones):
+            remaining.order_index = index
+        await self.db.flush()
+        await self._refresh_plan(plan)
 
     async def reorder(
         self, project_id: UUID, tenant_id: UUID, milestone_ids: list[UUID]
@@ -202,7 +234,12 @@ class ProjectDeliveryPlanService:
         blockers = [item["message"] for item in gates if item["status"] == "blocked"]
         milestone.gate_results_json = gates
         if blockers:
-            raise ValueError("; ".join(blockers))
+            milestone.status = "blocked"
+            milestone.completed_at = None
+            await self._set_work_item_status(milestone, "blocked")
+            await self.db.flush()
+            await self._refresh_plan(milestone.plan)
+            return milestone
         milestone.status = "completed"
         milestone.completed_at = datetime.now(timezone.utc)
         await self._set_work_item_status(milestone, "done")
@@ -261,6 +298,7 @@ class ProjectDeliveryPlanService:
                 "key": "required-documents",
                 "status": "blocked" if missing else "passed",
                 "message": f"Missing required documents: {', '.join(missing)}" if missing else "Required documents exist",
+                "action_href": f"/projects/{milestone.project_id}/documents",
             },
             {
                 "key": "document-approval",
@@ -269,11 +307,13 @@ class ProjectDeliveryPlanService:
                     f"Documents must be approved or published: {', '.join(unfinished)}"
                     if unfinished else "Document approval gate passed"
                 ),
+                "action_href": f"/projects/{milestone.project_id}/documents",
             },
             {
                 "key": "active-work-items",
                 "status": "blocked" if active_items else "passed",
                 "message": f"{active_items} active collaboration work items remain" if active_items else "No active collaboration blockers",
+                "action_href": "/collaboration",
             },
         ]
 
