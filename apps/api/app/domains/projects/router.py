@@ -458,6 +458,38 @@ async def update_project_milestone(
     return ProjectMilestoneResponse.model_validate(milestone)
 
 
+@router.delete("/{project_id}/milestones/{milestone_id}", status_code=204)
+async def delete_project_milestone(
+    project_id: UUID,
+    milestone_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a project milestone and its synchronized responsibility item."""
+    await check_project_membership(
+        project_id, current_user.id, db, current_user.tenant_id, require_owner=True
+    )
+    try:
+        await ProjectDeliveryPlanService(db).delete(
+            milestone_id,
+            current_user.tenant_id,
+            current_user.id,
+            project_id=project_id,
+        )
+    except PermissionError as error:
+        raise HTTPException(status_code=403, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    await AuditService(db).log_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+        action="project.milestone.delete",
+        resource_type="project_milestone",
+        resource_id=milestone_id,
+        metadata={"project_id": str(project_id)},
+    )
+
+
 @router.post("/{project_id}/milestones/reorder", response_model=ProjectDeliveryPlanResponse)
 async def reorder_project_milestones(
     project_id: UUID,
