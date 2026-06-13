@@ -570,6 +570,32 @@ export async function setupApiMocks(page: Page, options: SetupApiMockOptions = {
       created_at: '2026-06-12T00:40:00Z',
     },
   ]
+  let integrationIncidents: any[] = [
+    {
+      id: 'webhook-delivery-failed-e2e',
+      category: 'webhook',
+      severity: 'critical',
+      title: 'Webhook 投递失败',
+      detail: '目标服务返回 HTTP 503',
+      status: 'failed',
+      attempts: 3,
+      occurred_at: '2026-06-13T10:00:00Z',
+      action_type: 'retry_webhook',
+      action_href: '/integrations?retryWebhook=webhook-delivery-failed-e2e',
+    },
+    {
+      id: 'outbox-failed-e2e',
+      category: 'outbox',
+      severity: 'critical',
+      title: 'Outbox 事件失败',
+      detail: '发布超过最大重试次数',
+      status: 'failed',
+      attempts: 3,
+      occurred_at: '2026-06-13T09:00:00Z',
+      action_type: 'retry_outbox',
+      action_href: '/integrations?retryOutbox=outbox-failed-e2e',
+    },
+  ]
 
   await page.route(/\/api\/v1\/integrations(?:\?.*)?$/, async (route) => {
     if (route.request().method() === 'POST') {
@@ -724,6 +750,31 @@ export async function setupApiMocks(page: Page, options: SetupApiMockOptions = {
       contentType: 'application/json',
       body: JSON.stringify({ processed: 2, published: 2, failed: 0 }),
     })
+  })
+
+  await page.route('**/api/v1/integrations/operations/incidents*', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        total: integrationIncidents.length,
+        critical_count: integrationIncidents.filter((item) => item.severity === 'critical').length,
+        retryable_count: integrationIncidents.length,
+        items: integrationIncidents,
+      }),
+    })
+  })
+
+  await page.route('**/api/v1/integrations/webhooks/deliveries/*/retry', async (route) => {
+    const id = route.request().url().split('/').at(-2)
+    integrationIncidents = integrationIncidents.filter((item) => item.id !== id)
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ id, delivered_at: new Date().toISOString() }) })
+  })
+
+  await page.route('**/api/v1/integrations/outbox/events/*/retry', async (route) => {
+    const id = route.request().url().split('/').at(-2)
+    integrationIncidents = integrationIncidents.filter((item) => item.id !== id)
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ id, status: 'pending', published: false }) })
   })
 
   await page.route('**/api/v1/integrations/operations/summary*', async (route) => {

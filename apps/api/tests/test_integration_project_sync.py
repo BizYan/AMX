@@ -18,9 +18,12 @@ from app.domains.integrations.models import (
     IntegrationProjectBinding,
     IntegrationSyncRun,
     IntegrationSyncedAsset,
+    OutboxEvent,
+    WebhookDeliveryEvent,
+    WebhookSubscription,
 )
 from app.domains.integrations.project_sync_service import IntegrationProjectSyncService
-from app.domains.integrations.service import IntegrationService
+from app.domains.integrations.service import IntegrationService, OutboxService, WebhookService
 from app.domains.knowledge.models import KnowledgeEntry, LineageRecord, ProvenanceRecord
 from app.domains.projects.models import SourceFile
 from app.models.identity import Tenant, User
@@ -181,3 +184,63 @@ async def test_sync_records_failed_run_when_remote_payload_cannot_be_loaded(db_s
     assert run.status == "failed"
     assert "remote unavailable" in (run.error_message or "")
     assert binding.last_sync_status == "failed"
+
+    queue = await IntegrationService(db_session).build_incident_queue(tenant_id)
+    assert queue.total == 1
+    assert queue.items[0].category == "project_sync"
+    assert queue.items[0].action_type == "retry_sync"
+
+
+@pytest.mark.asyncio
+async def test_operations_queue_retries_webhook_and_outbox_failures(db_session, monkeypatch):
+    tenant_id, user_id, _, integration = await make_context(db_session)
+    subscription = WebhookSubscription(
+        tenant_id=tenant_id,
+        integration_provider_id=integration.id,
+        url="https://hooks.example.com/amx",
+        events=["project.updated"],
+        is_active=True,
+    )
+    outbox = OutboxEvent(
+        tenant_id=tenant_id,
+        aggregate_type="project",
+        aggregate_id=uuid4(),
+        event_type="project.updated",
+        payload={"status": "ready"},
+        status="failed",
+        attempts=3,
+        max_attempts=3,
+        last_error="target unavailable",
+        published=False,
+    )
+    db_session.add_all([subscription, outbox])
+    await db_session.flush()
+    delivery = WebhookDeliveryEvent(
+        tenant_id=tenant_id,
+        webhook_subscription_id=subscription.id,
+        event_id="evt-failed",
+        url=subscription.url,
+        request_headers={"Content-Type": "application/json"},
+        request_body={"event_id": "evt-failed"},
+        attempts=3,
+        error_message="connection timeout",
+    )
+    db_session.add(delivery)
+    await db_session.flush()
+
+    queue = await IntegrationService(db_session).build_incident_queue(tenant_id)
+    assert {item.category for item in queue.items} == {"webhook", "outbox"}
+    assert queue.critical_count == 2
+
+    async def successful_retry(*_args, **_kwargs):
+        return True
+
+    webhook_service = WebhookService(db_session)
+    monkeypatch.setattr(webhook_service, "_attempt_delivery", successful_retry)
+    retried_delivery = await webhook_service.retry_delivery(delivery.id, tenant_id)
+    retried_outbox = await OutboxService(db_session).retry_event(outbox.id, tenant_id)
+
+    assert retried_delivery.delivered_at is not None
+    assert retried_delivery.attempts == 4
+    assert retried_outbox.status == "pending"
+    assert retried_outbox.last_error is None

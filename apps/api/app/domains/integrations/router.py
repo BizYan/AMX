@@ -36,6 +36,7 @@ from app.domains.integrations.schemas import (
     WebhookPayload,
     TestConnectionResponse,
     IntegrationProductionCommandCenter,
+    IntegrationOperationsIncidentQueue,
     IntegrationOperationsSummary,
     IntegrationProjectBindingCreate,
     IntegrationProjectBindingResponse,
@@ -173,6 +174,16 @@ async def get_integration_production_command_center(
     """Get integration production release gate, risks, and priority actions."""
     service = IntegrationService(db)
     return await service.build_production_command_center(current_user.tenant_id)
+
+
+@router.get("/operations/incidents", response_model=IntegrationOperationsIncidentQueue)
+async def get_integration_operations_incidents(
+    limit: int = Query(50, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get the actionable cross-channel integration failure queue."""
+    return await IntegrationService(db).build_incident_queue(current_user.tenant_id, limit)
 
 
 @router.get("/{integration_id}/project-bindings", response_model=list[IntegrationProjectBindingResponse])
@@ -714,6 +725,19 @@ async def get_webhook_deliveries(
     }
 
 
+@router.post("/webhooks/deliveries/{delivery_id}/retry", response_model=WebhookDeliveryEventResponse)
+async def retry_webhook_delivery(
+    delivery_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Retry one failed webhook delivery and preserve the updated evidence."""
+    try:
+        return await WebhookService(db).retry_delivery(delivery_id, current_user.tenant_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 # =============================================================================
 # Outbox Event Endpoints
 # =============================================================================
@@ -795,6 +819,19 @@ async def create_outbox_event(
         payload=data.payload,
     )
     return OutboxEventResponse.model_validate(event)
+
+
+@router.post("/outbox/events/{event_id}/retry", response_model=OutboxEventResponse)
+async def retry_outbox_event(
+    event_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return one failed outbox event to the publish queue."""
+    try:
+        return await OutboxService(db).retry_event(event_id, current_user.tenant_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.post("/outbox/publish")

@@ -114,6 +114,10 @@ export default function IntegrationsPage() {
     queryKey: ['integrations', 'production-command-center'],
     queryFn: integrationsApi.getProductionCommandCenter,
   })
+  const incidentQueueQuery = useQuery({
+    queryKey: ['integrations', 'incident-queue'],
+    queryFn: integrationsApi.getIncidentQueue,
+  })
   const projectsQuery = useQuery({
     queryKey: ['projects', 'integration-binding-options'],
     queryFn: () => projectsApi.list({ page: 1, pageSize: 20 }),
@@ -207,11 +211,27 @@ export default function IntegrationsPage() {
     },
   })
 
+  const incidentRetryMutation = useMutation({
+    mutationFn: (incident: { id: string; action_type: string }) => {
+      if (incident.action_type === 'retry_sync') return integrationsApi.retryProjectBindingRun(incident.id)
+      if (incident.action_type === 'retry_webhook') return integrationsApi.retryWebhookDelivery(incident.id)
+      return integrationsApi.retryOutboxEvent(incident.id)
+    },
+    onSuccess: async () => {
+      setActionResult('失败任务已重试或重新进入发布队列。')
+      await queryClient.invalidateQueries({ queryKey: ['integrations', 'incident-queue'] })
+      await queryClient.invalidateQueries({ queryKey: ['integrations', 'production-command-center'] })
+      await queryClient.invalidateQueries({ queryKey: ['integrations', 'operations-summary'] })
+      await queryClient.invalidateQueries({ queryKey: ['integrations', 'outbox'] })
+    },
+  })
+
   const summary = summaryQuery.data
   const evidence = summary?.evidence || {}
   const bindings = bindingsQuery.data || []
   const webhooks = webhooksQuery.data?.items || []
   const outboxEvents = outboxQuery.data?.items || []
+  const incidents = incidentQueueQuery.data?.items || []
 
   return (
     <main data-testid="integration-operations-center" className="space-y-6 p-6">
@@ -435,12 +455,51 @@ export default function IntegrationsPage() {
         </div>
       )}
 
-      <Tabs defaultValue="bindings">
+      <Tabs defaultValue="incidents">
         <TabsList>
+          <TabsTrigger value="incidents">失败处置</TabsTrigger>
           <TabsTrigger value="bindings">项目同步</TabsTrigger>
           <TabsTrigger value="webhooks">Webhook</TabsTrigger>
           <TabsTrigger value="outbox">Outbox</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="incidents">
+          <Card data-testid="integration-incident-queue">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-red-500" />
+                生产失败处置队列
+              </CardTitle>
+              <CardDescription>
+                汇总项目同步、Webhook 和 Outbox 失败，支持按失败证据直接重试。
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid grid-cols-3 gap-3 text-sm">
+                <div><p className="text-slate-500">失败总数</p><p className="text-xl font-semibold">{incidentQueueQuery.data?.total ?? 0}</p></div>
+                <div><p className="text-slate-500">严重阻塞</p><p className="text-xl font-semibold">{incidentQueueQuery.data?.critical_count ?? 0}</p></div>
+                <div><p className="text-slate-500">可重试</p><p className="text-xl font-semibold">{incidentQueueQuery.data?.retryable_count ?? 0}</p></div>
+              </div>
+              {incidents.map((incident) => (
+                <div key={`${incident.category}-${incident.id}`} className="flex flex-col gap-3 rounded-md border border-slate-200 p-4 dark:border-slate-800 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium text-slate-950 dark:text-white">{incident.title}</p>
+                      <Badge variant={incident.severity === 'critical' ? 'destructive' : 'secondary'}>{incident.category}</Badge>
+                    </div>
+                    <p className="mt-1 text-sm text-slate-500">{incident.detail}</p>
+                    <p className="mt-1 text-xs text-slate-400">尝试 {incident.attempts} 次 · {incident.occurred_at}</p>
+                  </div>
+                  <Button data-testid={`retry-incident-${incident.id}`} variant="outline" onClick={() => incidentRetryMutation.mutate(incident)}>
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    重试
+                  </Button>
+                </div>
+              ))}
+              {!incidents.length && <p className="py-8 text-center text-sm text-slate-500">当前没有需要处置的外部集成失败。</p>}
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         <TabsContent value="bindings">
           <Card data-testid="integration-binding-panel">
