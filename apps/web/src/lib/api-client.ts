@@ -169,6 +169,14 @@ export const projectsApi = {
   },
   getDeliveryPlan: (id: string) =>
     apiClient.get<ProjectDeliveryPlan>(`/projects/${id}/delivery-plan`),
+  getAcceptance: (id: string) =>
+    apiClient.get<ProjectAcceptance>(`/projects/${id}/acceptance`),
+  updateAcceptance: (id: string, data: ProjectAcceptanceUpdate) =>
+    apiClient.put<ProjectAcceptance>(`/projects/${id}/acceptance`, data),
+  closeDelivery: (id: string) =>
+    apiClient.post<ProjectAcceptance>(`/projects/${id}/acceptance/close`, {}),
+  reopenDelivery: (id: string) =>
+    apiClient.post<ProjectAcceptance>(`/projects/${id}/acceptance/reopen`, {}),
   initializeDeliveryPlan: (id: string) =>
     apiClient.post<ProjectDeliveryPlan>(`/projects/${id}/delivery-plan/initialize`, {}),
   createMilestone: (id: string, data: ProjectMilestoneCreateInput) =>
@@ -1454,6 +1462,36 @@ export interface ProjectDeliveryPlan {
   updated_at: string
   milestones: ProjectMilestone[]
   summary: ProjectDeliveryPlanSummary
+}
+
+export interface ProjectAcceptanceItem {
+  key: string
+  title: string
+  status: 'pending' | 'accepted' | 'rejected'
+  evidence: string
+}
+
+export interface ProjectAcceptanceUpdate {
+  customer_name: string
+  contact_name: string
+  contact_email: string
+  decision: 'pending' | 'accepted' | 'accepted_with_followups' | 'rejected'
+  notes: string
+  items: ProjectAcceptanceItem[]
+}
+
+export interface ProjectAcceptance extends ProjectAcceptanceUpdate {
+  project_id: string
+  updated_by: string | null
+  accepted_at: string | null
+  closed_at: string | null
+  package_ready: boolean
+  gate: {
+    status: 'passed' | 'blocked' | string
+    label: string
+    blockers: string[]
+    warnings: string[]
+  }
 }
 
 export interface ProjectMilestoneCreateInput {

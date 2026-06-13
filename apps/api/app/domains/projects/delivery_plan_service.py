@@ -9,8 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.domains.collaboration.models import CollaborationWorkItem
 from app.domains.collaboration.work_item_service import ACTIVE_STATUSES, CollaborationWorkItemService
 from app.domains.documents.models import Document, DocumentType
+from app.domains.export.models import ExportArtifact, ExportJob, ExportStatus, ExportType
 from app.domains.projects.models import ProjectDeliveryPlan, ProjectMilestone
 from app.domains.projects.schemas import (
+    ProjectAcceptanceResponse,
+    ProjectAcceptanceUpdate,
     ProjectDeliveryPlanResponse,
     ProjectDeliveryPlanSummary,
     ProjectMilestoneCreate,
@@ -261,6 +264,153 @@ class ProjectDeliveryPlanService:
         await self._refresh_plan(milestone.plan)
         return milestone
 
+    async def get_acceptance(
+        self, project_id: UUID, tenant_id: UUID
+    ) -> ProjectAcceptanceResponse:
+        plan = await self.get_plan(project_id, tenant_id)
+        if not plan:
+            raise ValueError("Project delivery plan not found")
+        return await self._acceptance_response(plan)
+
+    async def update_acceptance(
+        self,
+        project_id: UUID,
+        tenant_id: UUID,
+        requested_by: UUID,
+        data: ProjectAcceptanceUpdate,
+    ) -> ProjectAcceptanceResponse:
+        plan = await self.get_plan(project_id, tenant_id)
+        if not plan:
+            raise ValueError("Project delivery plan not found")
+        await self._require_project_owner(project_id, tenant_id, requested_by)
+        existing = dict((plan.settings_json or {}).get("customer_acceptance") or {})
+        payload = data.model_dump(mode="json")
+        payload["updated_by"] = str(requested_by)
+        payload["accepted_at"] = (
+            datetime.now(timezone.utc).isoformat()
+            if data.decision in {"accepted", "accepted_with_followups"}
+            else None
+        )
+        payload["closed_at"] = existing.get("closed_at")
+        plan.settings_json = {**(plan.settings_json or {}), "customer_acceptance": payload}
+        await self.db.flush()
+        return await self._acceptance_response(plan)
+
+    async def close_delivery(
+        self, project_id: UUID, tenant_id: UUID, requested_by: UUID
+    ) -> ProjectAcceptanceResponse:
+        plan = await self.get_plan(project_id, tenant_id)
+        if not plan:
+            raise ValueError("Project delivery plan not found")
+        await self._require_project_owner(project_id, tenant_id, requested_by)
+        response = await self._acceptance_response(plan)
+        if response.gate.status != "passed":
+            raise ValueError("; ".join(response.gate.blockers))
+        acceptance = dict((plan.settings_json or {}).get("customer_acceptance") or {})
+        acceptance["closed_at"] = datetime.now(timezone.utc).isoformat()
+        acceptance["updated_by"] = str(requested_by)
+        plan.settings_json = {**(plan.settings_json or {}), "customer_acceptance": acceptance}
+        release = next((item for item in plan.milestones if item.key == "release-delivery"), None)
+        if release:
+            release.status = "completed"
+            release.completed_at = datetime.now(timezone.utc)
+            await self._set_work_item_status(release, "done")
+        await self._refresh_plan(plan)
+        return await self._acceptance_response(plan)
+
+    async def reopen_delivery(
+        self, project_id: UUID, tenant_id: UUID, requested_by: UUID
+    ) -> ProjectAcceptanceResponse:
+        plan = await self.get_plan(project_id, tenant_id)
+        if not plan:
+            raise ValueError("Project delivery plan not found")
+        await self._require_project_owner(project_id, tenant_id, requested_by)
+        acceptance = dict((plan.settings_json or {}).get("customer_acceptance") or {})
+        acceptance["closed_at"] = None
+        acceptance["updated_by"] = str(requested_by)
+        plan.settings_json = {**(plan.settings_json or {}), "customer_acceptance": acceptance}
+        release = next((item for item in plan.milestones if item.key == "release-delivery"), None)
+        if release:
+            release.status = "planned"
+            release.completed_at = None
+            await self._set_work_item_status(release, "open")
+        await self._refresh_plan(plan)
+        return await self._acceptance_response(plan)
+
+    async def _acceptance_response(
+        self, plan: ProjectDeliveryPlan
+    ) -> ProjectAcceptanceResponse:
+        acceptance = dict((plan.settings_json or {}).get("customer_acceptance") or {})
+        items = list(acceptance.get("items") or [])
+        package_jobs = list(
+            (
+                await self.db.scalars(
+                    select(ExportJob).where(
+                        ExportJob.tenant_id == plan.tenant_id,
+                        ExportJob.project_id == plan.project_id,
+                        ExportJob.export_type == ExportType.PROJECT_PACKAGE.value,
+                        ExportJob.status == ExportStatus.COMPLETED.value,
+                    )
+                )
+            ).all()
+        )
+        package_job_ids = [job.id for job in package_jobs]
+        artifact_count = int(
+            await self.db.scalar(
+                select(func.count()).select_from(ExportArtifact).where(
+                    ExportArtifact.job_id.in_(package_job_ids)
+                )
+            )
+            or 0
+        ) if package_job_ids else 0
+        package_ready = bool(package_jobs and artifact_count)
+        decision = acceptance.get("decision", "pending")
+        blockers = []
+        warnings = []
+        if decision not in {"accepted", "accepted_with_followups"}:
+            blockers.append("客户尚未给出可交付的验收结论")
+        if not acceptance.get("customer_name") or not acceptance.get("contact_name"):
+            blockers.append("客户与签署联系人信息不完整")
+        if not items:
+            blockers.append("尚未登记验收项")
+        rejected = [item for item in items if item.get("status") == "rejected"]
+        pending = [item for item in items if item.get("status") == "pending"]
+        if rejected:
+            blockers.append(f"{len(rejected)} 个验收项被拒绝")
+        if pending and decision != "accepted_with_followups":
+            blockers.append(f"{len(pending)} 个验收项尚未确认")
+        elif pending:
+            warnings.append(f"{len(pending)} 个验收项作为后续事项跟踪")
+        if not package_ready:
+            blockers.append("尚无包含可下载产物的正式项目交付包")
+        incomplete = [
+            item.title
+            for item in plan.milestones
+            if item.key != "release-delivery" and item.status != "completed"
+        ]
+        if incomplete:
+            blockers.append(f"{len(incomplete)} 个前置交付里程碑尚未完成")
+        status = "passed" if not blockers else "blocked"
+        return ProjectAcceptanceResponse(
+            project_id=plan.project_id,
+            customer_name=acceptance.get("customer_name", ""),
+            contact_name=acceptance.get("contact_name", ""),
+            contact_email=acceptance.get("contact_email", ""),
+            decision=decision,
+            notes=acceptance.get("notes", ""),
+            items=items,
+            updated_by=acceptance.get("updated_by"),
+            accepted_at=acceptance.get("accepted_at"),
+            closed_at=acceptance.get("closed_at"),
+            package_ready=package_ready,
+            gate={
+                "status": status,
+                "label": "可正式关闭" if status == "passed" else "关闭门禁未通过",
+                "blockers": blockers,
+                "warnings": warnings,
+            },
+        )
+
     async def _evaluate_gates(self, milestone: ProjectMilestone) -> list[dict]:
         required = list(milestone.required_document_types_json or [])
         documents = list(
@@ -381,6 +531,14 @@ class ProjectDeliveryPlanService:
         )
         if not project:
             raise ValueError("Project not found")
+        return project
+
+    async def _require_project_owner(
+        self, project_id: UUID, tenant_id: UUID, requested_by: UUID
+    ) -> Project:
+        project = await self._project(project_id, tenant_id)
+        if project.owner_id != requested_by:
+            raise PermissionError("Only project owner can manage formal delivery acceptance")
         return project
 
     async def _milestone(
