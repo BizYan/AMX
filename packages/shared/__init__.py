@@ -1,0 +1,1 @@
+"""Consultant AI Workbench shared utilities package."""

@@ -1,0 +1,16 @@
+{
+  "error": "Invalid document format",
+  "details": {
+    "code": "INVALID_FORMAT",
+    "message": "The provided document content is empty or malformed",
+    "supported_formats": ["pdf", "docx", "txt", "md"]
+  },
+  "nodes": [],
+  "edges": [],
+  "relationships": [],
+  "metadata": {
+    "document_id": "error-document-001",
+    "error_time": "2026-05-19T10:00:00Z",
+    "retryable": false
+  }
+}

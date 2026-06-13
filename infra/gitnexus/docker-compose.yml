@@ -1,0 +1,52 @@
+services:
+  gitnexus-server:
+    image: ${GITNEXUS_SERVER_IMAGE:-ghcr.io/abhigyanpatwari/gitnexus:1.6.5}
+    container_name: ${GITNEXUS_SERVER_CONTAINER_NAME:-amx_gitnexus_server}
+    user: "${GITNEXUS_UID:-0}:${GITNEXUS_GID:-0}"
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${GITNEXUS_BIND_ADDRESS:-127.0.0.1}:${GITNEXUS_SERVER_HOST_PORT:-4747}:4747"
+    volumes:
+      - gitnexus_data:/data/gitnexus
+      - ${GITNEXUS_WORKSPACE_DIR:-/home/ubuntu/amx/gitnexus/workspace}:/workspace
+    networks:
+      - gitnexus_network
+      - amx_runtime_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4747/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  gitnexus-web:
+    image: ${GITNEXUS_WEB_IMAGE:-ghcr.io/abhigyanpatwari/gitnexus-web:1.6.5}
+    container_name: ${GITNEXUS_WEB_CONTAINER_NAME:-amx_gitnexus_web}
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${GITNEXUS_WEB_BIND_ADDRESS:-127.0.0.1}:${GITNEXUS_WEB_HOST_PORT:-4173}:4173"
+    depends_on:
+      gitnexus-server:
+        condition: service_healthy
+    networks:
+      - gitnexus_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4173/"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+networks:
+  gitnexus_network:
+    driver: bridge
+  amx_runtime_network:
+    name: ${AMX_RUNTIME_NETWORK:-amx_runtime_network}
+    external: true
+
+volumes:
+  gitnexus_data:

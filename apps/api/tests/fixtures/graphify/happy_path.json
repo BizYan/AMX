@@ -1,0 +1,129 @@
+{
+  "nodes": [
+    {
+      "id": "person-1",
+      "type": "person",
+      "name": "Alice Chen",
+      "properties": {
+        "role": "Software Engineer",
+        "department": "Engineering",
+        "email": "alice@example.com"
+      }
+    },
+    {
+      "id": "person-2",
+      "type": "person",
+      "name": "Bob Smith",
+      "properties": {
+        "role": "Product Manager",
+        "department": "Product",
+        "email": "bob@example.com"
+      }
+    },
+    {
+      "id": "org-1",
+      "type": "organization",
+      "name": "Acme Corporation",
+      "properties": {
+        "industry": "Technology",
+        "founded": "2020"
+      }
+    },
+    {
+      "id": "project-1",
+      "type": "project",
+      "name": "Project Alpha",
+      "properties": {
+        "status": "active",
+        "budget": 100000
+      }
+    },
+    {
+      "id": "concept-1",
+      "type": "concept",
+      "name": "Machine Learning",
+      "properties": {
+        "category": "AI/ML",
+        "maturity": "production"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-1",
+      "source": "person-1",
+      "target": "org-1",
+      "type": "works_for",
+      "properties": {
+        "since": "2022-01-15",
+        "confidence": 0.95
+      }
+    },
+    {
+      "id": "edge-2",
+      "source": "person-2",
+      "target": "org-1",
+      "type": "works_for",
+      "properties": {
+        "since": "2021-06-01",
+        "confidence": 0.98
+      }
+    },
+    {
+      "id": "edge-3",
+      "source": "person-1",
+      "target": "project-1",
+      "type": "leads",
+      "properties": {
+        "role": "Technical Lead",
+        "confidence": 0.90
+      }
+    },
+    {
+      "id": "edge-4",
+      "source": "project-1",
+      "target": "concept-1",
+      "type": "uses",
+      "properties": {
+        "extent": "core",
+        "confidence": 0.85
+      }
+    },
+    {
+      "id": "edge-5",
+      "source": "person-2",
+      "target": "person-1",
+      "type": "reports_to",
+      "properties": {
+        "confidence": 0.92
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "source": "person-1",
+      "target": "person-2",
+      "type": "collaborates_with",
+      "properties": {
+        "projects": ["Project Alpha"],
+        "frequency": "daily"
+      }
+    },
+    {
+      "source": "org-1",
+      "target": "concept-1",
+      "type": "invests_in",
+      "properties": {
+        "investment_level": "high"
+      }
+    }
+  ],
+  "metadata": {
+    "document_id": "test-document-001",
+    "extraction_model": "graphify-v2",
+    "extraction_time": "2026-05-19T10:00:00Z",
+    "confidence_threshold": 0.7,
+    "total_entities": 5,
+    "total_relationships": 7
+  }
+}

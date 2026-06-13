@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+node_modules.partial-*/
+.venv/
+
+# Build outputs
+.next/
+dist/
+build/
+coverage/
+test-results/
+playwright-report/
+
+# Python caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local TypeScript cache
+*.tsbuildinfo
+
+# Environment and local tool state
+.env
+.env.*
+!.env.example
+.gitnexus/
+.claude/
+.deploy-at
+.deploy-ref
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*

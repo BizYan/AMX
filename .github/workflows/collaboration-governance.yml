@@ -1,0 +1,101 @@
+name: Collaboration governance
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    branches:
+      - main
+      - "feature/**"
+      - "release/**"
+    types:
+      - opened
+      - edited
+      - synchronize
+      - reopened
+
+concurrency:
+  group: collaboration-governance-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pr-evidence:
+    name: PR agent and GitNexus evidence
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR body
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          body="$(jq -r '.pull_request.body // ""' "$GITHUB_EVENT_PATH")"
+
+          if [[ "${#body}" -lt 200 ]]; then
+            echo "PR body is too short. Use .github/pull_request_template.md and include evidence." >&2
+            exit 1
+          fi
+
+          required_sections=(
+            "## Purpose"
+            "## Scope"
+            "## Evidence"
+            "## Risk And Rollback"
+            "## Agent Attribution"
+            "## GitNexus Impact Record"
+          )
+
+          for section in "${required_sections[@]}"; do
+            if ! grep -Fq "$section" <<<"$body"; then
+              echo "Missing required PR section: $section" >&2
+              exit 1
+            fi
+          done
+
+          if ! grep -Eiq 'Codex|Antigravity|Gemini|Claude|Agent|human' <<<"$body"; then
+            echo "PR body must identify the authoring or reviewing agent/human." >&2
+            exit 1
+          fi
+
+          if ! grep -Eiq 'GitNexus|gitnexus|MCP|unavailable' <<<"$body"; then
+            echo "PR body must include GitNexus evidence or an explicit unavailable fallback." >&2
+            exit 1
+          fi
+
+  repository-contract:
+    name: Agent collaboration contract
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate agent protocol files
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          required_files=(
+            "AGENTS.md"
+            "GEMINI.md"
+            "CLAUDE.md"
+            "docs/runbooks/gitnexus-agent-protocol.md"
+            "docs/runbooks/multi-agent-collaboration.md"
+            "tasks/templates/agent-task.md"
+            "tasks/templates/review-report.md"
+          )
+
+          for path in "${required_files[@]}"; do
+            test -s "$path" || {
+              echo "Missing required collaboration file: $path" >&2
+              exit 1
+            }
+            grep -qi "GitNexus" "$path" || {
+              echo "Collaboration file must reference GitNexus: $path" >&2
+              exit 1
+            }
+          done
+
+          grep -q "C:\\\\amx" AGENTS.md || {
+            echo "AGENTS.md must keep C:\\amx as the canonical workspace root." >&2
+            exit 1
+          }

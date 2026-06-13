@@ -1,0 +1,78 @@
+{
+  "issues": [
+    {
+      "id": 1,
+      "number": 42,
+      "title": "Add user profile page",
+      "body": "As a user, I want to have a profile page so that I can view and edit my information.",
+      "state": "open",
+      "author": {
+        "name": "Bob Smith",
+        "email": "bob@example.com"
+      },
+      "assignee": {
+        "name": "Alice Chen",
+        "email": "alice@example.com"
+      },
+      "labels": ["feature", "frontend"],
+      "comments_count": 3,
+      "created_at": "2026-01-20T10:00:00Z",
+      "updated_at": "2026-02-15T14:30:00Z",
+      "url": "https://github.com/example/project/issues/42",
+      "metadata": {
+        "repo_url": "https://github.com/example/project"
+      }
+    },
+    {
+      "id": 2,
+      "number": 43,
+      "title": "Fix login redirect issue",
+      "body": "After logging in, users are not redirected to the intended page.",
+      "state": "closed",
+      "author": {
+        "name": "Carol Davis",
+        "email": "carol@example.com"
+      },
+      "assignee": {
+        "name": "Alice Chen",
+        "email": "alice@example.com"
+      },
+      "labels": ["bug", "high-priority"],
+      "comments_count": 5,
+      "created_at": "2026-02-01T09:15:00Z",
+      "updated_at": "2026-02-05T16:45:00Z",
+      "closed_at": "2026-02-05T16:45:00Z",
+      "url": "https://github.com/example/project/issues/43",
+      "metadata": {
+        "repo_url": "https://github.com/example/project"
+      }
+    },
+    {
+      "id": 3,
+      "number": 44,
+      "title": "Implement dark mode",
+      "body": "Add support for dark mode in the application UI.",
+      "state": "open",
+      "author": {
+        "name": "Bob Smith",
+        "email": "bob@example.com"
+      },
+      "assignee": null,
+      "labels": ["feature", "enhancement"],
+      "comments_count": 0,
+      "created_at": "2026-03-10T11:30:00Z",
+      "updated_at": "2026-03-10T11:30:00Z",
+      "url": "https://github.com/example/project/issues/44",
+      "metadata": {
+        "repo_url": "https://github.com/example/project"
+      }
+    }
+  ],
+  "metadata": {
+    "repo_url": "https://github.com/example/project",
+    "total_issues": 3,
+    "open_count": 2,
+    "closed_count": 1,
+    "fetch_time": "2026-05-19T10:00:00Z"
+  }
+}

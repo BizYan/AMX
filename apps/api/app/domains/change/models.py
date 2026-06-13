@@ -1,0 +1,435 @@
+"""Change Domain Models
+
+Database models for change requests, field patches, and traceability tracking.
+"""
+
+from datetime import datetime, timezone
+from enum import Enum
+from typing import TYPE_CHECKING
+
+from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.orm import relationship
+
+from app.db.base import (
+    Base,
+    SoftDeleteMixin,
+    TenantMixin,
+    TimestampMixin,
+    UuidMixin,
+)
+
+if TYPE_CHECKING:
+    pass
+
+
+class ChangeType(str, Enum):
+    """Change type enumeration."""
+
+    CORRECTION = "correction"  # Bug fixes, errors
+    ENHANCEMENT = "enhancement"  # New features, improvements
+    DEPENDENCY = "dependency"  # Changes due to upstream/downstream
+
+
+class ChangePriority(str, Enum):
+    """Change priority enumeration."""
+
+    CRITICAL = "critical"
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+
+
+class ChangeStatus(str, Enum):
+    """Change request status enumeration."""
+
+    DRAFT = "draft"
+    OPEN = "open"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    APPLIED = "applied"
+    CANCELLED = "cancelled"
+
+
+class PatchType(str, Enum):
+    """Field patch type enumeration."""
+
+    REPLACE = "replace"
+    ADD = "add"
+    REMOVE = "remove"
+
+
+class PatchStatus(str, Enum):
+    """Field patch status enumeration."""
+
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
+class ChangeRequest(Base, UuidMixin, TimestampMixin, TenantMixin, SoftDeleteMixin):
+    """Change request model for tracking document changes.
+
+    Links source documents to target documents with change descriptions,
+    impact analysis, and approval workflow.
+    """
+
+    __tablename__ = "change_requests"
+
+    project_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    source_document_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("documents.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    source_document_version = Column(Integer, nullable=True)
+    target_document_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("documents.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    target_document_version = Column(Integer, nullable=True)
+    change_type = Column(
+        String(20),
+        nullable=False,
+        default=ChangeType.CORRECTION.value,
+    )
+    priority = Column(
+        String(20),
+        nullable=False,
+        default=ChangePriority.MEDIUM.value,
+    )
+    status = Column(
+        String(20),
+        nullable=False,
+        default=ChangeStatus.DRAFT.value,
+    )
+    description = Column(Text, nullable=False)
+    rationale = Column(Text, nullable=True)
+    impact_analysis = Column(Text, nullable=True)
+    risk_assessment = Column(Text, nullable=True)
+    requested_by = Column(
+        UUID(as_uuid=True),
+        nullable=False,
+        index=True,
+    )
+    reviewed_by = Column(UUID(as_uuid=True), nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    applied_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Relations
+    project = relationship("Project", back_populates="change_requests", lazy="selectin")
+    source_document = relationship(
+        "Document",
+        remote_side="Document.id",
+        foreign_keys=[source_document_id],
+        back_populates="source_change_requests",
+        lazy="selectin",
+    )
+    target_document = relationship(
+        "Document",
+        remote_side="Document.id",
+        foreign_keys=[target_document_id],
+        back_populates="target_change_requests",
+        lazy="selectin",
+    )
+    field_patches = relationship(
+        "FieldPatch",
+        back_populates="change_request",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+        order_by="FieldPatch.created_at",
+    )
+    comments = relationship(
+        "ChangeRequestComment",
+        back_populates="change_request",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+        order_by="ChangeRequestComment.created_at",
+    )
+
+    __table_args__ = (
+        Index("ix_change_requests_tenant_id", "tenant_id"),
+        Index("ix_change_requests_project_id", "project_id"),
+        Index("ix_change_requests_source_document_id", "source_document_id"),
+        Index("ix_change_requests_target_document_id", "target_document_id"),
+        Index("ix_change_requests_status", "status"),
+        Index("ix_change_requests_change_type", "change_type"),
+        Index("ix_change_requests_requested_by", "requested_by"),
+    )
+
+
+class FieldPatch(Base, UuidMixin, TimestampMixin, TenantMixin):
+    """Field patch model for granular document changes.
+
+    Tracks individual field-level changes within a change request,
+    supporting nested paths like "sections.0.content".
+    """
+
+    __tablename__ = "field_patches"
+
+    change_request_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("change_requests.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    document_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("documents.id", ondelete="SET NULL"),
+        nullable=False,
+        index=True,
+    )
+    document_version = Column(Integer, nullable=False)
+    field_path = Column(String(500), nullable=False)
+    old_value = Column(Text, nullable=True)
+    new_value = Column(Text, nullable=True)
+    patch_type = Column(
+        String(20),
+        nullable=False,
+        default=PatchType.REPLACE.value,
+    )
+    status = Column(
+        String(20),
+        nullable=False,
+        default=PatchStatus.PENDING.value,
+    )
+    reviewed_by = Column(UUID(as_uuid=True), nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Relations
+    change_request = relationship("ChangeRequest", back_populates="field_patches")
+    document = relationship("Document", lazy="selectin")
+
+    __table_args__ = (
+        Index("ix_field_patches_tenant_id", "tenant_id"),
+        Index("ix_field_patches_change_request_id", "change_request_id"),
+        Index("ix_field_patches_document_id", "document_id"),
+        Index("ix_field_patches_status", "status"),
+    )
+
+
+class ChangeRequestComment(Base, UuidMixin, TimestampMixin, TenantMixin):
+    """Comment model for change request discussions."""
+
+    __tablename__ = "change_request_comments"
+
+    change_request_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("change_requests.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id = Column(
+        UUID(as_uuid=True),
+        nullable=False,
+        index=True,
+    )
+    content = Column(Text, nullable=False)
+
+    # Relations
+    change_request = relationship("ChangeRequest", back_populates="comments")
+
+    __table_args__ = (
+        Index("ix_change_request_comments_tenant_id", "tenant_id"),
+        Index("ix_change_request_comments_change_request_id", "change_request_id"),
+        Index("ix_change_request_comments_user_id", "user_id"),
+    )
+
+
+class DocumentReference(Base, UuidMixin, TimestampMixin, TenantMixin, SoftDeleteMixin):
+    """Version-pinned formal reference between published documents."""
+
+    __tablename__ = "document_references"
+
+    project_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    source_document_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    source_document_version = Column(Integer, nullable=False)
+    target_document_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    target_document_version = Column(Integer, nullable=False)
+    reference_type = Column(String(50), nullable=False, default="derives_from")
+    source_section = Column(String(255), nullable=True)
+    target_section = Column(String(255), nullable=True)
+    status = Column(String(20), nullable=False, default="active")
+    created_by = Column(UUID(as_uuid=True), nullable=False, index=True)
+    metadata_json = Column(JSONB, nullable=False, default=dict)
+
+    source_document = relationship(
+        "Document",
+        foreign_keys=[source_document_id],
+        lazy="selectin",
+    )
+    target_document = relationship(
+        "Document",
+        foreign_keys=[target_document_id],
+        lazy="selectin",
+    )
+
+    __table_args__ = (
+        Index("ix_document_references_tenant_id", "tenant_id"),
+        Index("ix_document_references_project_id", "project_id"),
+        Index("ix_document_references_source_document_id", "source_document_id"),
+        Index("ix_document_references_target_document_id", "target_document_id"),
+        Index("ix_document_references_status", "status"),
+    )
+
+
+class DocumentImpactAnalysis(Base, UuidMixin, TimestampMixin, TenantMixin):
+    """Persistent impact analysis created from a document change trigger."""
+
+    __tablename__ = "document_impact_analyses"
+
+    project_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    trigger_document_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    trigger_document_version = Column(Integer, nullable=False)
+    change_request_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("change_requests.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    trigger_type = Column(String(50), nullable=False, default="content_changed")
+    impact_level = Column(String(20), nullable=False, default="low")
+    status = Column(String(20), nullable=False, default="open")
+    summary = Column(Text, nullable=True)
+    analysis_json = Column(JSONB, nullable=False, default=dict)
+    created_by = Column(UUID(as_uuid=True), nullable=False, index=True)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
+
+    trigger_document = relationship("Document", foreign_keys=[trigger_document_id], lazy="selectin")
+    change_request = relationship("ChangeRequest", lazy="selectin")
+    proposals = relationship(
+        "DocumentSyncProposal",
+        back_populates="impact_analysis",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+        order_by="DocumentSyncProposal.created_at",
+    )
+
+    __table_args__ = (
+        Index("ix_document_impact_analyses_tenant_id", "tenant_id"),
+        Index("ix_document_impact_analyses_project_id", "project_id"),
+        Index("ix_document_impact_analyses_trigger_document_id", "trigger_document_id"),
+        Index("ix_document_impact_analyses_status", "status"),
+    )
+
+
+class DocumentSyncProposal(Base, UuidMixin, TimestampMixin, TenantMixin):
+    """Human-reviewed proposal to sync an impacted downstream document."""
+
+    __tablename__ = "document_sync_proposals"
+
+    impact_analysis_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("document_impact_analyses.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    project_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    reference_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("document_references.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    source_document_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    target_document_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    target_document_version = Column(Integer, nullable=False)
+    result_document_version = Column(Integer, nullable=True)
+    target_section = Column(String(255), nullable=True)
+    impact_level = Column(String(20), nullable=False, default="medium")
+    reason = Column(Text, nullable=False)
+    suggested_action = Column(String(50), nullable=False, default="sync_content")
+    candidate_content = Column(Text, nullable=True)
+    status = Column(String(20), nullable=False, default="pending")
+    decided_by = Column(UUID(as_uuid=True), nullable=True)
+    decided_at = Column(DateTime(timezone=True), nullable=True)
+    decision_note = Column(Text, nullable=True)
+    metadata_json = Column(JSONB, nullable=False, default=dict)
+
+    impact_analysis = relationship("DocumentImpactAnalysis", back_populates="proposals")
+    reference = relationship("DocumentReference", lazy="selectin")
+    source_document = relationship("Document", foreign_keys=[source_document_id], lazy="selectin")
+    target_document = relationship("Document", foreign_keys=[target_document_id], lazy="selectin")
+
+    __table_args__ = (
+        Index("ix_document_sync_proposals_tenant_id", "tenant_id"),
+        Index("ix_document_sync_proposals_impact_analysis_id", "impact_analysis_id"),
+        Index("ix_document_sync_proposals_project_id", "project_id"),
+        Index("ix_document_sync_proposals_source_document_id", "source_document_id"),
+        Index("ix_document_sync_proposals_target_document_id", "target_document_id"),
+        Index("ix_document_sync_proposals_status", "status"),
+    )
+
+
+# Add relationships to existing models
+from app.models.projects import Project  # noqa: PLC0415
+from app.domains.documents.models import Document  # noqa: PLC0415
+
+Project.change_requests = relationship(
+    "ChangeRequest",
+    back_populates="project",
+    lazy="selectin",
+    cascade="all, delete-orphan",
+)
+
+Document.source_change_requests = relationship(
+    "ChangeRequest",
+    foreign_keys=[ChangeRequest.source_document_id],
+    back_populates="source_document",
+    lazy="selectin",
+)
+
+Document.target_change_requests = relationship(
+    "ChangeRequest",
+    foreign_keys=[ChangeRequest.target_document_id],
+    back_populates="target_document",
+    lazy="selectin",
+)

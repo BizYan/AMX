@@ -1,0 +1,74 @@
+{
+  "commits": [
+    {
+      "sha": "abc123def456",
+      "message": "Initial commit: Add project structure",
+      "author": {
+        "name": "Alice Chen",
+        "email": "alice@example.com"
+      },
+      "timestamp": "2026-01-15T09:30:00Z",
+      "url": "https://github.com/example/project/commit/abc123def456",
+      "files_changed": 15,
+      "additions": 500,
+      "deletions": 0,
+      "metadata": {
+        "repo_url": "https://github.com/example/project"
+      }
+    },
+    {
+      "sha": "def789ghi012",
+      "message": "feat: Add user authentication module",
+      "author": {
+        "name": "Bob Smith",
+        "email": "bob@example.com"
+      },
+      "timestamp": "2026-02-20T14:45:00Z",
+      "url": "https://github.com/example/project/commit/def789ghi012",
+      "files_changed": 8,
+      "additions": 350,
+      "deletions": 20,
+      "metadata": {
+        "repo_url": "https://github.com/example/project"
+      }
+    },
+    {
+      "sha": "ghi345jkl678",
+      "message": "fix: Resolve race condition in cache",
+      "author": {
+        "name": "Alice Chen",
+        "email": "alice@example.com"
+      },
+      "timestamp": "2026-03-10T11:20:00Z",
+      "url": "https://github.com/example/project/commit/ghi345jkl678",
+      "files_changed": 3,
+      "additions": 45,
+      "deletions": 30,
+      "metadata": {
+        "repo_url": "https://github.com/example/project"
+      }
+    },
+    {
+      "sha": "mno901pqr234",
+      "message": "docs: Update API documentation",
+      "author": {
+        "name": "Carol Davis",
+        "email": "carol@example.com"
+      },
+      "timestamp": "2026-04-05T16:00:00Z",
+      "url": "https://github.com/example/project/commit/mno901pqr234",
+      "files_changed": 5,
+      "additions": 200,
+      "deletions": 50,
+      "metadata": {
+        "repo_url": "https://github.com/example/project"
+      }
+    }
+  ],
+  "metadata": {
+    "repo_url": "https://github.com/example/project",
+    "branch": "main",
+    "total_commits": 4,
+    "fetch_time": "2026-05-19T10:00:00Z"
+  }
+}

@@ -1,0 +1,64 @@
+name: Deploy staging
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref, branch, tag, or SHA to deploy"
+        required: true
+        default: "feature/v0.3.0-infra-foundation"
+      slot:
+        description: "Staging slot name, for example pr-123 or agent-smoke"
+        required: true
+        default: "manual"
+
+concurrency:
+  group: staging-${{ github.event.inputs.slot }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to OCI staging slot
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install SSH key
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.OCI_SSH_PRIVATE_KEY }}" > ~/.ssh/amx_oci
+          chmod 600 ~/.ssh/amx_oci
+          ssh-keyscan -H "${{ secrets.OCI_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Deploy staging slot
+        env:
+          OCI_HOST: ${{ secrets.OCI_HOST }}
+          OCI_USER: ${{ secrets.OCI_USER }}
+          REF: ${{ github.event.inputs.ref }}
+          SLOT: ${{ github.event.inputs.slot }}
+          AMX_STAGING_ROOT: ${{ secrets.AMX_STAGING_ROOT }}
+        run: |
+          ssh -i ~/.ssh/amx_oci "$OCI_USER@$OCI_HOST" \
+            "bash -lc 'mkdir -p \"$AMX_STAGING_ROOT\" && \
+            if [ ! -d \"$AMX_STAGING_ROOT/$SLOT/.git\" ]; then git clone git@github.com:BizYan/AMX.git \"$AMX_STAGING_ROOT/$SLOT\"; fi && \
+            cd \"$AMX_STAGING_ROOT/$SLOT\" && \
+            git remote set-url origin git@github.com:BizYan/AMX.git && \
+            git fetch origin --prune --tags && \
+            git checkout --force \"$REF\" && \
+            bash infra/deploy/deploy-oci.sh --env staging --base-path \"$AMX_STAGING_ROOT/$SLOT\" --ref \"$REF\"'"
+
+      - name: Health check
+        env:
+          OCI_HOST: ${{ secrets.OCI_HOST }}
+          OCI_USER: ${{ secrets.OCI_USER }}
+          SLOT: ${{ github.event.inputs.slot }}
+          AMX_STAGING_ROOT: ${{ secrets.AMX_STAGING_ROOT }}
+          STAGING_BASE_URL: ${{ secrets.STAGING_BASE_URL || 'http://127.0.0.1:18000' }}
+        run: |
+          ssh -i ~/.ssh/amx_oci "$OCI_USER@$OCI_HOST" \
+            "bash -lc 'cd \"$AMX_STAGING_ROOT/$SLOT\" && bash infra/deploy/health-check.sh --base-url \"$STAGING_BASE_URL\"'"

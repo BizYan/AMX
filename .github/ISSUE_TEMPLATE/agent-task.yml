@@ -1,0 +1,67 @@
+name: Agent task
+description: Assign a bounded task to one of the AMX development agents.
+title: "[Agent Task]: "
+labels: ["agent-task"]
+body:
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Target agent
+      options:
+        - Codex
+        - Antigravity
+        - Claude
+        - Any
+    validations:
+      required: true
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objective
+      description: Define the expected output and acceptance criteria.
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints
+      description: Files, branches, secrets, or environments the agent must not touch.
+    validations:
+      required: true
+  - type: dropdown
+    id: base_branch
+    attributes:
+      label: Base branch
+      options:
+        - main
+        - feature/v0.2.0
+        - feature/v0.3.0-infra-foundation
+        - other
+    validations:
+      required: true
+  - type: textarea
+    id: gitnexus_goal
+    attributes:
+      label: Required GitNexus query goal
+      description: State the code-fact question the agent must answer before implementation or review.
+      placeholder: Trace the user flow from frontend route to API, service, model/table, worker, and tests.
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: Required verification
+      description: Commands, browser checks, API checks, or deployment smoke tests required before PR handoff.
+    validations:
+      required: true
+  - type: dropdown
+    id: acceptance
+    attributes:
+      label: Acceptance reviewer
+      options:
+        - Human owner
+        - Claude / Agent C
+        - Codex
+        - Not required
+    validations:
+      required: true

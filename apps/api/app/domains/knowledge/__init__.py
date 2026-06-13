@@ -1,0 +1,1 @@
+"""Knowledge base and vector store domain"""

@@ -1,0 +1,31 @@
+# Security And Secrets Runbook
+
+## Secrets Policy
+
+- Do not commit `.env`, private keys, API keys, tokens, or Cloudflare origin private keys.
+- GitHub Actions secrets are the only approved path for CI/CD deployment credentials.
+- Production `.env` stays on OCI under the deployment directory.
+- Agent task prompts must not include raw tokens or private keys.
+
+## Required Secret Stores
+
+- GitHub repository secrets for deploy automation.
+- OCI filesystem for production `.env`.
+- Cloudflare dashboard for DNS and SSL mode.
+
+## SSH Key Handling
+
+Store deploy private key only in:
+
+- GitHub secret `OCI_SSH_PRIVATE_KEY`;
+- local operator machine key store;
+- never in the repository.
+
+## Incident Response
+
+If a credential is exposed:
+
+1. Revoke it at the issuer.
+2. Rotate dependent services.
+3. Search repository history and local docs for copies.
+4. Open a security issue recording scope and remediation.

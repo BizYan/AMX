@@ -1,0 +1,14 @@
+{
+  "name": "@consultant-ai/contracts",
+  "version": "0.1.0",
+  "description": "Shared contracts and API schemas for Consultant AI Workbench",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}

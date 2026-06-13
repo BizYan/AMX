@@ -1,0 +1,148 @@
+name: CI
+
+permissions:
+  contents: read
+
+on:
+  workflow_call:
+  pull_request:
+    branches:
+      - main
+      - "feature/**"
+      - "release/**"
+  push:
+    branches:
+      - main
+      - "feature/**"
+      - "fix/**"
+      - "infra/**"
+      - "release/**"
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api-tests:
+    name: API tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install API dependencies
+        run: uv sync --frozen --extra dev
+
+      - name: Run API tests
+        env:
+          JWT_SECRET_KEY: ci-jwt-secret-for-tests
+          DATABASE_URL: sqlite+aiosqlite:///./ci.db
+          REDIS_URL: redis://localhost:6379/0
+          ARQ_REDIS_URL: redis://localhost:6379/1
+        run: uv run pytest
+
+  web-build:
+    name: Web typecheck and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+
+      - name: Install web dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Production build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:18000/api/v1
+        run: pnpm build
+
+  web-e2e:
+    name: Web deterministic E2E
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+
+      - name: Install web dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browser
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run deterministic E2E
+        run: pnpm exec playwright test tests/e2e/playwright/deterministic-regression.spec.ts
+
+      - name: Upload Playwright evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-evidence
+          path: |
+            apps/web/playwright-report
+            apps/web/test-results
+          if-no-files-found: ignore
+
+  docker-compose-config:
+    name: Docker Compose config
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare CI compose environment
+        run: cp infra/env.example .env
+
+      - name: Validate compose file
+        run: docker compose -f infra/docker-compose.yml config
+
+      - name: Validate GitNexus compose file
+        run: |
+          cp infra/gitnexus/env.example infra/gitnexus/.env
+          docker compose -f infra/gitnexus/docker-compose.yml --env-file infra/gitnexus/.env config
+
+      - name: Validate deployment scripts
+        run: bash -n infra/deploy/*.sh

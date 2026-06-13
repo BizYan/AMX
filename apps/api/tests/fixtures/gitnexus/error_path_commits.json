@@ -1,0 +1,14 @@
+{
+  "error": "Repository not found",
+  "details": {
+    "code": "REPO_NOT_FOUND",
+    "message": "The specified repository does not exist or is not accessible",
+    "repo_url": "https://github.com/nonexistent/project"
+  },
+  "data": [],
+  "metadata": {
+    "repo_url": "https://github.com/nonexistent/project",
+    "error_time": "2026-05-19T10:00:00Z",
+    "retryable": true
+  }
+}

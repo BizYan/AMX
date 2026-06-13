@@ -1,0 +1,99 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: consultant_ai_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-consultant}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-consultant123}
+      POSTGRES_DB: ${POSTGRES_DB:-consultant_ai}
+      PGVECTOR_EXTENSION_VERSION: 0.7.0
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    ports:
+      - "${POSTGRES_HOST_PORT:-15432}:5432"
+    networks:
+      - consultant_ai_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U consultant -d consultant_ai"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  redis:
+    image: redis:7-alpine
+    container_name: consultant_ai_redis
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "${REDIS_HOST_PORT:-16379}:6379"
+    networks:
+      - consultant_ai_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  api:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    container_name: consultant_ai_api
+    env_file:
+      - ../.env
+    ports:
+      - "${API_HOST_PORT:-18000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - consultant_ai_network
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ..
+      dockerfile: apps/worker/Dockerfile
+    container_name: consultant_ai_worker
+    env_file:
+      - ../.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - consultant_ai_network
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:18000/api/v1}
+    container_name: consultant_ai_web
+    env_file:
+      - ../.env
+    ports:
+      - "${WEB_HOST_PORT:-3000}:3000"
+    depends_on:
+      - api
+    networks:
+      - consultant_ai_network
+    restart: unless-stopped
+
+networks:
+  consultant_ai_network:
+    name: ${AMX_RUNTIME_NETWORK:-amx_runtime_network}
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:

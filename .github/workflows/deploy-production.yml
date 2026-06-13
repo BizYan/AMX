@@ -1,0 +1,81 @@
+name: Deploy production
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "main, release tag, or immutable SHA to deploy"
+        required: true
+        default: "main"
+
+concurrency:
+  group: production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy production to OCI
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Install SSH key
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.OCI_SSH_PRIVATE_KEY }}" > ~/.ssh/amx_oci
+          chmod 600 ~/.ssh/amx_oci
+          ssh-keyscan -H "${{ secrets.OCI_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Deploy production
+        env:
+          OCI_HOST: ${{ secrets.OCI_HOST }}
+          OCI_USER: ${{ secrets.OCI_USER }}
+          REF: ${{ github.event.inputs.ref }}
+          AMX_PRODUCTION_PATH: ${{ secrets.AMX_PRODUCTION_PATH }}
+        run: |
+          ssh -i ~/.ssh/amx_oci "$OCI_USER@$OCI_HOST" \
+            "bash -lc 'cd \"$AMX_PRODUCTION_PATH\" && \
+            git fetch origin --prune --tags && \
+            git checkout --force \"$REF\" && \
+            bash infra/deploy/deploy-oci.sh --env production --base-path \"$AMX_PRODUCTION_PATH\" --ref \"$REF\"'"
+
+      - name: Production health check
+        env:
+          OCI_HOST: ${{ secrets.OCI_HOST }}
+          OCI_USER: ${{ secrets.OCI_USER }}
+          AMX_PRODUCTION_PATH: ${{ secrets.AMX_PRODUCTION_PATH }}
+          PRODUCTION_BASE_URL: ${{ secrets.PRODUCTION_BASE_URL }}
+        run: |
+          ssh -i ~/.ssh/amx_oci "$OCI_USER@$OCI_HOST" \
+            "bash -lc 'cd \"$AMX_PRODUCTION_PATH\" && bash infra/deploy/health-check.sh --base-url \"$PRODUCTION_BASE_URL\"'"
+
+      - name: Authenticated production smoke
+        env:
+          OCI_HOST: ${{ secrets.OCI_HOST }}
+          OCI_USER: ${{ secrets.OCI_USER }}
+          AMX_PRODUCTION_PATH: ${{ secrets.AMX_PRODUCTION_PATH }}
+          PRODUCTION_BASE_URL: ${{ secrets.PRODUCTION_BASE_URL }}
+        run: |
+          ssh -i ~/.ssh/amx_oci "$OCI_USER@$OCI_HOST" \
+            "bash -lc 'cd \"$AMX_PRODUCTION_PATH\" && bash infra/deploy/authenticated-smoke.sh --base-url \"$PRODUCTION_BASE_URL\"'"
+
+      - name: Deploy and refresh GitNexus
+        env:
+          OCI_HOST: ${{ secrets.OCI_HOST }}
+          OCI_USER: ${{ secrets.OCI_USER }}
+          AMX_PRODUCTION_PATH: ${{ secrets.AMX_PRODUCTION_PATH }}
+        run: |
+          ssh -i ~/.ssh/amx_oci "$OCI_USER@$OCI_HOST" \
+            "bash -lc 'cd \"$AMX_PRODUCTION_PATH\" && bash infra/deploy/deploy-gitnexus.sh'"
+
+      - name: Verify deployment provenance
+        env:
+          OCI_HOST: ${{ secrets.OCI_HOST }}
+          OCI_USER: ${{ secrets.OCI_USER }}
+          REF: ${{ github.event.inputs.ref }}
+          AMX_PRODUCTION_PATH: ${{ secrets.AMX_PRODUCTION_PATH }}
+        run: |
+          ssh -i ~/.ssh/amx_oci "$OCI_USER@$OCI_HOST" \
+            "bash -lc 'cd \"$AMX_PRODUCTION_PATH\" && bash infra/deploy/deployment-evidence.sh --expected-ref \"$REF\"'"

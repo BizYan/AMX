@@ -1,0 +1,40 @@
+{
+  "name": "consultant-ai-web",
+  "version": "0.1.0",
+  "description": "Consultant AI Workbench Web Interface",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "test:e2e:smoke": "playwright test tests/e2e/playwright/production-smoke.spec.ts"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.0.0",
+    "@xyflow/react": "^12.0.0",
+    "autoprefixer": "^10.4.0",
+    "clsx": "^2.1.0",
+    "elkjs": "^0.9.0",
+    "lucide-react": "^0.400.0",
+    "next": "^14.2.0",
+    "next-intl": "^4.12.0",
+    "postcss": "^8.4.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwind-merge": "^2.3.0",
+    "tailwindcss": "^3.4.0",
+    "zod": "^3.23.0",
+    "zustand": "^4.5.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.40.0",
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "eslint": "^8.0.0",
+    "eslint-config-next": "^14.2.0",
+    "typescript": "^5.4.0"
+  }
+}

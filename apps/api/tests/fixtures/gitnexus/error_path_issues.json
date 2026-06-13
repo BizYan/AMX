@@ -1,0 +1,14 @@
+{
+  "error": "Invalid repository URL",
+  "details": {
+    "code": "INVALID_URL",
+    "message": "The provided repository URL is not properly formatted",
+    "provided_url": "not-a-valid-url"
+  },
+  "data": [],
+  "metadata": {
+    "repo_url": "not-a-valid-url",
+    "error_time": "2026-05-19T10:00:00Z",
+    "retryable": false
+  }
+}

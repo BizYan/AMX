@@ -1,0 +1,71 @@
+name: Release
+
+permissions:
+  contents: read
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Semantic version tag, for example v0.3.0"
+        required: true
+
+jobs:
+  validate:
+    name: Validate release tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+
+      - name: Validate semantic version
+        shell: bash
+        run: |
+          TAG="${{ github.ref_name }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          fi
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release tag must match vMAJOR.MINOR.PATCH, got $TAG"
+            exit 1
+          fi
+
+      - name: Verify release ref is on main
+        shell: bash
+        run: |
+          git fetch origin main
+          git merge-base --is-ancestor HEAD origin/main
+
+      - name: Verify repository delivery state
+        shell: pwsh
+        run: ./infra/scripts/test-delivery-readiness.ps1 -AllowUnmergedBranches -EvidencePath artifacts/delivery-readiness.json
+
+      - name: Generate release notes
+        shell: bash
+        run: |
+          PREV_TAG="$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || true)"
+          if [ -n "$PREV_TAG" ]; then
+            git log --pretty='- %s (%h)' "$PREV_TAG"..HEAD > release-notes.md
+          else
+            git log --pretty='- %s (%h)' -20 > release-notes.md
+          fi
+          cat release-notes.md
+
+      - name: Upload release notes artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: |
+            release-notes.md
+            artifacts/delivery-readiness.json
+
+  quality-gates:
+    name: Release quality gates
+    needs: validate
+    uses: ./.github/workflows/ci.yml
