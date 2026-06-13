@@ -61,6 +61,10 @@ jobs:
               fi
             done < <(git diff --name-only "$base_sha" "$head_sha")
 
+            python infra/scripts/check_dependency_update_policy.py \
+              --base "$base_sha" \
+              --head "$head_sha"
+
             echo "Dependabot dependency-only PR accepted; normal CI remains required."
             exit 0
           fi

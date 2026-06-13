@@ -29,6 +29,10 @@
 - Dependabot groups weekly Web and API patch/minor maintenance updates. Major
   upgrades require an explicit engineering slice because they may change
   framework or runtime contracts.
+- Collaboration governance compares dependency manifests against the PR base
+  and rejects Dependabot changes that cross or remove a protected major-version
+  boundary. Python compatibility caps must include an explicit lower bound so
+  automation can distinguish maintenance updates from major migrations.
 - Dependabot PRs may bypass the human/agent evidence-body format only when
   their diff is limited to approved dependency manifests and lockfiles; all
   normal CI checks remain required.
