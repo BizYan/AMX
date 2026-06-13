@@ -52,6 +52,7 @@ $requiredFiles = @(
     "infra/deploy/health-check.sh",
     "infra/deploy/authenticated-smoke.sh",
     "infra/deploy/deployment-evidence.sh",
+    "infra/deploy/validate-runtime-security.sh",
     "apps/web/tests/e2e/playwright/production-smoke.spec.ts"
 )
 $missingFiles = @($requiredFiles | Where-Object { -not (Test-Path (Join-Path $repoRoot $_)) })
