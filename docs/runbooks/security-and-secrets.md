@@ -5,7 +5,16 @@
 - Do not commit `.env`, private keys, API keys, tokens, or Cloudflare origin private keys.
 - GitHub Actions secrets are the only approved path for CI/CD deployment credentials.
 - Production `.env` stays on OCI under the deployment directory.
+- Production `.env` must be owner-only (`chmod 600`).
 - Agent task prompts must not include raw tokens or private keys.
+
+## Runtime Network Exposure
+
+- PostgreSQL, Redis, API, and Web host ports bind to `127.0.0.1` by default.
+- Production deployments reject non-loopback `*_BIND_ADDRESS` values.
+- Public traffic enters through Nginx on ports 80/443 only.
+- Use SSH tunneling or `docker compose exec` for database and Redis operations;
+  do not expose their host ports publicly.
 
 ## Required Secret Stores
 

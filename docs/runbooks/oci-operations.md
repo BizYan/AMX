@@ -32,6 +32,17 @@ real directories.
 
 ## Production Deploy
 
+Before the first deployment with runtime security guardrails:
+
+```bash
+cd /home/ubuntu/amx/production/AMX
+chmod 600 .env
+```
+
+The production `.env` must keep `POSTGRES_BIND_ADDRESS`,
+`REDIS_BIND_ADDRESS`, `API_BIND_ADDRESS`, and `WEB_BIND_ADDRESS` unset or set
+to `127.0.0.1`. The deployment preflight rejects public bind addresses.
+
 ```bash
 cd /home/ubuntu/amx/production/AMX
 git fetch origin --prune --tags

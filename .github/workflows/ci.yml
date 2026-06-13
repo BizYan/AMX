@@ -136,6 +136,11 @@ jobs:
       - name: Prepare CI compose environment
         run: cp infra/env.example .env
 
+      - name: Validate production runtime security preflight
+        run: |
+          chmod 600 .env
+          bash infra/deploy/validate-runtime-security.sh --environment production
+
       - name: Validate compose file
         run: docker compose -f infra/docker-compose.yml config
 

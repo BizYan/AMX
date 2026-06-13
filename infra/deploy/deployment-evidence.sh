@@ -34,6 +34,8 @@ if [[ ! -f "$COMPOSE_FILE" || ! -f ".deploy-ref" || ! -f ".deploy-at" ]]; then
   exit 1
 fi
 
+bash infra/deploy/validate-runtime-security.sh --environment production --verify-running --compose-file "$COMPOSE_FILE"
+
 case "$EXPECTED_REF" in
   origin/*)
     RESOLVED_REF="$EXPECTED_REF"

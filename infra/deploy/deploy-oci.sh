@@ -62,6 +62,8 @@ case "$REF" in
     ;;
 esac
 
+bash infra/deploy/validate-runtime-security.sh --environment "$ENVIRONMENT"
+
 echo "$REF" > .deploy-ref
 date -u +"%Y-%m-%dT%H:%M:%SZ" > .deploy-at
 
@@ -69,5 +71,6 @@ docker compose -f "$COMPOSE_FILE" config >/tmp/amx-compose-config.yml
 docker compose -f "$COMPOSE_FILE" build
 docker compose -f "$COMPOSE_FILE" up -d --remove-orphans
 docker compose -f "$COMPOSE_FILE" ps
+bash infra/deploy/validate-runtime-security.sh --environment "$ENVIRONMENT" --verify-running --compose-file "$COMPOSE_FILE"
 
 echo "[deploy] completed"
