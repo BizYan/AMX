@@ -9,10 +9,10 @@ Default execution is now Codex single-agent ownership with GitNexus as the code-
 Use `C:\amx` as the only multi-agent workspace root:
 
 ```text
-C:\amx\ConsultantAIP-main
-C:\amx\ConsultantAIP-codex
-C:\amx\ConsultantAIP-antigravity
-C:\amx\ConsultantAIP-claude
+C:\amx\AMX-main
+C:\amx\AMX-codex
+C:\amx\AMX-antigravity
+C:\amx\AMX-claude
 C:\amx\gitnexus-data
 C:\amx\reports
 ```

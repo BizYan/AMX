@@ -57,7 +57,7 @@ The production GitHub Actions deployment calls this automatically after the AMX 
 On Windows, run:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File infra\scripts\setup-gitnexus-mcp.ps1 -RepoPath C:\amx\ConsultantAIP-main
+powershell -ExecutionPolicy Bypass -File infra\scripts\setup-gitnexus-mcp.ps1 -RepoPath C:\amx\AMX-main
 ```
 
 This installs `gitnexus@latest`, indexes the repository, and adds the GitNexus MCP server to `%USERPROFILE%\.codex\config.toml`.
@@ -73,7 +73,7 @@ All agents must record the exact GitNexus query or MCP tool result used in their
 If a local index stays stale after an incremental refresh, run `analyze` with the repository path as the positional argument:
 
 ```powershell
-gitnexus analyze "C:\amx\ConsultantAIP-main" --index-only
+gitnexus analyze "C:\amx\AMX-main" --index-only
 ```
 
 ## AMX Provider Registration

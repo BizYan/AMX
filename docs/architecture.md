@@ -78,10 +78,10 @@ Document generation should preserve a traceable path from source material and pr
 Local multi-agent development:
 
 ```text
-C:\amx\ConsultantAIP-main
-C:\amx\ConsultantAIP-codex
-C:\amx\ConsultantAIP-antigravity
-C:\amx\ConsultantAIP-claude
+C:\amx\AMX-main
+C:\amx\AMX-codex
+C:\amx\AMX-antigravity
+C:\amx\AMX-claude
 ```
 
 OCI runtime:

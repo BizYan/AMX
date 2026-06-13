@@ -7,7 +7,7 @@ Use this runbook before archiving or deleting old local ConsultantAIP directorie
 The canonical workspace is:
 
 ```text
-C:\amx\ConsultantAIP-main
+C:\amx\AMX-main
 ```
 
 Legacy directories currently requiring review are:
@@ -25,7 +25,7 @@ Do not delete `C:\amx`.
 Run the non-destructive audit from the canonical repository:
 
 ```powershell
-cd C:\amx\ConsultantAIP-main
+cd C:\amx\AMX-main
 powershell -ExecutionPolicy Bypass -File infra\scripts\audit-legacy-workspaces.ps1
 ```
 
@@ -46,7 +46,7 @@ The report groups files into:
 
 1. Review every `Unique candidate` before archiving or deletion.
 2. Review every `Same path different content` entry that looks like a document, patch, migration, configuration, or unmerged source change.
-3. Migrate useful documents, patches, or source changes into `C:\amx\ConsultantAIP-main` through a normal branch and PR.
+3. Migrate useful documents, patches, or source changes into `C:\amx\AMX-main` through a normal branch and PR.
 4. Archive old directories to `C:\amx\archive` only after migration is complete and reviewed.
 5. Delete old directories only after the archive is verified or the human owner explicitly confirms deletion.
 

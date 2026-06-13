@@ -24,7 +24,7 @@ uv run --directory apps/api --extra dev python -m pytest <focused-path>
 pnpm --dir apps/web typecheck
 pnpm --dir apps/web build  # if Next routes/pages/build-time imports changed
 pnpm --dir apps/web exec playwright test <focused-spec>  # if user interaction changed
-powershell -ExecutionPolicy Bypass -File infra\scripts\invoke-gitnexus-change-record.ps1 -RepoPath C:\amx\ConsultantAIP-main -Scope compare -BaseRef main
+powershell -ExecutionPolicy Bypass -File infra\scripts\invoke-gitnexus-change-record.ps1 -RepoPath C:\amx\AMX-main -Scope compare -BaseRef main
 ```
 
 Not run locally, with reason:

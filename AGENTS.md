@@ -13,10 +13,10 @@ Agents may create branches, commits, tests, reports, and pull requests. Agents m
 Use `C:\amx` as the only local multi-agent workspace root.
 
 ```text
-C:\amx\ConsultantAIP-main        main branch and release authority workspace
-C:\amx\ConsultantAIP-codex       Codex architecture, integration, review, release engineering
-C:\amx\ConsultantAIP-antigravity Antigravity implementation and regression work
-C:\amx\ConsultantAIP-claude      Claude business review, documentation, and acceptance
+C:\amx\AMX-main        main branch and release authority workspace
+C:\amx\AMX-codex       Codex architecture, integration, review, release engineering
+C:\amx\AMX-antigravity Antigravity implementation and regression work
+C:\amx\AMX-claude      Claude business review, documentation, and acceptance
 C:\amx\gitnexus-data             GitNexus persistent data
 C:\amx\reports                   shared reports and patch handoff artifacts
 ```
@@ -80,7 +80,7 @@ gitnexus analyze --index-only
 gitnexus query "project invitation flow" --goal "find frontend, API, service, models, and tests" --limit 8
 gitnexus context create_project --file apps/api/app/domains/projects/service.py
 gitnexus impact ProjectService --direction upstream --depth 3 --include-tests
-powershell -ExecutionPolicy Bypass -File infra\scripts\invoke-gitnexus-change-record.ps1 -RepoPath C:\amx\ConsultantAIP-main -Scope compare -BaseRef main
+powershell -ExecutionPolicy Bypass -File infra\scripts\invoke-gitnexus-change-record.ps1 -RepoPath C:\amx\AMX-main -Scope compare -BaseRef main
 ```
 
 When an MCP client is available, agents may use the GitNexus MCP tools instead of CLI commands, but the task or PR report must still record the tool name, query, graph freshness, and summarized result.

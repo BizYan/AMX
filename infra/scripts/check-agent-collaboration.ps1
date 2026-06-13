@@ -1,5 +1,5 @@
 param(
-    [string]$RepoPath = "C:\amx\ConsultantAIP-main",
+    [string]$RepoPath = "C:\amx\AMX-main",
     [string]$BaseRef = "main",
     [string]$ReportsDir = "C:\amx\reports",
     [switch]$RefreshIfStale,
@@ -50,10 +50,10 @@ try {
     $reportPath = Join-Path $ReportsDir "agent-collaboration-health-$timestamp.md"
 
     $workspaceChecks = @(
-        "C:\amx\ConsultantAIP-main",
-        "C:\amx\ConsultantAIP-codex",
-        "C:\amx\ConsultantAIP-antigravity",
-        "C:\amx\ConsultantAIP-claude",
+        "C:\amx\AMX-main",
+        "C:\amx\AMX-codex",
+        "C:\amx\AMX-antigravity",
+        "C:\amx\AMX-claude",
         "C:\amx\reports"
     ) | ForEach-Object {
         [PSCustomObject]@{

@@ -1,5 +1,5 @@
 param(
-    [string]$RepoPath = "C:\amx\ConsultantAIP-main",
+    [string]$RepoPath = "C:\amx\AMX-main",
     [string]$NpmRegistry = "https://registry.npmmirror.com",
     [switch]$SkipAnalyze
 )

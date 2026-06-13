@@ -84,7 +84,7 @@ If Git HTTPS transport is blocked or `git-remote-https.exe` crashes, but `gh api
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File infra\scripts\publish-branch-via-github-api.ps1 `
-  -RepoPath C:\amx\ConsultantAIP-main `
+  -RepoPath C:\amx\AMX-main `
   -OwnerRepo BizYan/AMX `
   -Branch <branch> `
   -BaseRef main `
@@ -95,7 +95,7 @@ Use `-DryRun` first when validating the target repo, branch, base ref, and chang
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File infra\scripts\publish-branch-via-github-api.ps1 `
-  -RepoPath C:\amx\ConsultantAIP-main `
+  -RepoPath C:\amx\AMX-main `
   -OwnerRepo BizYan/AMX `
   -Branch <branch> `
   -BaseRef main `

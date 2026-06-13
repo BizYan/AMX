@@ -11,7 +11,7 @@ removing old local directories.
 #>
 
 param(
-    [string]$RepoPath = "C:\amx\ConsultantAIP-main",
+    [string]$RepoPath = "C:\amx\AMX-main",
     [string[]]$LegacyPaths = @(
         "C:\ConsultantAIP",
         "C:\ConsultantAIP_antigravity",
