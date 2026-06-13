@@ -18,6 +18,7 @@ import app.domains.agent.models  # noqa: F401
 import app.domains.collaboration.models  # noqa: F401
 import app.domains.documents.models  # noqa: F401
 import app.domains.identity.models  # noqa: F401
+import app.domains.knowledge.models  # noqa: F401
 import app.domains.projects.models  # noqa: F401
 from app.db.base import Base
 from app.db.init_schema import deduplicate_indexes

@@ -1551,11 +1551,41 @@ class ProjectService:
             "milestone_portfolio": milestone_portfolio,
         }
 
+    async def get_delivery_portfolio(
+        self,
+        *,
+        tenant_id: UUID,
+        user_id: UUID,
+    ) -> dict[str, Any]:
+        """Return the complete active-project milestone portfolio for the current user."""
+        projects, total_projects = await self.list_projects(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            skip=0,
+            limit=1000,
+            status="active",
+        )
+        portfolio = (
+            await self._build_milestone_portfolio(
+                tenant_id=tenant_id,
+                projects=projects,
+                item_limit=None,
+            )
+            if projects
+            else self._empty_milestone_portfolio()
+        )
+        return {
+            "generated_at": datetime.now(timezone.utc),
+            "project_count": int(total_projects or 0),
+            "portfolio": portfolio,
+        }
+
     async def _build_milestone_portfolio(
         self,
         *,
         tenant_id: UUID,
         projects: list[Project],
+        item_limit: int | None = 12,
     ) -> dict[str, Any]:
         """Aggregate milestone risks and owner load for visible projects only."""
         project_names = {project.id: project.name for project in projects}
@@ -1684,9 +1714,9 @@ class ProjectService:
                 "unassigned": sum(item["owner_id"] is None for item in active),
             },
             "status_counts": status_counts,
-            "upcoming": active[:12],
-            "blocked": blocked[:12],
-            "owner_load": owner_load[:12],
+            "upcoming": active[:item_limit] if item_limit is not None else active,
+            "blocked": blocked[:item_limit] if item_limit is not None else blocked,
+            "owner_load": owner_load[:item_limit] if item_limit is not None else owner_load,
         }
 
     @staticmethod

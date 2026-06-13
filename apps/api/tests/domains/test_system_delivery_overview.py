@@ -260,6 +260,41 @@ async def test_system_delivery_overview_includes_visible_portfolio_milestones():
 
 
 @pytest.mark.asyncio
+async def test_delivery_portfolio_returns_all_visible_milestones_without_dashboard_truncation():
+    tenant_id = uuid4()
+    user_id = uuid4()
+    projects = [_project("Portfolio A"), _project("Portfolio B")]
+    service = ProjectService(AsyncMock())
+    service.list_projects = AsyncMock(return_value=(projects, 2))
+    portfolio = {
+        "totals": {"total": 18, "active": 18, "completed": 0, "blocked": 2, "overdue": 3, "unassigned": 1},
+        "status_counts": {"planned": 16, "blocked": 2},
+        "upcoming": [{"milestone_id": uuid4(), "project_id": projects[0].id, "project_name": projects[0].name, "title": f"Milestone {index}", "status": "planned", "priority": "medium", "owner_id": user_id, "owner_name": "Delivery Lead", "due_at": None, "is_overdue": False, "gate_blocker_count": 0, "action_href": f"/projects/{projects[0].id}/plan"} for index in range(18)],
+        "blocked": [],
+        "owner_load": [],
+    }
+    service._build_milestone_portfolio = AsyncMock(return_value=portfolio)
+
+    result = await service.get_delivery_portfolio(tenant_id=tenant_id, user_id=user_id)
+
+    assert result["portfolio"]["totals"]["total"] == 18
+    assert len(result["portfolio"]["upcoming"]) == 18
+    assert result["project_count"] == 2
+    service.list_projects.assert_awaited_once_with(
+        tenant_id=tenant_id,
+        user_id=user_id,
+        skip=0,
+        limit=1000,
+        status="active",
+    )
+    service._build_milestone_portfolio.assert_awaited_once_with(
+        tenant_id=tenant_id,
+        projects=projects,
+        item_limit=None,
+    )
+
+
+@pytest.mark.asyncio
 async def test_system_delivery_overview_builds_phase_gates_and_operating_plan():
     tenant_id = uuid4()
     user_id = uuid4()

@@ -149,6 +149,8 @@ export const projectsApi = {
     }).then(normalizeProjectList),
   getDeliveryOverview: (params?: { limit?: number }) =>
     apiClient.get<SystemDeliveryOverview>('/projects/delivery-overview', { limit: params?.limit }),
+  getDeliveryPortfolio: () =>
+    apiClient.get<SystemDeliveryPortfolio>('/projects/delivery-portfolio'),
   get: async (id: string) => normalizeProject(await apiClient.get<Project>(`/projects/${id}`)),
   create: async (data: ProjectCreatePayload) => normalizeProject(await apiClient.post<Project>('/projects', data)),
   listLaunchBlueprints: () =>
@@ -1323,6 +1325,12 @@ export interface SystemDeliveryMilestonePortfolio {
   upcoming: SystemDeliveryMilestoneDigest[]
   blocked: SystemDeliveryMilestoneDigest[]
   owner_load: SystemDeliveryOwnerLoad[]
+}
+
+export interface SystemDeliveryPortfolio {
+  generated_at: string
+  project_count: number
+  portfolio: SystemDeliveryMilestonePortfolio
 }
 
 export interface SystemDeliveryOverview {

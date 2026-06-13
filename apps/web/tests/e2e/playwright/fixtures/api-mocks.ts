@@ -1521,6 +1521,38 @@ export async function setupApiMocks(page: Page, options: SetupApiMockOptions = {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(milestone) })
   })
 
+  await page.route('**/api/v1/projects/delivery-portfolio', async (route) => {
+    const milestones = projectDeliveryPlan.milestones.map((milestone: any) => ({
+      milestone_id: milestone.id,
+      project_id: milestone.project_id,
+      project_name: MOCK.MOCK_PROJECT.name,
+      title: milestone.title,
+      status: milestone.status,
+      priority: milestone.priority,
+      owner_id: milestone.owner_id,
+      owner_name: milestone.owner_id ? '项目负责人' : '未分配',
+      due_at: milestone.due_at,
+      is_overdue: milestone.id === 'milestone-review-traceability',
+      gate_blocker_count: milestone.gate_results_json.filter((gate: any) => gate.status === 'blocked').length,
+      action_href: `/projects/${milestone.project_id}/plan`,
+    }))
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        generated_at: new Date().toISOString(),
+        project_count: 1,
+        portfolio: {
+          totals: { total: milestones.length, active: milestones.filter((item: any) => item.status !== 'completed').length, completed: milestones.filter((item: any) => item.status === 'completed').length, blocked: milestones.filter((item: any) => item.status === 'blocked').length, overdue: 1, unassigned: 0 },
+          status_counts: { planned: 2, blocked: 1, completed: 1 },
+          upcoming: milestones,
+          blocked: milestones.filter((item: any) => item.status === 'blocked' || item.gate_blocker_count > 0),
+          owner_load: [{ owner_id: MOCK.MOCK_USER.id, owner_name: '项目负责人', active_count: 3, blocked_count: 1, overdue_count: 1, project_count: 1, action_href: '/collaboration' }],
+        },
+      }),
+    })
+  })
+
   // 系统级交付总控台
   await page.route('**/api/v1/projects/delivery-overview*', async (route) => {
     const workbench = MOCK.MOCK_PROJECT_DELIVERY_WORKBENCH
@@ -1988,7 +2020,7 @@ export async function setupApiMocks(page: Page, options: SetupApiMockOptions = {
   })
 
   // 特定项目详情与更新/删除
-  await page.route(/\/api\/v1\/projects\/(?!(?:delivery-overview|launch|launch-blueprints)(?:\?|$))[^/?]+(?:\?.*)?$/, async (route) => {
+  await page.route(/\/api\/v1\/projects\/(?!(?:delivery-overview|delivery-portfolio|launch|launch-blueprints)(?:\?|$))[^/?]+(?:\?.*)?$/, async (route) => {
     const method = route.request().method()
     if (method === 'PATCH') {
       const payload = JSON.parse(route.request().postData() || '{}')

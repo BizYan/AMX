@@ -67,6 +67,7 @@
   },
   "nav": {
     "dashboard": "工作台",
+    "deliveryPortfolio": "交付组合",
     "projects": "项目文档",
     "documents": "文档检索",
     "knowledge": "知识库",

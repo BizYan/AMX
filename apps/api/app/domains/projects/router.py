@@ -39,6 +39,7 @@ from app.domains.projects.schemas import (
     DocumentLifecyclePolicyUpdate,
     ProjectDeliveryWorkbenchResponse,
     SystemDeliveryOverviewResponse,
+    SystemDeliveryPortfolioResponse,
     SourceFileResponse,
     SourceFileListResponse,
     SourceFileCreate,
@@ -284,6 +285,18 @@ async def get_system_delivery_overview(
         limit=limit,
     )
     return overview
+
+
+@router.get("/delivery-portfolio", response_model=SystemDeliveryPortfolioResponse)
+async def get_system_delivery_portfolio(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get the complete visible cross-project milestone portfolio."""
+    return await ProjectService(db).get_delivery_portfolio(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+    )
 
 
 @router.get("/{project_id}/launch-plan", response_model=ProjectLaunchResponse)
