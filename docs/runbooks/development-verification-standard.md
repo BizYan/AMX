@@ -166,7 +166,7 @@ Default lightweight pattern:
 
    ```powershell
    powershell -ExecutionPolicy Bypass -File infra\scripts\invoke-gitnexus-change-record.ps1 `
-     -RepoPath C:\amx\ConsultantAIP-main `
+     -RepoPath C:\amx\AMX-main `
      -Scope compare `
      -BaseRef main
    ```

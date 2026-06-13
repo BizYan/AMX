@@ -14,7 +14,7 @@ path. This wrapper standardizes both concerns:
 #>
 
 param(
-    [string]$RepoPath = "C:\amx\ConsultantAIP-main",
+    [string]$RepoPath = "C:\amx\AMX-main",
     [ValidateSet("unstaged", "staged", "all", "compare")]
     [string]$Scope = "compare",
     [string]$BaseRef = "main",
