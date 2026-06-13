@@ -149,6 +149,7 @@ class ProjectService:
         user_id: UUID | None = None,
         skip: int = 0,
         limit: int = 20,
+        status: str | None = None,
     ) -> tuple[list[Project], int]:
         """List projects for a tenant (optionally filtered by membership).
 
@@ -157,6 +158,7 @@ class ProjectService:
             user_id: Optional user ID to filter projects they are member of
             skip: Number of records to skip
             limit: Maximum number of records to return
+            status: Optional lifecycle status filter
 
         Returns:
             Tuple of (list of Projects, total count)
@@ -166,6 +168,8 @@ class ProjectService:
             Project.tenant_id == tenant_id,
             Project.deleted_at.is_(None),
         )
+        if status is not None:
+            base_query = base_query.where(Project.status == status)
 
         # If user_id provided, only show projects where user is a member
         if user_id:
@@ -192,6 +196,25 @@ class ProjectService:
         projects = list(result.scalars().all())
 
         return projects, total
+
+    async def set_project_status(
+        self,
+        project_id: UUID,
+        status: str,
+        tenant_id: UUID | None = None,
+    ) -> Project | None:
+        """Set a governed project lifecycle status."""
+        if status not in {"active", "archived"}:
+            raise ValueError(f"Unsupported project status: {status}")
+
+        project = await self.get_project(project_id, tenant_id)
+        if not project:
+            return None
+
+        project.status = status
+        await self.db.flush()
+        await self.db.refresh(project)
+        return project
 
     async def update_project(
         self,
@@ -1332,6 +1355,7 @@ class ProjectService:
             user_id=user_id,
             skip=0,
             limit=limit,
+            status="active",
         )
 
         project_digests: list[dict[str, Any]] = []

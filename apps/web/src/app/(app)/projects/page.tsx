@@ -11,6 +11,7 @@ import {
   FolderKanban,
   MoreVertical,
   Plus,
+  RotateCcw,
   Settings,
   Trash2,
   Upload,
@@ -89,6 +90,7 @@ function toggleValue(values: string[], value: string) {
 
 export default function ProjectsPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [projectView, setProjectView] = useState<'active' | 'archived'>('active')
   const [step, setStep] = useState(1)
   const [launchData, setLaunchData] = useState<ProjectLaunchPayload>({
     blueprint_key: '',
@@ -103,8 +105,8 @@ export default function ProjectsPage() {
   const { addToast } = useToast()
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['projects'],
-    queryFn: () => projectsApi.list(),
+    queryKey: ['projects', projectView],
+    queryFn: () => projectsApi.list({ status: projectView }),
   })
   const { data: blueprints = [] } = useQuery({
     queryKey: ['project-launch-blueprints'],
@@ -152,13 +154,23 @@ export default function ProjectsPage() {
     },
   })
   const archiveMutation = useMutation({
-    mutationFn: (id: string) => projectsApi.update(id, { status: 'archived' }),
+    mutationFn: (id: string) => projectsApi.archive(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] })
       addToast({ title: '项目已归档' })
     },
     onError: (mutationError: Error) => {
       addToast({ title: '归档项目失败', description: mutationError.message, variant: 'destructive' })
+    },
+  })
+  const restoreMutation = useMutation({
+    mutationFn: (id: string) => projectsApi.restore(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] })
+      addToast({ title: '项目已恢复', description: '项目已返回活跃工作区。' })
+    },
+    onError: (mutationError: Error) => {
+      addToast({ title: '恢复项目失败', description: mutationError.message, variant: 'destructive' })
     },
   })
 
@@ -208,16 +220,39 @@ export default function ProjectsPage() {
         </Button>
       </div>
 
+      <div className="flex w-fit rounded-md border border-slate-200 p-1 dark:border-slate-700" aria-label="项目生命周期视图">
+        <Button
+          data-testid="project-view-active"
+          variant={projectView === 'active' ? 'secondary' : 'ghost'}
+          size="sm"
+          onClick={() => setProjectView('active')}
+        >
+          活跃项目
+        </Button>
+        <Button
+          data-testid="project-view-archived"
+          variant={projectView === 'archived' ? 'secondary' : 'ghost'}
+          size="sm"
+          onClick={() => setProjectView('archived')}
+        >
+          已归档
+        </Button>
+      </div>
+
       {projects.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <FolderKanban className="h-12 w-12 text-slate-300" />
-            <h3 className="mt-4 text-lg font-medium">暂无项目</h3>
-            <p className="mt-2 text-sm text-slate-500">选择交付蓝图启动第一个项目</p>
-            <Button className="mt-4" onClick={() => setIsCreateOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              启动项目
-            </Button>
+            <h3 className="mt-4 text-lg font-medium">{projectView === 'archived' ? '暂无已归档项目' : '暂无项目'}</h3>
+            <p className="mt-2 text-sm text-slate-500">
+              {projectView === 'archived' ? '归档项目会保留交付证据，并可随时恢复。' : '选择交付蓝图启动第一个项目'}
+            </p>
+            {projectView === 'active' && (
+              <Button className="mt-4" onClick={() => setIsCreateOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                启动项目
+              </Button>
+            )}
           </CardContent>
         </Card>
       ) : (
@@ -239,6 +274,7 @@ export default function ProjectsPage() {
                       <CardDescription className="mt-1 text-xs">
                         更新于 {formatDistanceToNow(getProjectDate(project, 'updated'))}
                       </CardDescription>
+                      {project.status === 'archived' && <Badge className="mt-2" variant="secondary">已归档</Badge>}
                     </div>
                   </div>
                   <DropdownMenu>
@@ -259,7 +295,23 @@ export default function ProjectsPage() {
                       <DropdownMenuItem asChild><Link href={`/projects/${project.id}/files`}><Upload className="mr-2 h-4 w-4" />项目资料</Link></DropdownMenuItem>
                       <DropdownMenuItem asChild><Link href={`/projects/${project.id}/settings`}><Settings className="mr-2 h-4 w-4" />项目设置</Link></DropdownMenuItem>
                       <DropdownMenuItem asChild><Link href={`/projects/${project.id}/members`}><Users className="mr-2 h-4 w-4" />项目成员</Link></DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => archiveMutation.mutate(project.id)}><Archive className="mr-2 h-4 w-4" />归档项目</DropdownMenuItem>
+                      {project.status === 'archived' ? (
+                        <DropdownMenuItem
+                          data-testid={`project-restore-${project.id}`}
+                          disabled={restoreMutation.isPending}
+                          onClick={() => restoreMutation.mutate(project.id)}
+                        >
+                          <RotateCcw className="mr-2 h-4 w-4" />恢复项目
+                        </DropdownMenuItem>
+                      ) : (
+                        <DropdownMenuItem
+                          data-testid={`project-archive-${project.id}`}
+                          disabled={archiveMutation.isPending}
+                          onClick={() => archiveMutation.mutate(project.id)}
+                        >
+                          <Archive className="mr-2 h-4 w-4" />归档项目
+                        </DropdownMenuItem>
+                      )}
                       <DropdownMenuItem
                         className="text-red-600"
                         disabled={deleteMutation.isPending}
