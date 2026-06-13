@@ -39,7 +39,7 @@ cd /home/ubuntu/amx/production/ConsultantAIP
 bash infra/deploy/deploy-gitnexus.sh
 ```
 
-The deploy script copies the official GitNexus Compose file to `/home/ubuntu/amx/gitnexus`, starts the server and Web UI, checks both health endpoints, and refreshes the graph for `/workspace/ConsultantAIP`.
+The deploy script copies the official GitNexus Compose file to `/home/ubuntu/amx/gitnexus`, migrates an existing legacy workspace clone to the Public AMX origin, starts the server and Web UI, checks both health endpoints, and refreshes the graph for `/workspace/AMX`.
 
 ## Refresh Main Graph
 

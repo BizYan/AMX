@@ -4,6 +4,8 @@ set -euo pipefail
 GITNEXUS_DIR="${GITNEXUS_DIR:-/home/ubuntu/amx/gitnexus}"
 server_image_override="${GITNEXUS_SERVER_IMAGE:-}"
 web_image_override="${GITNEXUS_WEB_IMAGE:-}"
+repo_path_override="${GITNEXUS_REPOSITORY_PATH:-}"
+legacy_repo_path="${GITNEXUS_LEGACY_REPOSITORY_PATH:-/workspace/ConsultantAIP}"
 
 if [[ ! -f "$GITNEXUS_DIR/.env" ]]; then
   echo "GitNexus .env not found: $GITNEXUS_DIR/.env" >&2
@@ -21,8 +23,11 @@ fi
 if [[ -n "$web_image_override" ]]; then
   export GITNEXUS_WEB_IMAGE="$web_image_override"
 fi
+if [[ -n "$repo_path_override" ]]; then
+  export GITNEXUS_REPOSITORY_PATH="$repo_path_override"
+fi
 
-repo_path="${GITNEXUS_REPOSITORY_PATH:-/workspace/ConsultantAIP}"
+repo_path="${GITNEXUS_REPOSITORY_PATH:-/workspace/AMX}"
 
 cd "$GITNEXUS_DIR"
 
@@ -40,6 +45,10 @@ docker compose exec -T gitnexus-server sh -lc '
 ' sh "$repo_path"
 docker compose exec -T gitnexus-server \
   git -C "$repo_path" rev-parse --short HEAD
+
+if [[ "$legacy_repo_path" != "$repo_path" ]]; then
+  docker compose exec -T gitnexus-server gitnexus remove "$legacy_repo_path"
+fi
 
 if ! docker compose exec -T gitnexus-server \
   gitnexus analyze "$repo_path" --index-only; then

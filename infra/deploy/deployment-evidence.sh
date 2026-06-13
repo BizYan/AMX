@@ -4,6 +4,8 @@ set -euo pipefail
 EXPECTED_REF=""
 COMPOSE_FILE="infra/docker-compose.yml"
 GITNEXUS_URL="http://127.0.0.1:4747/api/health"
+GITNEXUS_DIR="${GITNEXUS_DIR:-/home/ubuntu/amx/gitnexus}"
+GITNEXUS_REPOSITORY_PATH="${GITNEXUS_REPOSITORY_PATH:-/workspace/AMX}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -78,8 +80,27 @@ done
 gitnexus_health="$(curl -fsS "$GITNEXUS_URL")"
 python3 -c 'import json,sys; json.load(sys.stdin)' <<<"$gitnexus_health"
 
+gitnexus_repo_sha="$(
+  docker compose -f "$GITNEXUS_DIR/docker-compose.yml" --env-file "$GITNEXUS_DIR/.env" \
+    exec -T gitnexus-server git -C "$GITNEXUS_REPOSITORY_PATH" rev-parse HEAD
+)"
+if [[ "$gitnexus_repo_sha" != "$DEPLOYED_SHA" ]]; then
+  echo "[deployment-evidence] GitNexus repository SHA $gitnexus_repo_sha does not match deployed SHA $DEPLOYED_SHA" >&2
+  exit 1
+fi
+
+gitnexus_list="$(
+  docker compose -f "$GITNEXUS_DIR/docker-compose.yml" --env-file "$GITNEXUS_DIR/.env" \
+    exec -T gitnexus-server gitnexus list
+)"
+if ! grep -Eq "Commit:[[:space:]]+${DEPLOYED_SHA:0:7}([[:space:]]|$)" <<<"$gitnexus_list"; then
+  echo "[deployment-evidence] GitNexus index does not contain deployed SHA ${DEPLOYED_SHA:0:7}" >&2
+  exit 1
+fi
+
 export DEPLOYED_SHA EXPECTED_REF EXPECTED_SHA RECORDED_REF DEPLOYED_AT
 export RUNNING_SERVICES="$(tr '\n' ',' <<<"$running_services" | sed 's/,$//')"
+export GITNEXUS_REPO_SHA="$gitnexus_repo_sha"
 python3 <<'PY'
 import json
 import os
@@ -94,5 +115,6 @@ print(json.dumps({
     "tracked_worktree_clean": True,
     "running_services": os.environ["RUNNING_SERVICES"].split(","),
     "gitnexus_healthy": True,
+    "gitnexus_indexed_sha": os.environ["GITNEXUS_REPO_SHA"],
 }, ensure_ascii=False, indent=2))
 PY
