@@ -38,7 +38,7 @@ cd "$repo_path"
   echo "## Workspace Layout"
   echo
   for path in \
-    "/home/ubuntu/amx/production/ConsultantAIP" \
+    "/home/ubuntu/amx/production/AMX" \
     "/home/ubuntu/amx/staging" \
     "/home/ubuntu/amx/gitnexus" \
     "/home/ubuntu/amx/reports"; do

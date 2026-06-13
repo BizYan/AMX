@@ -15,7 +15,7 @@ from app.domains.agent.tools.base import BaseToolAdapter, ToolExecutionError
 
 SEARCH_ENDPOINT = "https://duckduckgo.com/html/"
 DEFAULT_USER_AGENT = (
-    "Mozilla/5.0 (compatible; ConsultantAIP/1.0; +https://amx.yuanda.win)"
+    "Mozilla/5.0 (compatible; AMX/1.0; +https://amx.yuanda.win)"
 )
 
 

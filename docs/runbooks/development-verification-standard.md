@@ -1,6 +1,6 @@
 # Development Verification Standard
 
-This standard defines the default verification and GitNexus usage model for future ConsultantAIP development.
+This standard defines the default verification and GitNexus usage model for future AMX development.
 
 The goal is to keep safety evidence strong while avoiding repeated full-suite, full-E2E, and repeated GitNexus work on every small edit.
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SOURCE_REPO="${SOURCE_REPO:-/home/ubuntu/amx/production/ConsultantAIP}"
+SOURCE_REPO="${SOURCE_REPO:-/home/ubuntu/amx/production/AMX}"
 TARGET_DIR="${TARGET_DIR:-/home/ubuntu/amx/gitnexus}"
 WORKSPACE_DIR="${WORKSPACE_DIR:-/home/ubuntu/amx/gitnexus/workspace}"
 REPOSITORY_URL="${REPOSITORY_URL:-git@github.com:BizYan/AMX.git}"
@@ -14,7 +14,7 @@ GITNEXUS_WEB_IMAGE="${GITNEXUS_WEB_IMAGE:-ghcr.io/abhigyanpatwari/gitnexus-web:1
 export GITNEXUS_SERVER_IMAGE GITNEXUS_WEB_IMAGE
 
 if [[ ! -d "$SOURCE_REPO/.git" ]]; then
-  echo "SOURCE_REPO must point to a checked out ConsultantAIP repository: $SOURCE_REPO" >&2
+  echo "SOURCE_REPO must point to a checked out AMX repository: $SOURCE_REPO" >&2
   exit 1
 fi
 

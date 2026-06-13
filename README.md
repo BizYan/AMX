@@ -1,10 +1,10 @@
-# Consultant AI Workbench
+# Avenir Matrix (AMX)
 
 A comprehensive AI-powered workbench platform for consultants, enabling intelligent document management, knowledge retrieval, and workflow automation. Built with modern full-stack technologies including FastAPI, Next.js, and ARQ workers.
 
 ## Project Description
 
-Consultant AI Workbench is an enterprise-grade platform designed for consulting professionals to:
+Avenir Matrix (AMX) is an enterprise-grade platform designed for consulting professionals to:
 
 - **Manage Documents**: Create, edit, and organize client deliverables across 8 specialized document types (meeting notes, proposals, contracts, reports, etc.)
 - **Knowledge Retrieval**: Leverage RAG (Retrieval-Augmented Generation) and GraphRAG for intelligent knowledge discovery
@@ -39,8 +39,8 @@ Before running this project, ensure you have:
 
 ```bash
 # Clone the repository
-git clone <repository-url>
-cd ConsultantAIP
+git clone https://github.com/BizYan/AMX.git
+cd AMX
 
 # Copy environment file
 cp infra/env.example .env
@@ -95,7 +95,7 @@ pwsh infra/scripts/check-deploy.ps1
 ## Directory Structure
 
 ```
-ConsultantAIP/
+AMX/
 ├── apps/
 │   ├── api/                    # FastAPI backend
 │   │   ├── app/
@@ -169,8 +169,8 @@ sudo usermod -aG docker $USER
 
 2. **Clone and configure:**
 ```bash
-git clone <repository-url>
-cd ConsultantAIP
+git clone https://github.com/BizYan/AMX.git
+cd AMX
 cp infra/env.example .env
 sudo nano .env  # Configure all required variables
 ```
@@ -215,7 +215,7 @@ The platform includes:
 
 ## License
 
-Proprietary - All rights reserved
+No license is granted. All rights reserved. See `SECURITY.md` for security reporting.
 
 ## Support
 
