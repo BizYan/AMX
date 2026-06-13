@@ -20,7 +20,18 @@ jobs:
     name: Deploy production to OCI
     runs-on: ubuntu-latest
     environment: production
+    env:
+      EXPECTED_PRODUCTION_PATH: /home/ubuntu/amx/production/AMX
     steps:
+      - name: Validate canonical Public AMX path
+        env:
+          AMX_PRODUCTION_PATH: ${{ secrets.AMX_PRODUCTION_PATH }}
+        run: |
+          if [ "$AMX_PRODUCTION_PATH" != "$EXPECTED_PRODUCTION_PATH" ]; then
+            echo "AMX_PRODUCTION_PATH must use the canonical Public AMX production path." >&2
+            exit 1
+          fi
+
       - name: Install SSH key
         run: |
           mkdir -p ~/.ssh

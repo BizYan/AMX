@@ -2,7 +2,7 @@ import { expect, Page, test } from '@playwright/test'
 import { setupApiMocks } from './fixtures/api-mocks'
 import { MOCK_PROJECT, MOCK_DOCUMENTS, MOCK_TEMPLATE, MOCK_PROVIDER } from './fixtures/mock-data'
 
-test.describe('ConsultantAIP Deterministic Frontend E2E QA Hardening', () => {
+test.describe('AMX Deterministic Frontend E2E QA Hardening', () => {
 
   async function gotoAppPage(page: Page, path: string) {
     try {

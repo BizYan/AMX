@@ -35,7 +35,7 @@ The AMX API container must call GitNexus through the shared Docker network, not 
 ## Install
 
 ```bash
-cd /home/ubuntu/amx/production/ConsultantAIP
+cd /home/ubuntu/amx/production/AMX
 bash infra/deploy/deploy-gitnexus.sh
 ```
 
@@ -46,7 +46,7 @@ The deploy script copies the official GitNexus Compose file to `/home/ubuntu/amx
 After every successful deployment to `main`:
 
 ```bash
-cd /home/ubuntu/amx/production/ConsultantAIP
+cd /home/ubuntu/amx/production/AMX
 bash infra/deploy/refresh-gitnexus.sh
 ```
 

@@ -74,7 +74,7 @@ powershell -ExecutionPolicy Bypass -File infra\scripts\check-agent-collaboration
 OCI or Linux agents can generate the same class of report with:
 
 ```bash
-REPO_PATH=/home/ubuntu/ConsultantAIP REPORTS_DIR=/home/ubuntu/amx/reports \
+REPO_PATH=/home/ubuntu/amx/production/AMX REPORTS_DIR=/home/ubuntu/amx/reports \
   REFRESH_IF_STALE=1 bash infra/scripts/check-agent-collaboration.sh
 ```
 

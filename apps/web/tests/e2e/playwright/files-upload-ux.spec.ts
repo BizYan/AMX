@@ -1,7 +1,7 @@
 import { expect, Page, test } from '@playwright/test'
 import { setupApiMocks } from './fixtures/api-mocks'
 
-test.describe('ConsultantAIP Project Files Upload UX & Dark Mode QA Spec', () => {
+test.describe('AMX Project Files Upload UX & Dark Mode QA Spec', () => {
 
   async function gotoAppPage(page: Page, path: string) {
     try {

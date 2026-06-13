@@ -4,7 +4,7 @@ const smokeEmail = process.env.E2E_USER_EMAIL
 const smokePassword = process.env.E2E_PASSWORD
 const apiUrl = process.env.E2E_API_URL || `${process.env.E2E_BASE_URL || 'http://localhost:3000'}/api/v1`
 
-test.describe('ConsultantAIP Frontend Quality HARDENING & Regression', () => {
+test.describe('AMX Frontend Quality HARDENING & Regression', () => {
   test.setTimeout(120000)
 
   // If credentials are not set, we skip authenticated tests

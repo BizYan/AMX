@@ -87,12 +87,16 @@ C:\amx\AMX-claude
 OCI runtime:
 
 ```text
-/home/ubuntu/amx/production/ConsultantAIP
+/home/ubuntu/amx/production/AMX
 /home/ubuntu/amx/staging
 /home/ubuntu/amx/gitnexus
 /home/ubuntu/amx/backups
 /home/ubuntu/amx/logs
 ```
+
+`/home/ubuntu/amx/production/ConsultantAIP` is a temporary compatibility
+symlink only. `/home/ubuntu/ConsultantAIP` is retained as a second compatibility
+alias. New deployment and operations automation must use the AMX path.
 
 Production domain:
 

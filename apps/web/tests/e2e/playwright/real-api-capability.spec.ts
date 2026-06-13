@@ -5,7 +5,7 @@ const apiUrl = process.env.E2E_API_URL || 'http://localhost:18000/api/v1'
 const testEmail = process.env.E2E_USER_EMAIL || 'admin@example.com'
 const testPassword = process.env.E2E_PASSWORD || 'admin123'
 
-test.describe('ConsultantAIP Real Backend Capability Integration Hardening', () => {
+test.describe('AMX Real Backend Capability Integration Hardening', () => {
   // 仅在设置 RUN_REAL_API_TEST=true 时执行本组集成测试，不破坏普通的纯前端 mock 测试
   test.skip(!runRealTest, 'Skipping real API integration tests. Set RUN_REAL_API_TEST=true to enable.')
 

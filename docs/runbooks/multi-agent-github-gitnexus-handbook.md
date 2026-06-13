@@ -323,7 +323,7 @@ Fallback if unavailable:
 
 ```text
 /home/ubuntu/amx/
-  production/ConsultantAIP/
+  production/AMX/
   staging/<slot>/
   gitnexus/
   backups/
@@ -333,7 +333,8 @@ Fallback if unavailable:
 当前兼容路径：
 
 ```text
-/home/ubuntu/ConsultantAIP
+/home/ubuntu/ConsultantAIP -> /home/ubuntu/amx/production/AMX
+/home/ubuntu/amx/production/ConsultantAIP -> /home/ubuntu/amx/production/AMX
 ```
 
 ### 7.2 生产部署
@@ -464,7 +465,7 @@ gh api repos/BizYan/AMX/environments
 在 OCI：
 
 ```bash
-cd /home/ubuntu/amx/production/ConsultantAIP
+cd /home/ubuntu/amx/production/AMX
 bash infra/deploy/deploy-gitnexus.sh
 ```
 
@@ -488,7 +489,7 @@ powershell -ExecutionPolicy Bypass -File infra\scripts\check-agent-collaboration
 OCI/Linux：
 
 ```bash
-REPO_PATH=/home/ubuntu/ConsultantAIP REPORTS_DIR=/home/ubuntu/amx/reports \
+REPO_PATH=/home/ubuntu/amx/production/AMX REPORTS_DIR=/home/ubuntu/amx/reports \
   REFRESH_IF_STALE=1 bash infra/scripts/check-agent-collaboration.sh
 ```
 
@@ -612,7 +613,7 @@ ssh -i "<PATH_TO_OCI_SSH_KEY>" ubuntu@<OCI_HOST>
 ```
 
 ```bash
-cd /home/ubuntu/ConsultantAIP
+cd /home/ubuntu/amx/production/AMX
 git log -1 --oneline
 git status --short --branch
 curl -fsS https://amx.yuanda.win/health

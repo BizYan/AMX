@@ -1,10 +1,10 @@
 # =============================================================================
-# Consultant AI Workbench - Deployment Verification Script
+# AMX - Deployment Verification Script
 # =============================================================================
 
 <#
 .SYNOPSIS
-    Checks deployment readiness for Consultant AI Workbench.
+    Checks deployment readiness for AMX.
 
 .DESCRIPTION
     This script verifies that all prerequisites for deployment are met:
