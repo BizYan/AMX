@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { use, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Link from 'next/link'
 import {
@@ -41,7 +41,7 @@ import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/components/ui/toast'
 
 interface DocumentsPageProps {
-  params: { projectId: string }
+  params: Promise<{ projectId: string }>
 }
 
 const DELIVERY_TYPES = [
@@ -127,7 +127,7 @@ function coverageTone(status?: string) {
 }
 
 export default function DocumentsPage({ params }: DocumentsPageProps) {
-  const { projectId } = params
+  const { projectId } = use(params)
   const queryClient = useQueryClient()
   const { addToast } = useToast()
   const [selectedType, setSelectedType] = useState('')

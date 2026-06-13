@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { use, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -42,7 +42,7 @@ import {
 } from 'lucide-react'
 
 interface GenerateDocumentPageProps {
-  params: { projectId: string }
+  params: Promise<{ projectId: string }>
 }
 
 const DOCUMENT_TYPES = [
@@ -506,7 +506,7 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T
 }
 
 export default function GenerateDocumentPage({ params }: GenerateDocumentPageProps) {
-  const { projectId } = params
+  const { projectId } = use(params)
   const router = useRouter()
   const searchParams = useSearchParams()
   const sourceFileId = searchParams.get('sourceFileId')

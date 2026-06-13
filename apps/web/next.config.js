@@ -4,9 +4,7 @@ const withNextIntl = require('next-intl/plugin')('./src/i18n/request.ts')
 const nextConfig = {
   reactStrictMode: true,
   ...(process.platform === 'win32' ? {} : { output: 'standalone' }),
-  experimental: {
-    serverComponentsExternalPackages: ['elkjs'],
-  },
+  serverExternalPackages: ['elkjs'],
 }
 
 module.exports = withNextIntl(nextConfig)

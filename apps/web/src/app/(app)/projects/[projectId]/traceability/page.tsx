@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { use, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, ArrowLeft, Check, GitCompare, Link2, Network, Search, X } from 'lucide-react'
 import { useRouter } from 'next/navigation'
@@ -14,7 +14,7 @@ import { getDocumentTypeLabel } from '@/lib/document-labels'
 import { useToast } from '@/components/ui/toast'
 
 interface TraceabilityPageProps {
-  params: { projectId: string }
+  params: Promise<{ projectId: string }>
 }
 
 const riskLabels: Record<string, string> = {
@@ -41,7 +41,7 @@ function proposalRisk(proposal: DocumentSyncProposal) {
 }
 
 export default function TraceabilityPage({ params }: TraceabilityPageProps) {
-  const { projectId } = params
+  const { projectId } = use(params)
   const router = useRouter()
   const queryClient = useQueryClient()
   const { addToast } = useToast()

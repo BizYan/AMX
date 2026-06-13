@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useMemo, useRef, useState } from 'react'
+import { use, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { sourceFilesApi, SourceFile } from '@/lib/api-client'
 import { Badge } from '@/components/ui/badge'
@@ -31,7 +31,7 @@ import {
 } from 'lucide-react'
 
 interface FilesPageProps {
-  params: { projectId: string }
+  params: Promise<{ projectId: string }>
 }
 
 interface UploadingFile {
@@ -89,7 +89,7 @@ function buildFileSummary(file: SourceFile) {
 }
 
 export default function FilesPage({ params }: FilesPageProps) {
-  const { projectId } = params
+  const { projectId } = use(params)
   const [isUploadOpen, setIsUploadOpen] = useState(false)
   const [dragActive, setDragActive] = useState(false)
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([])

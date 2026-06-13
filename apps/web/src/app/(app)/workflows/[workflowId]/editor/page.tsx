@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { use, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import {
@@ -48,7 +48,7 @@ import { Select, SelectOption } from '@/components/ui/select'
 import { useToast } from '@/components/ui/toast'
 
 interface WorkflowEditorPageProps {
-  params: { workflowId: string }
+  params: Promise<{ workflowId: string }>
 }
 
 type WorkflowNodeType = 'skill' | 'human_approval' | 'condition' | 'parallel_group' | 'delay'
@@ -273,7 +273,7 @@ function nodeStatusClass(node: WorkflowNode) {
 }
 
 export default function WorkflowEditorPage({ params }: WorkflowEditorPageProps) {
-  const { workflowId } = params
+  const { workflowId } = use(params)
   const isNewWorkflow = workflowId === 'new'
   const router = useRouter()
   const queryClient = useQueryClient()

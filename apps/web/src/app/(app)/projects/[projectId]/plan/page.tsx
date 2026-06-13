@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { use, useState } from 'react'
 import Link from 'next/link'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, ArrowDown, ArrowUp, CheckCircle2, CircleDashed, Play, Plus, RotateCcw, ShieldAlert } from 'lucide-react'
@@ -28,8 +28,8 @@ const gateLabels: Record<string, string> = {
   'active-work-items': '协同工作项',
 }
 
-export default function ProjectDeliveryPlanPage({ params }: { params: { projectId: string } }) {
-  const { projectId } = params
+export default function ProjectDeliveryPlanPage({ params }: { params: Promise<{ projectId: string }> }) {
+  const { projectId } = use(params)
   const queryClient = useQueryClient()
   const { addToast } = useToast()
   const [createOpen, setCreateOpen] = useState(false)
