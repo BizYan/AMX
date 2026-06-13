@@ -17,6 +17,7 @@ import app.db.init_schema  # noqa: F401
 import app.domains.agent.models  # noqa: F401
 import app.domains.collaboration.models  # noqa: F401
 import app.domains.documents.models  # noqa: F401
+import app.domains.export.models  # noqa: F401
 import app.domains.identity.models  # noqa: F401
 import app.domains.knowledge.models  # noqa: F401
 import app.domains.projects.models  # noqa: F401
@@ -24,11 +25,13 @@ from app.db.base import Base
 from app.db.init_schema import deduplicate_indexes
 from app.domains.collaboration.models import CollaborationWorkItem
 from app.domains.documents.models import Document
+from app.domains.export.models import ExportArtifact, ExportJob
 from app.domains.projects.delivery_plan_service import ProjectDeliveryPlanService
 from app.domains.projects.launch_service import ProjectLaunchService
 from app.domains.projects.models import ProjectDeliveryPlan, ProjectMilestone
 from app.domains.projects.schemas import (
     ProjectLaunchCreate,
+    ProjectAcceptanceUpdate,
     ProjectMilestoneCreate,
     ProjectMilestoneUpdate,
 )
@@ -301,3 +304,70 @@ async def test_portfolio_aggregation_reports_visible_overdue_and_owner_load(db_s
     assert portfolio["totals"]["overdue"] == 1
     assert portfolio["upcoming"][0]["milestone_id"] == milestone.id
     assert portfolio["owner_load"][0]["owner_id"] == owner.id
+
+
+@pytest.mark.asyncio
+async def test_customer_acceptance_closes_and_reopens_formal_delivery(db_session):
+    owner, _, launched = await _seed(db_session)
+    service = ProjectDeliveryPlanService(db_session)
+    plan = await service.get_plan(launched.project.id, owner.tenant_id)
+    for milestone in plan.milestones:
+        if milestone.key != "release-delivery":
+            milestone.status = "completed"
+            milestone.completed_at = datetime.now(timezone.utc)
+    await db_session.flush()
+
+    blocked = await service.update_acceptance(
+        launched.project.id,
+        owner.tenant_id,
+        owner.id,
+        ProjectAcceptanceUpdate(
+            customer_name="Example Customer",
+            contact_name="Delivery Sponsor",
+            contact_email="sponsor@example.com",
+            decision="accepted",
+            notes="Approved for formal delivery.",
+            items=[
+                {
+                    "key": "scope",
+                    "title": "Scope delivered",
+                    "status": "accepted",
+                    "evidence": "Acceptance meeting minutes",
+                }
+            ],
+        ),
+    )
+    assert blocked.gate.status == "blocked"
+    assert blocked.package_ready is False
+
+    job = ExportJob(
+        tenant_id=owner.tenant_id,
+        project_id=launched.project.id,
+        export_type="project_package",
+        status="completed",
+        created_by=owner.id,
+        completed_at=datetime.now(timezone.utc),
+    )
+    db_session.add(job)
+    await db_session.flush()
+    db_session.add(
+        ExportArtifact(
+            tenant_id=owner.tenant_id,
+            job_id=job.id,
+            filename="delivery-package.zip",
+            content_type="application/zip",
+            file_size=1024,
+            storage_path="exports/delivery-package.zip",
+        )
+    )
+    await db_session.flush()
+
+    ready = await service.get_acceptance(launched.project.id, owner.tenant_id)
+    assert ready.gate.status == "passed"
+    closed = await service.close_delivery(launched.project.id, owner.tenant_id, owner.id)
+    assert closed.closed_at is not None
+    assert next(item for item in plan.milestones if item.key == "release-delivery").status == "completed"
+
+    reopened = await service.reopen_delivery(launched.project.id, owner.tenant_id, owner.id)
+    assert reopened.closed_at is None
+    assert next(item for item in plan.milestones if item.key == "release-delivery").status == "planned"

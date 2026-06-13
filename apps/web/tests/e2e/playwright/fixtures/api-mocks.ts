@@ -254,6 +254,20 @@ export async function setupApiMocks(page: Page, options: SetupApiMockOptions = {
       { id: 'milestone-release-delivery', key: 'release-delivery', title: '交付发布', description: '通过交付门禁并发布完整项目成果。', status: 'planned', priority: 'critical', order_index: 3, due_at: null, planned_start_at: null, completed_at: null, owner_id: MOCK.MOCK_USER.id, required_document_types_json: ['urs', 'brd', 'prd'], required_workflow_template_ids_json: [], gate_results_json: [{ key: 'required-documents', status: 'blocked', message: '缺少必需文档' }], metadata_json: {}, tenant_id: 'tenant-e2e-001', project_id: MOCK.MOCK_PROJECT.id, plan_id: 'delivery-plan-e2e-001', created_at: '2026-06-07T09:00:00Z', updated_at: '2026-06-07T09:00:00Z' },
     ],
   }
+  let projectAcceptance: any = {
+    project_id: MOCK.MOCK_PROJECT.id,
+    customer_name: '',
+    contact_name: '',
+    contact_email: '',
+    decision: 'pending',
+    notes: '',
+    items: [],
+    updated_by: null,
+    accepted_at: null,
+    closed_at: null,
+    package_ready: true,
+    gate: { status: 'blocked', label: '关闭门禁未通过', blockers: ['客户尚未给出可交付的验收结论'], warnings: [] },
+  }
   let tenantApiKeys: any[] = [
     {
       id: 'api-key-e2e-active',
@@ -1453,6 +1467,30 @@ export async function setupApiMocks(page: Page, options: SetupApiMockOptions = {
       contentType: 'application/json',
       body: JSON.stringify(projectDeliveryPlan),
     })
+  })
+
+  await page.route(/\/api\/v1\/projects\/[^/]+\/acceptance$/, async (route) => {
+    if (route.request().method() === 'PUT') {
+      const payload = JSON.parse(route.request().postData() || '{}')
+      projectAcceptance = {
+        ...projectAcceptance,
+        ...payload,
+        updated_by: MOCK.MOCK_USER.id,
+        accepted_at: new Date().toISOString(),
+        gate: { status: 'passed', label: '可正式关闭', blockers: [], warnings: [] },
+      }
+    }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(projectAcceptance) })
+  })
+
+  await page.route(/\/api\/v1\/projects\/[^/]+\/acceptance\/close$/, async (route) => {
+    projectAcceptance = { ...projectAcceptance, closed_at: new Date().toISOString() }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(projectAcceptance) })
+  })
+
+  await page.route(/\/api\/v1\/projects\/[^/]+\/acceptance\/reopen$/, async (route) => {
+    projectAcceptance = { ...projectAcceptance, closed_at: null }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(projectAcceptance) })
   })
 
   await page.route(/\/api\/v1\/projects\/[^/]+\/milestones\/reorder$/, async (route) => {

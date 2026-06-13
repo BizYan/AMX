@@ -26,6 +26,8 @@ from app.domains.projects.schemas import (
     ProjectLaunchPlanResponse,
     ProjectLaunchResponse,
     ProjectDeliveryPlanResponse,
+    ProjectAcceptanceResponse,
+    ProjectAcceptanceUpdate,
     ProjectMilestoneCreate,
     ProjectMilestoneUpdate,
     ProjectMilestoneReorder,
@@ -407,6 +409,104 @@ async def initialize_project_delivery_plan(
         metadata={"blueprint_key": blueprint_key},
     )
     return await ProjectDeliveryPlanService(db).build_response(project_id, current_user.tenant_id)
+
+
+@router.get("/{project_id}/acceptance", response_model=ProjectAcceptanceResponse)
+async def get_project_acceptance(
+    project_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get customer acceptance and formal delivery closure evidence."""
+    await check_project_membership(project_id, current_user.id, db, current_user.tenant_id)
+    try:
+        return await ProjectDeliveryPlanService(db).get_acceptance(
+            project_id, current_user.tenant_id
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@router.put("/{project_id}/acceptance", response_model=ProjectAcceptanceResponse)
+async def update_project_acceptance(
+    project_id: UUID,
+    data: ProjectAcceptanceUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Record the owner-verified customer acceptance decision and evidence."""
+    await check_project_membership(
+        project_id, current_user.id, db, current_user.tenant_id, require_owner=True
+    )
+    try:
+        response = await ProjectDeliveryPlanService(db).update_acceptance(
+            project_id, current_user.tenant_id, current_user.id, data
+        )
+    except (ValueError, PermissionError) as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    await AuditService(db).log_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+        action="project.acceptance.update",
+        resource_type="project",
+        resource_id=project_id,
+        metadata={"decision": response.decision, "item_count": len(response.items)},
+    )
+    return response
+
+
+@router.post("/{project_id}/acceptance/close", response_model=ProjectAcceptanceResponse)
+async def close_project_delivery(
+    project_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Close formal delivery only after all customer and package gates pass."""
+    await check_project_membership(
+        project_id, current_user.id, db, current_user.tenant_id, require_owner=True
+    )
+    try:
+        response = await ProjectDeliveryPlanService(db).close_delivery(
+            project_id, current_user.tenant_id, current_user.id
+        )
+    except (ValueError, PermissionError) as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    await AuditService(db).log_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+        action="project.acceptance.close",
+        resource_type="project",
+        resource_id=project_id,
+        metadata={"decision": response.decision, "closed_at": str(response.closed_at)},
+    )
+    return response
+
+
+@router.post("/{project_id}/acceptance/reopen", response_model=ProjectAcceptanceResponse)
+async def reopen_project_delivery(
+    project_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Reopen formal delivery when customer follow-up requires more work."""
+    await check_project_membership(
+        project_id, current_user.id, db, current_user.tenant_id, require_owner=True
+    )
+    try:
+        response = await ProjectDeliveryPlanService(db).reopen_delivery(
+            project_id, current_user.tenant_id, current_user.id
+        )
+    except (ValueError, PermissionError) as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    await AuditService(db).log_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+        action="project.acceptance.reopen",
+        resource_type="project",
+        resource_id=project_id,
+        metadata={"decision": response.decision},
+    )
+    return response
 
 
 @router.post("/{project_id}/milestones", response_model=ProjectMilestoneResponse, status_code=201)

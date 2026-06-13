@@ -223,6 +223,12 @@ export default function ProjectDetailPage({ params }: ProjectPageProps) {
             </Link>
           </Button>
           <Button variant="outline" asChild>
+            <Link href={`/projects/${projectId}/acceptance`}>
+              <CheckCircle2 className="mr-2 h-4 w-4" />
+              客户验收
+            </Link>
+          </Button>
+          <Button variant="outline" asChild>
             <Link href={`/projects/${projectId}/settings`}>
               <Settings className="mr-2 h-4 w-4" />
               项目设置

@@ -216,6 +216,49 @@ class ProjectDeliveryPlanResponse(BaseModel):
     summary: ProjectDeliveryPlanSummary | None = None
 
 
+class ProjectAcceptanceItem(BaseModel):
+    """One customer acceptance criterion and its evidence."""
+
+    key: str = Field(..., min_length=1, max_length=100)
+    title: str = Field(..., min_length=1, max_length=255)
+    status: str = Field(default="pending", pattern="^(pending|accepted|rejected)$")
+    evidence: str = Field(default="", max_length=4000)
+
+
+class ProjectAcceptanceUpdate(BaseModel):
+    """Owner-managed customer acceptance record."""
+
+    customer_name: str = Field(default="", max_length=255)
+    contact_name: str = Field(default="", max_length=255)
+    contact_email: str = Field(default="", max_length=255)
+    decision: str = Field(
+        default="pending",
+        pattern="^(pending|accepted|accepted_with_followups|rejected)$",
+    )
+    notes: str = Field(default="", max_length=8000)
+    items: list[ProjectAcceptanceItem] = Field(default_factory=list)
+
+
+class ProjectAcceptanceGate(BaseModel):
+    """Formal delivery closure gate."""
+
+    status: str
+    label: str
+    blockers: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class ProjectAcceptanceResponse(ProjectAcceptanceUpdate):
+    """Customer acceptance record with formal delivery gate evidence."""
+
+    project_id: UUID
+    updated_by: UUID | None = None
+    accepted_at: datetime | None = None
+    closed_at: datetime | None = None
+    package_ready: bool = False
+    gate: ProjectAcceptanceGate
+
+
 class ProjectListResponse(PaginatedResponse[ProjectResponse]):
     """Schema for paginated project list response."""
 
