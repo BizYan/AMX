@@ -164,6 +164,7 @@ async def check_project_membership(
 @router.get("", response_model=ProjectListResponse)
 async def list_projects(
     pagination: PaginationParams = Query(default=PaginationParams()),
+    status: str = Query(default="active", pattern="^(active|archived|all)$"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -183,6 +184,7 @@ async def list_projects(
         user_id=current_user.id,
         skip=(pagination.page - 1) * pagination.page_size,
         limit=pagination.page_size,
+        status=None if status == "all" else status,
     )
     has_more = (pagination.page * pagination.page_size) < total
 
@@ -648,7 +650,13 @@ async def update_project(
 
     # Check membership first
     try:
-        await check_project_membership(project_id, current_user.id, db, current_user.tenant_id)
+        await check_project_membership(
+            project_id,
+            current_user.id,
+            db,
+            current_user.tenant_id,
+            require_owner=data.status is not None,
+        )
     except HTTPException:
         raise HTTPException(status_code=403, detail="Access denied")
 
@@ -663,6 +671,71 @@ async def update_project(
         return ProjectResponse.model_validate(project)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+async def _transition_project_status(
+    *,
+    project_id: UUID,
+    status: str,
+    action: str,
+    db: AsyncSession,
+    current_user: User,
+) -> ProjectResponse:
+    await check_project_membership(
+        project_id,
+        current_user.id,
+        db,
+        current_user.tenant_id,
+        require_owner=True,
+    )
+    project = await ProjectService(db).set_project_status(
+        project_id=project_id,
+        status=status,
+        tenant_id=current_user.tenant_id,
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    await AuditService(db).log_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+        action=action,
+        resource_type="project",
+        resource_id=project_id,
+        metadata={"status": status},
+    )
+    return ProjectResponse.model_validate(project)
+
+
+@router.post("/{project_id}/archive", response_model=ProjectResponse)
+async def archive_project(
+    project_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Archive a project while preserving its delivery evidence."""
+    return await _transition_project_status(
+        project_id=project_id,
+        status="archived",
+        action="project.archive",
+        db=db,
+        current_user=current_user,
+    )
+
+
+@router.post("/{project_id}/restore", response_model=ProjectResponse)
+async def restore_project(
+    project_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Restore an archived project to the active delivery workspace."""
+    return await _transition_project_status(
+        project_id=project_id,
+        status="active",
+        action="project.restore",
+        db=db,
+        current_user=current_user,
+    )
 
 
 @router.delete("/{project_id}", status_code=204)

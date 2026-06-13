@@ -141,10 +141,11 @@ export const authApi = {
 }
 
 export const projectsApi = {
-  list: (params?: { page?: number; pageSize?: number }) =>
+  list: (params?: { page?: number; pageSize?: number; status?: 'active' | 'archived' | 'all' }) =>
     apiClient.get<{ items: Project[]; total: number; page: number; page_size: number; has_more: boolean }>('/projects', {
       page: params?.page,
       page_size: params?.pageSize,
+      status: params?.status,
     }).then(normalizeProjectList),
   getDeliveryOverview: (params?: { limit?: number }) =>
     apiClient.get<SystemDeliveryOverview>('/projects/delivery-overview', { limit: params?.limit }),
@@ -181,6 +182,8 @@ export const projectsApi = {
   reopenMilestone: (id: string, milestoneId: string) =>
     apiClient.post<ProjectMilestone>(`/projects/${id}/milestones/${milestoneId}/reopen`, {}),
   update: async (id: string, data: Partial<Project>) => normalizeProject(await apiClient.patch<Project>(`/projects/${id}`, data)),
+  archive: async (id: string) => normalizeProject(await apiClient.post<Project>(`/projects/${id}/archive`, {})),
+  restore: async (id: string) => normalizeProject(await apiClient.post<Project>(`/projects/${id}/restore`, {})),
   delete: (id: string) => apiClient.delete(`/projects/${id}`),
   getDeliveryWorkbench: (id: string) =>
     apiClient.get<ProjectDeliveryWorkbench>(`/projects/${id}/delivery-workbench`),

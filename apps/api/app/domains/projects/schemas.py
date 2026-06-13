@@ -4,7 +4,7 @@ Pydantic v2 schemas for request/response validation.
 """
 
 from datetime import datetime
-from typing import Any, Generic, TypeVar
+from typing import Any, Generic, Literal, TypeVar
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -38,7 +38,7 @@ class ProjectBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     description: str | None = Field(None, max_length=2000)
     slug: str = Field(..., min_length=1, max_length=100)
-    status: str | None = Field("active", max_length=20)
+    status: Literal["active", "archived"] | None = "active"
 
 
 class ProjectCreate(ProjectBase):
@@ -53,7 +53,7 @@ class ProjectUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)
     description: str | None = Field(None, max_length=2000)
     slug: str | None = Field(None, min_length=1, max_length=100)
-    status: str | None = Field(None, max_length=20)
+    status: Literal["active", "archived"] | None = None
 
 
 

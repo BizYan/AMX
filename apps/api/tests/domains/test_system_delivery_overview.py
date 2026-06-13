@@ -156,6 +156,7 @@ async def test_system_delivery_overview_aggregates_projects_and_actions():
         user_id=user_id,
         skip=0,
         limit=8,
+        status="active",
     )
 
 
