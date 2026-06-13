@@ -37,6 +37,7 @@ interface NavItem {
 
 const mainNav: NavItem[] = [
   { href: '/dashboard', labelKey: 'dashboard', icon: <LayoutDashboard className="h-5 w-5" /> },
+  { href: '/delivery', labelKey: 'deliveryPortfolio', icon: <FolderKanban className="h-5 w-5" /> },
   { href: '/projects', labelKey: 'projects', icon: <FolderKanban className="h-5 w-5" /> },
   { href: '/knowledge/graph', labelKey: 'knowledgeGraph', icon: <Network className="h-5 w-5" /> },
   { href: '/agents', labelKey: 'agents', icon: <BrainCircuit className="h-5 w-5" /> },

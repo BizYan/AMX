@@ -634,6 +634,14 @@ class SystemDeliveryMilestonePortfolio(BaseModel):
     owner_load: list[SystemDeliveryOwnerLoad] = Field(default_factory=list)
 
 
+class SystemDeliveryPortfolioResponse(BaseModel):
+    """Complete visible cross-project milestone portfolio."""
+
+    generated_at: datetime
+    project_count: int = 0
+    portfolio: SystemDeliveryMilestonePortfolio
+
+
 class SystemDeliveryOverviewResponse(BaseModel):
     """System-level command center for core delivery operations."""
 
