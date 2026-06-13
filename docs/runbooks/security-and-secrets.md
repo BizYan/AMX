@@ -26,7 +26,12 @@
 
 - CI rejects known high or critical Web production dependency vulnerabilities.
 - CI audits the complete locked API environment with `pip-audit`.
-- Dependabot groups weekly Web and API dependency maintenance updates.
+- Dependabot groups weekly Web and API patch/minor maintenance updates. Major
+  upgrades require an explicit engineering slice because they may change
+  framework or runtime contracts.
+- Dependabot PRs may bypass the human/agent evidence-body format only when
+  their diff is limited to approved dependency manifests and lockfiles; all
+  normal CI checks remain required.
 - Security dependency PRs must preserve lockfiles and pass the normal API, Web,
   Compose, governance, and deterministic E2E gates before merge.
 

@@ -24,12 +24,46 @@ jobs:
     name: PR agent and GitNexus evidence
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Validate PR body
         shell: bash
         run: |
           set -euo pipefail
 
           body="$(jq -r '.pull_request.body // ""' "$GITHUB_EVENT_PATH")"
+          author="$(jq -r '.pull_request.user.login // ""' "$GITHUB_EVENT_PATH")"
+
+          if [[ "$author" == "dependabot[bot]" ]]; then
+            base_sha="$(jq -r '.pull_request.base.sha' "$GITHUB_EVENT_PATH")"
+            head_sha="$(jq -r '.pull_request.head.sha' "$GITHUB_EVENT_PATH")"
+            allowed_paths=(
+              "apps/web/package.json"
+              "apps/web/pnpm-lock.yaml"
+              "apps/api/pyproject.toml"
+              "apps/api/uv.lock"
+            )
+
+            while IFS= read -r path; do
+              allowed=0
+              for allowed_path in "${allowed_paths[@]}"; do
+                if [[ "$path" == "$allowed_path" ]]; then
+                  allowed=1
+                  break
+                fi
+              done
+              if [[ "$allowed" != "1" ]]; then
+                echo "Dependabot PR changed a non-dependency file: $path" >&2
+                exit 1
+              fi
+            done < <(git diff --name-only "$base_sha" "$head_sha")
+
+            echo "Dependabot dependency-only PR accepted; normal CI remains required."
+            exit 0
+          fi
 
           if [[ "${#body}" -lt 200 ]]; then
             echo "PR body is too short. Use .github/pull_request_template.md and include evidence." >&2
