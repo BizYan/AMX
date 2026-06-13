@@ -52,7 +52,7 @@ class TestJWTTokens:
     def test_create_access_token_returns_string(self):
         """Test that create_access_token returns a JWT string."""
         with patch("app.core.security.settings") as mock_settings:
-            mock_settings.JWT_SECRET_KEY = "test_secret_key_12345"
+            mock_settings.JWT_SECRET_KEY = "test-secret-key-at-least-32-bytes"
             mock_settings.JWT_ALGORITHM = "HS256"
             mock_settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
@@ -65,7 +65,7 @@ class TestJWTTokens:
         from datetime import timedelta
 
         with patch("app.core.security.settings") as mock_settings:
-            mock_settings.JWT_SECRET_KEY = "test_secret_key_12345"
+            mock_settings.JWT_SECRET_KEY = "test-secret-key-at-least-32-bytes"
             mock_settings.JWT_ALGORITHM = "HS256"
             mock_settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
@@ -78,7 +78,7 @@ class TestJWTTokens:
     def test_decode_token_valid(self):
         """Test decoding a valid token."""
         with patch("app.core.security.settings") as mock_settings:
-            mock_settings.JWT_SECRET_KEY = "test_secret_key_12345"
+            mock_settings.JWT_SECRET_KEY = "test-secret-key-at-least-32-bytes"
             mock_settings.JWT_ALGORITHM = "HS256"
             mock_settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
@@ -90,19 +90,19 @@ class TestJWTTokens:
 
     def test_decode_token_invalid(self):
         """Test decoding an invalid token raises error."""
-        from jose import JWTError
+        from jwt.exceptions import InvalidTokenError
 
         with patch("app.core.security.settings") as mock_settings:
-            mock_settings.JWT_SECRET_KEY = "test_secret_key_12345"
+            mock_settings.JWT_SECRET_KEY = "test-secret-key-at-least-32-bytes"
             mock_settings.JWT_ALGORITHM = "HS256"
 
-            with pytest.raises(JWTError):
+            with pytest.raises(InvalidTokenError):
                 decode_token("invalid.token.here")
 
     def test_token_contains_required_claims(self):
         """Test that created tokens contain all required claims."""
         with patch("app.core.security.settings") as mock_settings:
-            mock_settings.JWT_SECRET_KEY = "test_secret_key_12345"
+            mock_settings.JWT_SECRET_KEY = "test-secret-key-at-least-32-bytes"
             mock_settings.JWT_ALGORITHM = "HS256"
             mock_settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
@@ -113,6 +113,24 @@ class TestJWTTokens:
             assert "exp" in decoded
             assert "iat" in decoded
             assert "jti" in decoded
+
+    def test_decode_token_accepts_existing_standard_hs256_token(self):
+        """Existing HS256 sessions remain valid after the JWT library migration."""
+        existing_token = (
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
+            "eyJzdWIiOiJsZWdhY3ktdXNlciIsImV4cCI6NDEwMjQ0NDgwMCwiaWF0IjoxNzAwMDAwMDAwLCJqdGkiOiJsZWdhY3ktdG9rZW4ifQ."
+            "RT0K3Gx1otEaYPopthtltDMgl8PWSfzc4dTF3XDteRg"
+        )
+        compatibility_secret = "-".join(("legacy", "compatibility", "secret", "at", "least", "32", "bytes"))
+
+        with patch("app.core.security.settings") as mock_settings:
+            mock_settings.JWT_SECRET_KEY = compatibility_secret
+            mock_settings.JWT_ALGORITHM = "HS256"
+
+            decoded = decode_token(existing_token)
+
+        assert decoded["sub"] == "legacy-user"
+        assert decoded["jti"] == "legacy-token"
 
 
 class TestBootstrapIdempotency:

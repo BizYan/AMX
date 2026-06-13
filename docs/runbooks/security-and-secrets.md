@@ -22,6 +22,14 @@
 - OCI filesystem for production `.env`.
 - Cloudflare dashboard for DNS and SSL mode.
 
+## Dependency Security
+
+- CI rejects known high or critical Web production dependency vulnerabilities.
+- CI audits the complete locked API environment with `pip-audit`.
+- Dependabot groups weekly Web and API dependency maintenance updates.
+- Security dependency PRs must preserve lockfiles and pass the normal API, Web,
+  Compose, governance, and deterministic E2E gates before merge.
+
 ## SSH Key Handling
 
 Store deploy private key only in:

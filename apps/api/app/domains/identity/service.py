@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
-from jose import JWTError
+from jwt.exceptions import InvalidTokenError
 from sqlalchemy import delete, select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -246,7 +246,7 @@ class AuthService:
             jti = payload.get("jti")
             if jti:
                 await add_to_blacklist(jti, self.db)
-        except JWTError:
+        except InvalidTokenError:
             pass  # Invalid tokens are simply ignored
 
     async def get_current_user(self, token: str) -> User | None:
@@ -282,7 +282,7 @@ class AuthService:
                 return None
 
             return user
-        except (JWTError, ValueError):
+        except (InvalidTokenError, ValueError):
             return None
 
     def get_token_expiry(self) -> int:

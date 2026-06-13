@@ -44,6 +44,9 @@ jobs:
       - name: Install API dependencies
         run: uv sync --frozen --extra dev
 
+      - name: Audit API dependencies
+        run: uv run --extra dev pip-audit
+
       - name: Run API tests
         env:
           JWT_SECRET_KEY: ci-jwt-secret-for-tests

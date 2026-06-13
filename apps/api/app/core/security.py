@@ -9,7 +9,8 @@ from unittest.mock import Mock
 from uuid import UUID as PyUUID, uuid4
 
 import redis.asyncio as redis
-from jose import JWTError, jwt
+import jwt
+from jwt.exceptions import InvalidTokenError
 from passlib.context import CryptContext
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -106,7 +107,7 @@ def decode_token(token: str) -> dict[str, Any]:
         dict: Decoded token payload
 
     Raises:
-        JWTError: If token is invalid or expired
+        InvalidTokenError: If token is invalid or expired
     """
     return jwt.decode(
         token,
