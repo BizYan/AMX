@@ -666,6 +666,12 @@ export const integrationsApi = {
     apiClient.get<IntegrationOperationsSummary>('/integrations/operations/summary'),
   getProductionCommandCenter: () =>
     apiClient.get<IntegrationProductionCommandCenter>('/integrations/operations/command-center'),
+  getIncidentQueue: () =>
+    apiClient.get<IntegrationOperationsIncidentQueue>('/integrations/operations/incidents'),
+  retryWebhookDelivery: (deliveryId: string) =>
+    apiClient.post(`/integrations/webhooks/deliveries/${deliveryId}/retry`, {}),
+  retryOutboxEvent: (eventId: string) =>
+    apiClient.post<OutboxEvent>(`/integrations/outbox/events/${eventId}/retry`, {}),
   listWebhooks: (id: string, params?: { page?: number; pageSize?: number }) =>
     apiClient.get<PaginatedList<WebhookSubscription>>(`/integrations/${id}/webhooks`, {
       page: params?.page,
@@ -2149,6 +2155,26 @@ export interface IntegrationProductionCommandCenter {
   risk_items: IntegrationProductionRiskItem[]
   priority_actions: IntegrationProductionPriorityAction[]
   operations_summary: IntegrationOperationsSummary
+}
+
+export interface IntegrationOperationsIncident {
+  id: string
+  category: 'project_sync' | 'webhook' | 'outbox' | string
+  severity: 'critical' | 'high' | 'medium' | string
+  title: string
+  detail: string
+  status: string
+  attempts: number
+  occurred_at: string
+  action_type: 'retry_sync' | 'retry_webhook' | 'retry_outbox' | string
+  action_href: string
+}
+
+export interface IntegrationOperationsIncidentQueue {
+  total: number
+  critical_count: number
+  retryable_count: number
+  items: IntegrationOperationsIncident[]
 }
 
 export interface WebhookSubscription {

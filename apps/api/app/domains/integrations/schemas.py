@@ -291,6 +291,30 @@ class IntegrationProductionCommandCenter(BaseModel):
     operations_summary: IntegrationOperationsSummary
 
 
+class IntegrationOperationsIncident(BaseModel):
+    """One actionable production integration incident."""
+
+    id: UUID
+    category: str
+    severity: str
+    title: str
+    detail: str
+    status: str
+    attempts: int = 0
+    occurred_at: datetime
+    action_type: str
+    action_href: str
+
+
+class IntegrationOperationsIncidentQueue(BaseModel):
+    """Cross-channel failure queue for integration operators."""
+
+    total: int
+    critical_count: int
+    retryable_count: int
+    items: list[IntegrationOperationsIncident]
+
+
 class IntegrationProjectBindingCreate(BaseModel):
     project_id: UUID
     name: str = Field(..., min_length=1, max_length=255)

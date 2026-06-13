@@ -33,6 +33,8 @@ from app.domains.integrations.schemas import (
     IntegrationProviderCreate,
     IntegrationProviderUpdate,
     IntegrationOperationsEvidence,
+    IntegrationOperationsIncident,
+    IntegrationOperationsIncidentQueue,
     IntegrationOperationsSummary,
     IntegrationProductionCommandCenter,
     IntegrationProductionPriorityAction,
@@ -588,6 +590,109 @@ class IntegrationService:
             operations_summary=operations_summary,
         )
 
+    async def build_incident_queue(
+        self, tenant_id: UUID, limit: int = 50
+    ) -> IntegrationOperationsIncidentQueue:
+        """Build one actionable queue across sync, webhook, and outbox failures."""
+        failed_syncs = list(
+            (
+                await self.db.scalars(
+                    select(IntegrationSyncRun)
+                    .where(
+                        IntegrationSyncRun.tenant_id == tenant_id,
+                        IntegrationSyncRun.status == "failed",
+                    )
+                    .order_by(IntegrationSyncRun.created_at.desc())
+                    .limit(limit)
+                )
+            ).all()
+        )
+        failed_deliveries = list(
+            (
+                await self.db.scalars(
+                    select(WebhookDeliveryEvent)
+                    .where(
+                        WebhookDeliveryEvent.tenant_id == tenant_id,
+                        WebhookDeliveryEvent.deleted_at.is_(None),
+                        WebhookDeliveryEvent.delivered_at.is_(None),
+                        (
+                            WebhookDeliveryEvent.error_message.is_not(None)
+                            | (WebhookDeliveryEvent.response_status >= 400)
+                        ),
+                    )
+                    .order_by(WebhookDeliveryEvent.created_at.desc())
+                    .limit(limit)
+                )
+            ).all()
+        )
+        failed_outbox = list(
+            (
+                await self.db.scalars(
+                    select(OutboxEvent)
+                    .where(
+                        OutboxEvent.tenant_id == tenant_id,
+                        OutboxEvent.deleted_at.is_(None),
+                        OutboxEvent.status == OutboxEventStatus.FAILED.value,
+                    )
+                    .order_by(OutboxEvent.created_at.desc())
+                    .limit(limit)
+                )
+            ).all()
+        )
+        items = [
+            IntegrationOperationsIncident(
+                id=run.id,
+                category="project_sync",
+                severity="high",
+                title="项目同步失败",
+                detail=run.error_message or "项目绑定同步未完成",
+                status=run.status,
+                attempts=1,
+                occurred_at=run.created_at,
+                action_type="retry_sync",
+                action_href=f"/integrations?retrySyncRun={run.id}",
+            )
+            for run in failed_syncs
+        ]
+        items.extend(
+            IntegrationOperationsIncident(
+                id=delivery.id,
+                category="webhook",
+                severity="critical" if delivery.attempts >= MAX_DELIVERY_ATTEMPTS else "high",
+                title="Webhook 投递失败",
+                detail=delivery.error_message or f"目标返回 HTTP {delivery.response_status}",
+                status="failed",
+                attempts=delivery.attempts,
+                occurred_at=delivery.created_at,
+                action_type="retry_webhook",
+                action_href=f"/integrations?retryWebhook={delivery.id}",
+            )
+            for delivery in failed_deliveries
+        )
+        items.extend(
+            IntegrationOperationsIncident(
+                id=event.id,
+                category="outbox",
+                severity="critical",
+                title="Outbox 事件失败",
+                detail=event.last_error or f"{event.event_type} 发布失败",
+                status=event.status,
+                attempts=event.attempts,
+                occurred_at=event.created_at,
+                action_type="retry_outbox",
+                action_href=f"/integrations?retryOutbox={event.id}",
+            )
+            for event in failed_outbox
+        )
+        items.sort(key=lambda item: item.occurred_at, reverse=True)
+        items = items[:limit]
+        return IntegrationOperationsIncidentQueue(
+            total=len(items),
+            critical_count=sum(item.severity == "critical" for item in items),
+            retryable_count=sum(item.action_type.startswith("retry_") for item in items),
+            items=items,
+        )
+
     def _integration_production_risks(self, summary: dict[str, int]) -> list[IntegrationProductionRiskItem]:
         risks: list[IntegrationProductionRiskItem] = []
         if summary["integration_count"] == 0:
@@ -829,6 +934,35 @@ class WebhookService:
 
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    async def retry_delivery(
+        self, delivery_id: UUID, tenant_id: UUID
+    ) -> WebhookDeliveryEvent:
+        """Retry one failed delivery in place so the incident can close."""
+        delivery = await self.db.scalar(
+            select(WebhookDeliveryEvent).where(
+                WebhookDeliveryEvent.id == delivery_id,
+                WebhookDeliveryEvent.tenant_id == tenant_id,
+                WebhookDeliveryEvent.deleted_at.is_(None),
+            )
+        )
+        if not delivery:
+            raise ValueError("Webhook delivery not found")
+        subscription = await self.db.scalar(
+            select(WebhookSubscription).where(
+                WebhookSubscription.id == delivery.webhook_subscription_id,
+                WebhookSubscription.tenant_id == tenant_id,
+                WebhookSubscription.deleted_at.is_(None),
+            )
+        )
+        if not subscription:
+            raise ValueError("Webhook subscription not found")
+        delivery.attempts += 1
+        delivered = await self._attempt_delivery(subscription, delivery.request_body, delivery)
+        delivery.delivered_at = datetime.now(timezone.utc) if delivered else None
+        await self.db.flush()
+        await self.db.refresh(delivery)
+        return delivery
 
     async def create_subscription(
         self,
@@ -1123,6 +1257,25 @@ class OutboxService:
 
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    async def retry_event(self, event_id: UUID, tenant_id: UUID) -> OutboxEvent:
+        """Move one failed outbox event back to the publish queue."""
+        event = await self.db.scalar(
+            select(OutboxEvent).where(
+                OutboxEvent.id == event_id,
+                OutboxEvent.tenant_id == tenant_id,
+                OutboxEvent.deleted_at.is_(None),
+            )
+        )
+        if not event:
+            raise ValueError("Outbox event not found")
+        event.status = OutboxEventStatus.PENDING.value
+        event.published = False
+        event.published_at = None
+        event.last_error = None
+        await self.db.flush()
+        await self.db.refresh(event)
+        return event
 
     async def create_event(
         self,
