@@ -190,6 +190,8 @@ class ProjectInvitation(Base, UuidMixin, TimestampMixin, TenantMixin, SoftDelete
         nullable=False,
         index=True,
     )
+    accepted_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    revoked_at = Column(DateTime(timezone=True), nullable=True, index=True)
 
     # Relations
     project = relationship("Project", back_populates="invitations", lazy="selectin")

@@ -4,13 +4,17 @@ Endpoints for project management, members, and source files.
 """
 
 from datetime import datetime, timedelta, timezone
+import hashlib
 from io import BytesIO
+import secrets
 from typing import Any
 from urllib.parse import quote
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Header
 from fastapi.responses import StreamingResponse
+from pydantic import EmailStr
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
@@ -40,6 +44,10 @@ from app.domains.projects.schemas import (
     ProjectMemberCreate,
     ProjectMemberResponse,
     ProjectMemberListResponse,
+    ProjectInvitationAcceptResponse,
+    ProjectInvitationCreatedResponse,
+    ProjectInvitationListResponse,
+    ProjectInvitationResponse,
     ProjectSettingsUpdate,
     ProjectSettingsResponse,
     DocumentLifecyclePolicyResponse,
@@ -66,9 +74,54 @@ from app.domains.projects.delivery_plan_service import ProjectDeliveryPlanServic
 from app.services.audit_service import AuditService
 from app.services.storage import StorageHandle, StorageProvider, LocalStorageProvider, get_storage_provider
 from app.models.identity import User
+from app.models.projects import ProjectMember
 
 
 router = APIRouter()
+
+
+def _invitation_token_digest(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _invitation_expired(expires_at: datetime) -> bool:
+    normalized = expires_at if expires_at.tzinfo is not None else expires_at.replace(tzinfo=timezone.utc)
+    return normalized <= datetime.now(timezone.utc)
+
+
+def _invitation_status(invitation: ProjectInvitation) -> str:
+    if invitation.revoked_at is not None:
+        return "revoked"
+    if invitation.accepted_at is not None:
+        return "accepted"
+    if _invitation_expired(invitation.expires_at):
+        return "expired"
+    return "active"
+
+
+def _invitation_response(invitation: ProjectInvitation) -> ProjectInvitationResponse:
+    return ProjectInvitationResponse(
+        id=invitation.id,
+        project_id=invitation.project_id,
+        email=invitation.email,
+        status=_invitation_status(invitation),
+        expires_at=invitation.expires_at,
+        accepted_at=invitation.accepted_at,
+        revoked_at=invitation.revoked_at,
+        created_at=invitation.created_at,
+        updated_at=invitation.updated_at,
+    )
+
+
+async def _find_invitation_by_token(token: str, db: AsyncSession) -> ProjectInvitation | None:
+    digest = _invitation_token_digest(token)
+    result = await db.execute(
+        select(ProjectInvitation).where(
+            or_(ProjectInvitation.token == digest, ProjectInvitation.token == token),
+            ProjectInvitation.deleted_at.is_(None),
+        )
+    )
+    return result.scalar_one_or_none()
 
 
 @router.get("/customer-portal/{token}", response_model=CustomerPortalSummaryResponse)
@@ -235,6 +288,58 @@ async def check_project_membership(
         return True
 
     raise HTTPException(status_code=403, detail="Not a project member")
+
+
+@router.post("/invitations/{token}/accept", response_model=ProjectInvitationAcceptResponse)
+async def accept_project_invitation(
+    token: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Accept an active invitation when tenant and email match the signed-in user."""
+    invitation = await _find_invitation_by_token(token, db)
+    if not invitation:
+        raise HTTPException(status_code=404, detail="Invitation not found")
+    if invitation.revoked_at is not None:
+        raise HTTPException(status_code=410, detail="Invitation has been revoked")
+    if invitation.accepted_at is not None:
+        raise HTTPException(status_code=409, detail="Invitation has already been accepted")
+    if _invitation_expired(invitation.expires_at):
+        raise HTTPException(status_code=410, detail="Invitation has expired")
+    if invitation.tenant_id != current_user.tenant_id:
+        raise HTTPException(status_code=403, detail="Invitation belongs to another tenant")
+    if invitation.email.casefold() != current_user.email.casefold():
+        raise HTTPException(status_code=403, detail="Invitation email does not match signed-in user")
+
+    project = await ProjectService(db).get_project(invitation.project_id, current_user.tenant_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    existing = (
+        await db.execute(
+            select(ProjectMember).where(
+                ProjectMember.project_id == invitation.project_id,
+                ProjectMember.user_id == current_user.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if not existing:
+        db.add(ProjectMember(project_id=invitation.project_id, user_id=current_user.id))
+    invitation.accepted_at = datetime.now(timezone.utc)
+    await db.flush()
+    await AuditService(db).log_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+        action="project.invitation.accept",
+        resource_type="project_invitation",
+        resource_id=invitation.id,
+        metadata={"project_id": str(invitation.project_id), "email": invitation.email},
+    )
+    return ProjectInvitationAcceptResponse(
+        project_id=project.id,
+        project_name=project.name,
+        user_id=current_user.id,
+        status="accepted",
+    )
 
 
 # Project Endpoints
@@ -1715,11 +1820,35 @@ async def download_source_file(
     )
 
 
-# Project Invitation Endpoints (bonus)
-@router.post("/{project_id}/invitations", status_code=201)
+# Project Invitation Endpoints
+@router.get("/{project_id}/invitations", response_model=ProjectInvitationListResponse)
+async def list_project_invitations(
+    project_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List invitation lifecycle state for a project owner."""
+    await check_project_membership(project_id, current_user.id, db, current_user.tenant_id, require_owner=True)
+    filters = (
+        ProjectInvitation.project_id == project_id,
+        ProjectInvitation.tenant_id == current_user.tenant_id,
+        ProjectInvitation.deleted_at.is_(None),
+    )
+    result = await db.execute(select(ProjectInvitation).where(*filters).order_by(ProjectInvitation.created_at.desc()))
+    items = list(result.scalars().all())
+    return ProjectInvitationListResponse(
+        items=[_invitation_response(item) for item in items],
+        total=len(items),
+        page=1,
+        page_size=max(len(items), 1),
+        has_more=False,
+    )
+
+
+@router.post("/{project_id}/invitations", response_model=ProjectInvitationCreatedResponse, status_code=201)
 async def create_project_invitation(
     project_id: UUID,
-    email: str,
+    email: EmailStr,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -1737,26 +1866,151 @@ async def create_project_invitation(
     Raises:
         HTTPException: If access denied or project not found
     """
-    import secrets
-
-    # Check membership (must be owner)
     try:
         await check_project_membership(project_id, current_user.id, db, current_user.tenant_id, require_owner=True)
     except HTTPException:
         raise HTTPException(status_code=403, detail="Only owner can invite members")
 
-    # Generate secure token
-    token = secrets.token_urlsafe(32)
+    normalized_email = str(email).strip().casefold()
+    invited_user = (
+        await db.execute(
+            select(User).where(
+                func.lower(User.email) == normalized_email,
+                User.tenant_id == current_user.tenant_id,
+                User.deleted_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if invited_user:
+        membership = (
+            await db.execute(
+                select(ProjectMember).where(
+                    ProjectMember.project_id == project_id,
+                    ProjectMember.user_id == invited_user.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if membership:
+            raise HTTPException(status_code=409, detail="User is already a member of this project")
 
-    # Create invitation
+    existing = (
+        await db.execute(
+            select(ProjectInvitation).where(
+                ProjectInvitation.project_id == project_id,
+                func.lower(ProjectInvitation.email) == normalized_email,
+                ProjectInvitation.accepted_at.is_(None),
+                ProjectInvitation.revoked_at.is_(None),
+                ProjectInvitation.deleted_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if existing and not _invitation_expired(existing.expires_at):
+        raise HTTPException(status_code=409, detail="An active invitation already exists for this email")
+
+    token = secrets.token_urlsafe(32)
     invitation = ProjectInvitation(
         project_id=project_id,
-        email=email,
-        token=token,
+        tenant_id=current_user.tenant_id,
+        email=normalized_email,
+        token=_invitation_token_digest(token),
         expires_at=datetime.now(timezone.utc) + timedelta(days=7),
     )
     db.add(invitation)
     await db.flush()
     await db.refresh(invitation)
+    await AuditService(db).log_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+        action="project.invitation.create",
+        resource_type="project_invitation",
+        resource_id=invitation.id,
+        metadata={"project_id": str(project_id), "email": normalized_email},
+    )
+    return ProjectInvitationCreatedResponse(
+        id=invitation.id,
+        token=token,
+        invite_path=f"/invitations/{token}",
+        expires_at=invitation.expires_at,
+    )
 
-    return {"token": token, "expires_at": invitation.expires_at}
+
+async def _owner_invitation(
+    project_id: UUID,
+    invitation_id: UUID,
+    db: AsyncSession,
+    current_user: User,
+) -> ProjectInvitation:
+    await check_project_membership(project_id, current_user.id, db, current_user.tenant_id, require_owner=True)
+    invitation = (
+        await db.execute(
+            select(ProjectInvitation).where(
+                ProjectInvitation.id == invitation_id,
+                ProjectInvitation.project_id == project_id,
+                ProjectInvitation.tenant_id == current_user.tenant_id,
+                ProjectInvitation.deleted_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if not invitation:
+        raise HTTPException(status_code=404, detail="Invitation not found")
+    return invitation
+
+
+@router.post(
+    "/{project_id}/invitations/{invitation_id}/resend",
+    response_model=ProjectInvitationCreatedResponse,
+)
+async def resend_project_invitation(
+    project_id: UUID,
+    invitation_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Rotate the invitation token and renew its expiry."""
+    invitation = await _owner_invitation(project_id, invitation_id, db, current_user)
+    if invitation.accepted_at is not None:
+        raise HTTPException(status_code=409, detail="Accepted invitation cannot be resent")
+    if invitation.revoked_at is not None:
+        raise HTTPException(status_code=409, detail="Revoked invitation cannot be resent")
+    token = secrets.token_urlsafe(32)
+    invitation.token = _invitation_token_digest(token)
+    invitation.expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+    await db.flush()
+    await AuditService(db).log_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+        action="project.invitation.resend",
+        resource_type="project_invitation",
+        resource_id=invitation.id,
+        metadata={"project_id": str(project_id), "email": invitation.email},
+    )
+    return ProjectInvitationCreatedResponse(
+        id=invitation.id,
+        token=token,
+        invite_path=f"/invitations/{token}",
+        expires_at=invitation.expires_at,
+    )
+
+
+@router.post("/{project_id}/invitations/{invitation_id}/revoke", response_model=ProjectInvitationResponse)
+async def revoke_project_invitation(
+    project_id: UUID,
+    invitation_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Revoke an unaccepted project invitation."""
+    invitation = await _owner_invitation(project_id, invitation_id, db, current_user)
+    if invitation.accepted_at is not None:
+        raise HTTPException(status_code=409, detail="Accepted invitation cannot be revoked")
+    invitation.revoked_at = datetime.now(timezone.utc)
+    await db.flush()
+    await AuditService(db).log_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+        action="project.invitation.revoke",
+        resource_type="project_invitation",
+        resource_id=invitation.id,
+        metadata={"project_id": str(project_id), "email": invitation.email},
+    )
+    return _invitation_response(invitation)

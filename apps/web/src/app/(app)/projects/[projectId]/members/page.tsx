@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/components/ui/toast'
-import { ArrowLeft, Copy, Mail, Send, Trash2, UserPlus, Users } from 'lucide-react'
+import { ArrowLeft, Ban, Copy, Mail, RefreshCw, Send, Trash2, UserPlus, Users } from 'lucide-react'
 import { formatDistanceToNow } from '@/lib/utils'
 
 interface ProjectMembersPageProps {
@@ -23,7 +23,7 @@ export default function ProjectMembersPage({ params }: ProjectMembersPageProps) 
   const queryClient = useQueryClient()
   const { addToast } = useToast()
   const [email, setEmail] = useState('')
-  const [lastInvite, setLastInvite] = useState<{ email: string; token: string; expires_at: string } | null>(null)
+  const [lastInvite, setLastInvite] = useState<{ email: string; token: string; invite_path: string; expires_at: string } | null>(null)
 
   const { data: membersData, isLoading } = useQuery({
     queryKey: ['project-members', projectId],
@@ -35,10 +35,15 @@ export default function ProjectMembersPage({ params }: ProjectMembersPageProps) 
     queryFn: () => identityApi.listUsers({ pageSize: 100 }),
   })
 
+  const { data: invitationsData, isLoading: invitationsLoading } = useQuery({
+    queryKey: ['project-invitations', projectId],
+    queryFn: () => projectMembersApi.listInvitations(projectId),
+  })
+
   const inviteMutation = useMutation({
     mutationFn: () => projectMembersApi.invite(projectId, email.trim()),
     onSuccess: (invite) => {
-      queryClient.invalidateQueries({ queryKey: ['project-members', projectId] })
+      queryClient.invalidateQueries({ queryKey: ['project-invitations', projectId] })
       setLastInvite({ email: email.trim(), ...invite })
       addToast({ title: '邀请已创建', description: '系统已生成邀请令牌，请复制后发送给受邀用户。' })
       setEmail('')
@@ -46,6 +51,26 @@ export default function ProjectMembersPage({ params }: ProjectMembersPageProps) 
     onError: (error: Error) => {
       addToast({ title: '发送邀请失败', description: error.message, variant: 'destructive' })
     },
+  })
+
+  const resendInvitationMutation = useMutation({
+    mutationFn: (invitation: { id: string; email: string }) =>
+      projectMembersApi.resendInvitation(projectId, invitation.id).then((created) => ({ ...created, email: invitation.email })),
+    onSuccess: (invite) => {
+      setLastInvite(invite)
+      queryClient.invalidateQueries({ queryKey: ['project-invitations', projectId] })
+      addToast({ title: '邀请已续期', description: '旧链接已失效，请发送新的邀请链接。' })
+    },
+    onError: (error: Error) => addToast({ title: '续期失败', description: error.message, variant: 'destructive' }),
+  })
+
+  const revokeInvitationMutation = useMutation({
+    mutationFn: (invitationId: string) => projectMembersApi.revokeInvitation(projectId, invitationId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project-invitations', projectId] })
+      addToast({ title: '邀请已撤销' })
+    },
+    onError: (error: Error) => addToast({ title: '撤销失败', description: error.message, variant: 'destructive' }),
   })
 
   const removeMemberMutation = useMutation({
@@ -61,6 +86,7 @@ export default function ProjectMembersPage({ params }: ProjectMembersPageProps) 
 
   const members = membersData?.items || []
   const users = usersData?.items || []
+  const invitations = invitationsData?.items || []
   const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
 
   const getUserLabel = (userId: string) => {
@@ -73,6 +99,15 @@ export default function ProjectMembersPage({ params }: ProjectMembersPageProps) 
       removeMemberMutation.mutate(userId)
     }
   }
+
+  const inviteUrl = (path: string) => `${window.location.origin}${path}`
+
+  const invitationStatusLabel = {
+    active: '待接受',
+    expired: '已过期',
+    accepted: '已接受',
+    revoked: '已撤销',
+  } as const
 
   return (
     <div className="space-y-6">
@@ -122,21 +157,76 @@ export default function ProjectMembersPage({ params }: ProjectMembersPageProps) 
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div>
                   <p className="font-medium">已为 {lastInvite.email} 创建邀请</p>
-                  <p className="mt-1 break-all text-green-700 dark:text-green-200">邀请令牌：{lastInvite.token}</p>
+                  <p className="mt-1 break-all text-green-700 dark:text-green-200">邀请链接：{inviteUrl(lastInvite.invite_path)}</p>
                   <p className="mt-1 text-xs">有效期至 {new Date(lastInvite.expires_at).toLocaleString('zh-CN')}</p>
                 </div>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => {
-                    navigator.clipboard?.writeText(lastInvite.token)
-                    addToast({ title: '已复制邀请令牌' })
+                    navigator.clipboard?.writeText(inviteUrl(lastInvite.invite_path))
+                    addToast({ title: '已复制邀请链接' })
                   }}
                 >
                   <Copy className="mr-2 h-4 w-4" />
-                  复制令牌
+                  复制链接
                 </Button>
               </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Mail className="h-5 w-5" />
+            邀请记录
+          </CardTitle>
+          <CardDescription>跟踪邀请状态；续期会使旧链接失效，撤销后受邀人不能再加入。</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {invitationsLoading ? (
+            <div className="py-8 text-center text-slate-500">正在加载邀请...</div>
+          ) : invitations.length === 0 ? (
+            <div className="py-8 text-center text-sm text-slate-500">尚未创建邀请</div>
+          ) : (
+            <div className="space-y-2">
+              {invitations.map((invitation) => (
+                <div key={invitation.id} className="flex flex-col gap-3 rounded-lg border border-slate-200 p-3 dark:border-slate-700 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-slate-900 dark:text-white">{invitation.email}</p>
+                    <p className="mt-1 text-xs text-slate-500">有效期至 {new Date(invitation.expires_at).toLocaleString('zh-CN')}</p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant={invitation.status === 'active' ? 'secondary' : 'outline'}>
+                      {invitationStatusLabel[invitation.status]}
+                    </Badge>
+                    {(invitation.status === 'active' || invitation.status === 'expired') && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => resendInvitationMutation.mutate({ id: invitation.id, email: invitation.email })}
+                        disabled={resendInvitationMutation.isPending}
+                      >
+                        <RefreshCw className="mr-2 h-4 w-4" />
+                        续期
+                      </Button>
+                    )}
+                    {invitation.status === 'active' && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => revokeInvitationMutation.mutate(invitation.id)}
+                        disabled={revokeInvitationMutation.isPending}
+                      >
+                        <Ban className="mr-2 h-4 w-4" />
+                        撤销
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </CardContent>
