@@ -11,6 +11,14 @@ test.describe('Team permission control center', () => {
     })
   })
 
+  test('shows the tenant member list by default', async ({ page }) => {
+    await page.goto('/team', { waitUntil: 'domcontentloaded' })
+
+    await expect(page.getByRole('tab', { name: '成员' })).toHaveAttribute('aria-selected', 'true')
+    await expect(page.getByRole('heading', { name: '租户成员列表', exact: true })).toBeVisible()
+    await expect(page.getByText('业务验收负责人', { exact: true })).toBeVisible()
+  })
+
   test('renders member, role, policy, field permission, and audit workflows', async ({ page }) => {
     await page.route('**/api/v1/identity/permission-diagnostics*', async (route) => {
       await route.fulfill({
@@ -38,6 +46,7 @@ test.describe('Team permission control center', () => {
     })
 
     await page.goto('/team', { waitUntil: 'domcontentloaded' })
+    await page.getByRole('tab', { name: '总览' }).click()
 
     const body = page.locator('body')
     await expect(page.getByRole('heading', { name: '团队权限', exact: true })).toBeVisible()
@@ -61,10 +70,10 @@ test.describe('Team permission control center', () => {
     await expect(page.getByTestId('team-create-role-template-consultant')).toBeEnabled()
     await page.getByTestId('team-create-role-template-consultant').click()
     await expect(body).toContainText('角色模板已创建')
-    await expect(page.getByRole('link', { name: '审计日志', exact: true })).toHaveAttribute('href', '/audit')
+    await expect(page.getByRole('main').getByRole('link', { name: '审计日志', exact: true })).toHaveAttribute('href', '/audit')
 
     await page.getByRole('tab', { name: '成员' }).click()
-    await expect(body).toContainText('成员与角色分配')
+    await expect(body).toContainText('租户成员列表')
     await expect(body).toContainText('业务验收负责人')
     await page.getByRole('button', { name: '新增成员' }).first().click()
     await expect(page.getByRole('dialog')).toContainText('新增成员')
