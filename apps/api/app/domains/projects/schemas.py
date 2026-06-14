@@ -278,6 +278,9 @@ class CustomerPortalLinkResponse(BaseModel):
     revoked_at: datetime | None = None
     last_accessed_at: datetime | None = None
     submitted_at: datetime | None = None
+    last_downloaded_at: datetime | None = None
+    download_count: int = 0
+    receipt_id: UUID | None = None
 
 
 class CustomerPortalLinkCreatedResponse(CustomerPortalLinkResponse):
@@ -299,6 +302,31 @@ class CustomerPortalAcceptanceSubmit(BaseModel):
     items: list[ProjectAcceptanceItem] = Field(default_factory=list)
 
 
+class CustomerPortalArtifact(BaseModel):
+    """Safe downloadable project-package artifact metadata."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    filename: str
+    content_type: str
+    file_size: int
+    file_hash: str | None = None
+    created_at: datetime
+
+
+class CustomerPortalReceipt(BaseModel):
+    """Durable receipt for a customer acceptance submission."""
+
+    id: UUID
+    contact_name: str
+    contact_email: str
+    decision: str
+    submitted_at: datetime
+    item_count: int
+    accepted_item_count: int
+
+
 class CustomerPortalSummaryResponse(BaseModel):
     """Public, token-scoped delivery and acceptance summary."""
 
@@ -309,6 +337,8 @@ class CustomerPortalSummaryResponse(BaseModel):
     accepted_at: datetime | None = None
     submitted_at: datetime | None = None
     criteria: list[ProjectAcceptanceItem] = Field(default_factory=list)
+    artifacts: list[CustomerPortalArtifact] = Field(default_factory=list)
+    receipt: CustomerPortalReceipt | None = None
     gate: ProjectAcceptanceGate
 
 

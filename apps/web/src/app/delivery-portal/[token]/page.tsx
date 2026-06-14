@@ -2,7 +2,7 @@
 
 import { use, useEffect, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { CheckCircle2, PackageCheck, ShieldCheck } from 'lucide-react'
+import { CheckCircle2, Download, FileCheck2, PackageCheck, ShieldCheck } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -79,6 +79,26 @@ export default function CustomerDeliveryPortalPage({ params }: { params: Promise
         </CardContent>
       </Card>
 
+      <Card data-testid="portal-artifacts">
+        <CardHeader><CardTitle>正式交付物</CardTitle><CardDescription>以下文件来自已完成的正式项目交付包，下载行为会记录到交付证据。</CardDescription></CardHeader>
+        <CardContent className="space-y-2">
+          {portal.artifacts.map((artifact) => (
+            <div key={artifact.id} className="flex flex-col gap-2 rounded-md border p-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <p className="truncate font-medium">{artifact.filename}</p>
+                <p className="text-xs text-slate-500">{Math.ceil(artifact.file_size / 1024)} KB · {artifact.content_type} · SHA-256 {artifact.file_hash || '未提供'}</p>
+              </div>
+              <Button variant="outline" asChild>
+                <a href={customerPortalApi.downloadArtifact(token, artifact.id)} target="_blank" rel="noreferrer">
+                  <Download className="mr-2 h-4 w-4" />下载
+                </a>
+              </Button>
+            </div>
+          ))}
+          {!portal.artifacts.length && <p className="text-sm text-slate-500">正式交付物尚未发布。</p>}
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader><CardTitle>提交验收结论</CardTitle><CardDescription>签署邮箱必须与收到本链接的邮箱一致。</CardDescription></CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-2">
@@ -97,6 +117,18 @@ export default function CustomerDeliveryPortalPage({ params }: { params: Promise
           {submitMutation.isError && <p className="text-sm text-red-600 md:col-span-2">{submitMutation.error.message}</p>}
         </CardContent>
       </Card>
+
+      {portal.receipt && (
+        <Card data-testid="acceptance-receipt">
+          <CardHeader><CardTitle>验收回执</CardTitle><CardDescription>该回执用于追溯本次客户验收提交。</CardDescription></CardHeader>
+          <CardContent className="grid gap-3 text-sm md:grid-cols-2">
+            <div><p className="text-slate-500">回执编号</p><p className="font-mono">{portal.receipt.id}</p></div>
+            <div><p className="text-slate-500">提交时间</p><p>{new Date(portal.receipt.submitted_at).toLocaleString()}</p></div>
+            <div><p className="text-slate-500">签署人</p><p>{portal.receipt.contact_name} · {portal.receipt.contact_email}</p></div>
+            <div><p className="text-slate-500">验收证据</p><p><FileCheck2 className="mr-1 inline h-4 w-4" />已接受 {portal.receipt.accepted_item_count}/{portal.receipt.item_count} 项</p></div>
+          </CardContent>
+        </Card>
+      )}
     </main>
   )
 }

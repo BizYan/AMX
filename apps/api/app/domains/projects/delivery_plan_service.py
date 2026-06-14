@@ -15,10 +15,12 @@ from app.domains.export.models import ExportArtifact, ExportJob, ExportStatus, E
 from app.domains.projects.models import ProjectDeliveryPlan, ProjectMilestone
 from app.domains.projects.schemas import (
     CustomerPortalAcceptanceSubmit,
+    CustomerPortalArtifact,
     CustomerPortalLinkCreate,
     CustomerPortalLinkCreatedResponse,
     CustomerPortalLinkResponse,
     CustomerPortalSummaryResponse,
+    CustomerPortalReceipt,
     ProjectAcceptanceResponse,
     ProjectAcceptanceUpdate,
     ProjectDeliveryPlanResponse,
@@ -379,6 +381,9 @@ class ProjectDeliveryPlanService:
             "revoked_at": None,
             "last_accessed_at": None,
             "submitted_at": None,
+            "last_downloaded_at": None,
+            "download_count": 0,
+            "receipt_id": None,
         }
         links = list((plan.settings_json or {}).get("customer_portal_links", []))
         links.append(record)
@@ -431,11 +436,36 @@ class ProjectDeliveryPlanService:
             "updated_by": None,
             "external_portal_link_id": link["id"],
             "closed_at": existing.get("closed_at"),
+            "receipt_id": str(uuid4()),
         }
         link["submitted_at"] = now
+        link["receipt_id"] = acceptance["receipt_id"]
         plan.settings_json = {**(plan.settings_json or {}), "customer_acceptance": acceptance}
         await self.db.flush()
         return await self._customer_portal_response(plan, link)
+
+    async def get_customer_portal_artifact(
+        self, token: str, artifact_id: UUID
+    ) -> ExportArtifact:
+        plan, link = await self._portal_plan_and_link(token)
+        artifact = await self.db.scalar(
+            select(ExportArtifact)
+            .join(ExportJob, ExportArtifact.job_id == ExportJob.id)
+            .where(
+                ExportArtifact.id == artifact_id,
+                ExportArtifact.tenant_id == plan.tenant_id,
+                ExportJob.project_id == plan.project_id,
+                ExportJob.export_type == ExportType.PROJECT_PACKAGE.value,
+                ExportJob.status == ExportStatus.COMPLETED.value,
+            )
+        )
+        if not artifact:
+            raise ValueError("Customer portal artifact not found")
+        link["last_downloaded_at"] = datetime.now(timezone.utc).isoformat()
+        link["download_count"] = int(link.get("download_count") or 0) + 1
+        plan.settings_json = {**(plan.settings_json or {})}
+        await self.db.flush()
+        return artifact
 
     async def _portal_plan_and_link(
         self, token: str
@@ -466,6 +496,33 @@ class ProjectDeliveryPlanService:
     ) -> CustomerPortalSummaryResponse:
         acceptance = await self._acceptance_response(plan)
         project = await self._project(plan.project_id, plan.tenant_id)
+        artifacts = list(
+            (
+                await self.db.scalars(
+                    select(ExportArtifact)
+                    .join(ExportJob, ExportArtifact.job_id == ExportJob.id)
+                    .where(
+                        ExportArtifact.tenant_id == plan.tenant_id,
+                        ExportJob.project_id == plan.project_id,
+                        ExportJob.export_type == ExportType.PROJECT_PACKAGE.value,
+                        ExportJob.status == ExportStatus.COMPLETED.value,
+                    )
+                    .order_by(ExportArtifact.created_at.desc())
+                )
+            ).all()
+        )
+        receipt_id = (plan.settings_json or {}).get("customer_acceptance", {}).get("receipt_id")
+        receipt = None
+        if receipt_id and link.get("submitted_at"):
+            receipt = CustomerPortalReceipt(
+                id=receipt_id,
+                contact_name=acceptance.contact_name,
+                contact_email=acceptance.contact_email,
+                decision=acceptance.decision,
+                submitted_at=link["submitted_at"],
+                item_count=len(acceptance.items),
+                accepted_item_count=sum(item.status == "accepted" for item in acceptance.items),
+            )
         return CustomerPortalSummaryResponse(
             project_name=project.name,
             customer_name=acceptance.customer_name,
@@ -474,6 +531,8 @@ class ProjectDeliveryPlanService:
             accepted_at=acceptance.accepted_at,
             submitted_at=link.get("submitted_at"),
             criteria=acceptance.items,
+            artifacts=[CustomerPortalArtifact.model_validate(item) for item in artifacts],
+            receipt=receipt,
             gate=acceptance.gate,
         )
 

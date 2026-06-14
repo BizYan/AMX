@@ -397,6 +397,35 @@ async def test_customer_portal_link_is_hashed_revocable_and_submits_acceptance(d
 
     portal = await service.get_customer_portal(created.token)
     assert portal.project_name == launched.project.name
+    assert portal.artifacts == []
+
+    job = ExportJob(
+        tenant_id=owner.tenant_id,
+        project_id=launched.project.id,
+        export_type="project_package",
+        status="completed",
+        created_by=owner.id,
+        completed_at=datetime.now(timezone.utc),
+    )
+    db_session.add(job)
+    await db_session.flush()
+    artifact = ExportArtifact(
+        tenant_id=owner.tenant_id,
+        job_id=job.id,
+        filename="customer-delivery.zip",
+        content_type="application/zip",
+        file_size=2048,
+        storage_path="exports/customer-delivery.zip",
+        file_hash="receipt-hash",
+    )
+    db_session.add(artifact)
+    await db_session.flush()
+
+    portal_with_artifact = await service.get_customer_portal(created.token)
+    assert [item.filename for item in portal_with_artifact.artifacts] == ["customer-delivery.zip"]
+    downloadable = await service.get_customer_portal_artifact(created.token, artifact.id)
+    assert downloadable.id == artifact.id
+    assert plan.settings_json["customer_portal_links"][0]["download_count"] == 1
     submitted = await service.submit_customer_portal_acceptance(
         created.token,
         CustomerPortalAcceptanceSubmit(
@@ -416,6 +445,9 @@ async def test_customer_portal_link_is_hashed_revocable_and_submits_acceptance(d
     )
     assert submitted.decision == "accepted_with_followups"
     assert submitted.submitted_at is not None
+    assert submitted.receipt is not None
+    assert submitted.receipt.contact_email == "sponsor@example.com"
+    assert submitted.receipt.accepted_item_count == 1
     assert plan.settings_json["customer_acceptance"]["external_portal_link_id"] == str(created.id)
 
     await service.revoke_customer_portal_link(
