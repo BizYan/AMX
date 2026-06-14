@@ -18,7 +18,9 @@ Merging a PR is not automatically a production release. Group stable PRs into a 
 3. Run CI on the release ref, including deterministic Playwright E2E.
 4. Deploy staging when the slice changes release-critical flows or infrastructure.
 5. Run smoke tests against staging or the release-critical local route set.
-6. Create release tag when cutting a versioned release:
+6. Create release tag when cutting a versioned release. Pushing the tag triggers
+   the Release workflow, which validates the release and publishes the GitHub
+   Release entry after all quality gates pass:
 
 ```bash
 git checkout main
@@ -29,7 +31,10 @@ git push origin v0.3.0
 
 7. Use GitHub production deployment workflow with the release tag or approved release ref.
 8. Verify production health, OCI commit/status, and GitNexus service health/index refresh.
-9. Record health check output and any smoke evidence in release notes.
+9. Confirm both the GitHub Release entry and GitHub production Deployment show
+   success. A deployment without a GitHub Release is not a completed versioned
+   release.
+10. Record health check output and any smoke evidence in release notes.
 
 ## Release Validation Scope
 
