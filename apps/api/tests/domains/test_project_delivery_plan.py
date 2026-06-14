@@ -449,6 +449,59 @@ async def test_customer_portal_link_is_hashed_revocable_and_submits_acceptance(d
     assert submitted.receipt.contact_email == "sponsor@example.com"
     assert submitted.receipt.accepted_item_count == 1
     assert plan.settings_json["customer_acceptance"]["external_portal_link_id"] == str(created.id)
+    follow_up = await db_session.scalar(
+        select(CollaborationWorkItem).where(
+            CollaborationWorkItem.source_key
+            == f"acceptance:{launched.project.id}:scope"
+        )
+    )
+    assert follow_up is None
+
+    rejected = await service.submit_customer_portal_acceptance(
+        created.token,
+        CustomerPortalAcceptanceSubmit(
+            contact_name="Delivery Sponsor",
+            contact_email="sponsor@example.com",
+            decision="rejected",
+            notes="Scope evidence requires remediation.",
+            items=[
+                {
+                    "key": "scope",
+                    "title": "Scope delivered",
+                    "status": "rejected",
+                    "evidence": "Missing signed evidence",
+                }
+            ],
+        ),
+    )
+    follow_up = await db_session.scalar(
+        select(CollaborationWorkItem).where(
+            CollaborationWorkItem.source_key
+            == f"acceptance:{launched.project.id}:scope"
+        )
+    )
+    assert follow_up.status == "blocked"
+    assert follow_up.assigned_to == owner.id
+    assert rejected.follow_ups[0].status == "blocked"
+
+    accepted_again = await service.submit_customer_portal_acceptance(
+        created.token,
+        CustomerPortalAcceptanceSubmit(
+            contact_name="Delivery Sponsor",
+            contact_email="sponsor@example.com",
+            decision="accepted",
+            items=[
+                {
+                    "key": "scope",
+                    "title": "Scope delivered",
+                    "status": "accepted",
+                    "evidence": "Signed evidence received",
+                }
+            ],
+        ),
+    )
+    assert follow_up.status == "done"
+    assert accepted_again.follow_ups[0].status == "done"
 
     await service.revoke_customer_portal_link(
         launched.project.id, owner.tenant_id, owner.id, created.id

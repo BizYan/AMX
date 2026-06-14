@@ -33,6 +33,15 @@ test('customer reviews delivery evidence and submits acceptance', async ({ page 
           item_count: payload.items.length,
           accepted_item_count: payload.items.filter((item: { status: string }) => item.status === 'accepted').length,
         },
+        follow_ups: [
+          {
+            key: 'scope',
+            title: '客户验收整改：范围已经交付',
+            status: 'done',
+            priority: 'high',
+            updated_at: new Date().toISOString(),
+          },
+        ],
         gate: { status: 'passed', label: '可正式关闭', blockers: [], warnings: [] },
       },
     })
@@ -67,6 +76,15 @@ test('customer reviews delivery evidence and submits acceptance', async ({ page 
           item_count: 1,
           accepted_item_count: 1,
         } : null,
+        follow_ups: submitted ? [
+          {
+            key: 'scope',
+            title: '客户验收整改：范围已经交付',
+            status: 'done',
+            priority: 'high',
+            updated_at: new Date().toISOString(),
+          },
+        ] : [],
         gate: { status: 'blocked', label: '等待客户验收', blockers: ['等待客户结论'], warnings: [] },
       },
     })
@@ -83,4 +101,5 @@ test('customer reviews delivery evidence and submits acceptance', async ({ page 
 
   await expect(page.getByText(/已于 .* 提交/)).toBeVisible()
   await expect(page.getByTestId('acceptance-receipt')).toContainText('receipt-001')
+  await expect(page.getByTestId('portal-follow-ups')).toContainText('已整改')
 })

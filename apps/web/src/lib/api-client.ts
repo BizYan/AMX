@@ -1504,6 +1504,7 @@ export interface ProjectAcceptance extends ProjectAcceptanceUpdate {
     blockers: string[]
     warnings: string[]
   }
+  follow_ups: CustomerAcceptanceFollowUp[]
 }
 
 export interface CustomerPortalLink {
@@ -1541,7 +1542,16 @@ export interface CustomerPortalSummary {
   criteria: ProjectAcceptanceItem[]
   artifacts: CustomerPortalArtifact[]
   receipt?: CustomerPortalReceipt | null
+  follow_ups: CustomerAcceptanceFollowUp[]
   gate: ProjectAcceptance['gate']
+}
+
+export interface CustomerAcceptanceFollowUp {
+  key: string
+  title: string
+  status: string
+  priority: string
+  updated_at: string
 }
 
 export interface CustomerPortalArtifact {
