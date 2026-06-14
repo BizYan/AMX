@@ -2,8 +2,8 @@
 
 import Link from 'next/link'
 import { use, useMemo, useRef, useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { sourceFilesApi, SourceFile } from '@/lib/api-client'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { sourceFilesApi, SourceFile, SourceIngestionJob } from '@/lib/api-client'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -26,6 +26,9 @@ import {
   Loader2,
   Network,
   PlusCircle,
+  RefreshCw,
+  RotateCcw,
+  Play,
   Upload,
   X,
 } from 'lucide-react'
@@ -103,8 +106,43 @@ export default function FilesPage({ params }: FilesPageProps) {
     queryKey: ['project-files', projectId],
     queryFn: () => sourceFilesApi.list(projectId, { pageSize: 100 }),
   })
+  const { data: ingestionJobsData } = useQuery({
+    queryKey: ['source-ingestion-jobs', projectId],
+    queryFn: () => sourceFilesApi.listIngestionJobs(projectId),
+    refetchInterval: (query) => {
+      const jobs = query.state.data?.items ?? []
+      return jobs.some((job) => job.status === 'pending' || job.status === 'running') ? 3000 : false
+    },
+  })
 
   const files = useMemo(() => filesData?.items ?? [], [filesData?.items])
+  const latestJobsByFile = useMemo(() => {
+    const jobs = ingestionJobsData?.items ?? []
+    return jobs.reduce<Record<string, SourceIngestionJob>>((latest, job) => {
+      if (!latest[job.source_file_id]) latest[job.source_file_id] = job
+      return latest
+    }, {})
+  }, [ingestionJobsData?.items])
+  const refreshIngestionState = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['project-files', projectId] }),
+      queryClient.invalidateQueries({ queryKey: ['source-ingestion-jobs', projectId] }),
+    ])
+  }
+  const ingestionAction = useMutation({
+    mutationFn: async (action: { type: 'execute' | 'retry' | 'reingest'; id: string }) => {
+      if (action.type === 'execute') return sourceFilesApi.executeIngestionJob(projectId, action.id)
+      if (action.type === 'retry') return sourceFilesApi.retryIngestionJob(projectId, action.id)
+      return sourceFilesApi.reingest(projectId, action.id)
+    },
+    onSuccess: async () => {
+      await refreshIngestionState()
+      addToast({ title: '摄取任务已更新', description: '最新任务状态和知识入库结果已同步。' })
+    },
+    onError: (error) => {
+      addToast({ title: '摄取任务操作失败', description: getErrorMessage(error), variant: 'destructive' })
+    },
+  })
   const summary = useMemo(
     () => ({
       uploaded: files.length,
@@ -350,6 +388,7 @@ export default function FilesPage({ params }: FilesPageProps) {
           {files.map((file) => {
             const status = statusCopy[file.status]
             const sourceFileId = encodeURIComponent(file.id)
+            const latestJob = latestJobsByFile[file.id]
             return (
               <Card key={file.id}>
                 <CardHeader className="pb-3">
@@ -385,6 +424,41 @@ export default function FilesPage({ params }: FilesPageProps) {
                   </div>
 
                   <div className="flex flex-wrap gap-2">
+                    {latestJob?.status === 'pending' && (
+                      <Button
+                        size="sm"
+                        data-testid={`execute-ingestion-${file.id}`}
+                        disabled={ingestionAction.isPending}
+                        onClick={() => ingestionAction.mutate({ type: 'execute', id: latestJob.id })}
+                      >
+                        <Play className="mr-2 h-4 w-4" />
+                        执行摄取
+                      </Button>
+                    )}
+                    {latestJob?.status === 'failed' && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        data-testid={`retry-ingestion-${file.id}`}
+                        disabled={ingestionAction.isPending}
+                        onClick={() => ingestionAction.mutate({ type: 'retry', id: latestJob.id })}
+                      >
+                        <RotateCcw className="mr-2 h-4 w-4" />
+                        重试摄取
+                      </Button>
+                    )}
+                    {file.status === 'ready' && !latestJob?.status?.match(/pending|running/) && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        data-testid={`reingest-source-${file.id}`}
+                        disabled={ingestionAction.isPending}
+                        onClick={() => ingestionAction.mutate({ type: 'reingest', id: file.id })}
+                      >
+                        <RefreshCw className="mr-2 h-4 w-4" />
+                        重新摄取
+                      </Button>
+                    )}
                     <Button variant="outline" size="sm" onClick={() => downloadFile(file)}>
                       <Download className="mr-2 h-4 w-4" />
                       下载原件

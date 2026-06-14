@@ -1093,6 +1093,35 @@ class SourceFileListResponse(PaginatedResponse[SourceFileResponse]):
     pass
 
 
+class SourceIngestionJobResponse(BaseModel):
+    """Persistent source-ingestion execution response."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    tenant_id: UUID | None
+    project_id: UUID
+    source_file_id: UUID
+    requested_by_id: UUID | None
+    status: str
+    stage: str
+    attempt_count: int
+    max_attempts: int
+    error_message: str | None
+    result_json: dict[str, Any]
+    started_at: datetime | None
+    completed_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class SourceIngestionJobListResponse(BaseModel):
+    """Source-ingestion job list response."""
+
+    items: list[SourceIngestionJobResponse]
+    total: int
+
+
 # Upload Schemas
 class UploadUrlResponse(BaseModel):
     """Schema for pre-signed upload URL response."""

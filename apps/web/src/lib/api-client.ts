@@ -416,6 +416,17 @@ export const sourceFilesApi = {
     apiClient.post<SourceFileApiPayload>(`/projects/${projectId}/files`, formData).then(normalizeSourceFile),
   delete: (projectId: string, fileId: string) =>
     apiClient.delete(`/projects/${projectId}/files/${fileId}`),
+  listIngestionJobs: (projectId: string, sourceFileId?: string) =>
+    apiClient.get<{ items: SourceIngestionJob[]; total: number }>(
+      `/projects/${projectId}/ingestion-jobs`,
+      { source_file_id: sourceFileId }
+    ),
+  executeIngestionJob: (projectId: string, jobId: string) =>
+    apiClient.post<SourceIngestionJob>(`/projects/${projectId}/ingestion-jobs/${jobId}/execute`),
+  retryIngestionJob: (projectId: string, jobId: string) =>
+    apiClient.post<SourceIngestionJob>(`/projects/${projectId}/ingestion-jobs/${jobId}/retry`),
+  reingest: (projectId: string, fileId: string) =>
+    apiClient.post<SourceIngestionJob>(`/projects/${projectId}/files/${fileId}/reingest`),
   downloadUrl: (projectId: string, fileId: string) =>
     `${API_BASE_URL}/projects/${projectId}/files/${fileId}/download`,
 }
@@ -3948,4 +3959,22 @@ export interface SourceFile {
   errorMessage?: string | null
   createdAt: string
   created_at?: string
+}
+
+export interface SourceIngestionJob {
+  id: string
+  tenant_id?: string | null
+  project_id: string
+  source_file_id: string
+  requested_by_id?: string | null
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
+  stage: string
+  attempt_count: number
+  max_attempts: number
+  error_message?: string | null
+  result_json: Record<string, any>
+  started_at?: string | null
+  completed_at?: string | null
+  created_at: string
+  updated_at: string
 }
