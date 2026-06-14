@@ -872,6 +872,29 @@ class ProjectInvitationAcceptResponse(BaseModel):
     status: Literal["accepted"]
 
 
+class ProjectInvitationPreviewResponse(BaseModel):
+    """Public, deliberately limited invitation preview."""
+
+    status: Literal["active", "expired", "accepted", "revoked", "invalid"]
+    project_name: str | None = None
+    masked_email: str | None = None
+    expires_at: datetime | None = None
+
+
+class ProjectInvitationActivationRequest(BaseModel):
+    """Account details supplied by a new invited user."""
+
+    full_name: str = Field(..., min_length=1, max_length=255)
+    password: str = Field(..., min_length=8, max_length=100)
+
+
+class ProjectInvitationActivationResponse(ProjectInvitationAcceptResponse):
+    """Invitation acceptance result with the new user's session."""
+
+    access_token: str
+    token_type: Literal["bearer"] = "bearer"
+
+
 # Project Settings Schemas
 class ProjectSettingsUpdate(BaseModel):
     """Schema for updating project settings."""

@@ -45,8 +45,11 @@ from app.domains.projects.schemas import (
     ProjectMemberResponse,
     ProjectMemberListResponse,
     ProjectInvitationAcceptResponse,
+    ProjectInvitationActivationRequest,
+    ProjectInvitationActivationResponse,
     ProjectInvitationCreatedResponse,
     ProjectInvitationListResponse,
+    ProjectInvitationPreviewResponse,
     ProjectInvitationResponse,
     ProjectSettingsUpdate,
     ProjectSettingsResponse,
@@ -71,6 +74,7 @@ from app.domains.projects.service import (
 from app.domains.projects.lifecycle import ProjectDocumentLifecyclePolicyService
 from app.domains.projects.launch_service import ProjectLaunchService
 from app.domains.projects.delivery_plan_service import ProjectDeliveryPlanService
+from app.domains.projects.invitation_service import InvitationError, ProjectInvitationService
 from app.services.audit_service import AuditService
 from app.services.storage import StorageHandle, StorageProvider, LocalStorageProvider, get_storage_provider
 from app.models.identity import User
@@ -297,49 +301,35 @@ async def accept_project_invitation(
     current_user: User = Depends(get_current_user),
 ):
     """Accept an active invitation when tenant and email match the signed-in user."""
-    invitation = await _find_invitation_by_token(token, db)
-    if not invitation:
-        raise HTTPException(status_code=404, detail="Invitation not found")
-    if invitation.revoked_at is not None:
-        raise HTTPException(status_code=410, detail="Invitation has been revoked")
-    if invitation.accepted_at is not None:
-        raise HTTPException(status_code=409, detail="Invitation has already been accepted")
-    if _invitation_expired(invitation.expires_at):
-        raise HTTPException(status_code=410, detail="Invitation has expired")
-    if invitation.tenant_id != current_user.tenant_id:
-        raise HTTPException(status_code=403, detail="Invitation belongs to another tenant")
-    if invitation.email.casefold() != current_user.email.casefold():
-        raise HTTPException(status_code=403, detail="Invitation email does not match signed-in user")
+    try:
+        return await ProjectInvitationService(db).accept(token, current_user)
+    except InvitationError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail) from error
 
-    project = await ProjectService(db).get_project(invitation.project_id, current_user.tenant_id)
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-    existing = (
-        await db.execute(
-            select(ProjectMember).where(
-                ProjectMember.project_id == invitation.project_id,
-                ProjectMember.user_id == current_user.id,
-            )
-        )
-    ).scalar_one_or_none()
-    if not existing:
-        db.add(ProjectMember(project_id=invitation.project_id, user_id=current_user.id))
-    invitation.accepted_at = datetime.now(timezone.utc)
-    await db.flush()
-    await AuditService(db).log_action(
-        tenant_id=current_user.tenant_id,
-        user_id=current_user.id,
-        action="project.invitation.accept",
-        resource_type="project_invitation",
-        resource_id=invitation.id,
-        metadata={"project_id": str(invitation.project_id), "email": invitation.email},
-    )
-    return ProjectInvitationAcceptResponse(
-        project_id=project.id,
-        project_name=project.name,
-        user_id=current_user.id,
-        status="accepted",
-    )
+
+@router.get("/invitations/{token}/preview", response_model=ProjectInvitationPreviewResponse)
+async def preview_project_invitation(
+    token: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Return only the public-safe context needed to evaluate an invitation."""
+    try:
+        return await ProjectInvitationService(db).preview(token)
+    except InvitationError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail) from error
+
+
+@router.post("/invitations/{token}/activate", response_model=ProjectInvitationActivationResponse)
+async def activate_project_invitation(
+    token: str,
+    data: ProjectInvitationActivationRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Create the invited user's account and accept the invitation atomically."""
+    try:
+        return await ProjectInvitationService(db).activate(token, data)
+    except InvitationError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail) from error
 
 
 # Project Endpoints

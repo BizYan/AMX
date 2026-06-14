@@ -56,7 +56,7 @@ function ProductPreview() {
   )
 }
 
-export function LandingLogin() {
+export function LandingLogin({ returnTo = '/dashboard' }: { returnTo?: string }) {
   const { login } = useAuth()
   const tAuth = useTranslations('auth')
   const [email, setEmail] = useState('')
@@ -70,7 +70,8 @@ export function LandingLogin() {
 
     try {
       await login(email, password)
-      window.location.assign('/dashboard')
+      const safeReturnTo = returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : '/dashboard'
+      window.location.assign(safeReturnTo)
     } catch (err) {
       setError(err instanceof Error ? err.message : tAuth('loginFailedDetail'))
     } finally {
