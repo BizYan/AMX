@@ -64,7 +64,7 @@ from app.domains.projects.lifecycle import ProjectDocumentLifecyclePolicyService
 from app.domains.projects.launch_service import ProjectLaunchService
 from app.domains.projects.delivery_plan_service import ProjectDeliveryPlanService
 from app.services.audit_service import AuditService
-from app.services.storage import StorageProvider, LocalStorageProvider, get_storage_provider
+from app.services.storage import StorageHandle, StorageProvider, LocalStorageProvider, get_storage_provider
 from app.models.identity import User
 
 
@@ -100,6 +100,44 @@ async def submit_customer_delivery_acceptance(
         raise HTTPException(status_code=404, detail=str(error)) from error
     except PermissionError as error:
         raise HTTPException(status_code=403, detail=str(error)) from error
+
+
+@router.get("/customer-portal/{token}/artifacts/{artifact_id}/download")
+async def download_customer_delivery_artifact(
+    token: str,
+    artifact_id: UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """Download a completed project-package artifact through an active portal link."""
+    try:
+        artifact = await ProjectDeliveryPlanService(db).get_customer_portal_artifact(
+            token, artifact_id
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except PermissionError as error:
+        raise HTTPException(status_code=410, detail=str(error)) from error
+    storage = get_storage_provider()
+    handle = StorageHandle(
+        path=artifact.storage_path,
+        filename=artifact.filename,
+        content_type=artifact.content_type,
+        size=artifact.file_size,
+        hash=artifact.file_hash or "",
+        storage_backend="local",
+    )
+    try:
+        content = await storage.download(handle)
+    except FileNotFoundError as error:
+        raise HTTPException(status_code=404, detail="Export file not found") from error
+    return StreamingResponse(
+        iter([content]),
+        media_type=artifact.content_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{artifact.filename}"',
+            "Content-Length": str(artifact.file_size),
+        },
+    )
 
 
 async def get_current_user(

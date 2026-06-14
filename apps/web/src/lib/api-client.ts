@@ -1515,6 +1515,9 @@ export interface CustomerPortalLink {
   revoked_at?: string | null
   last_accessed_at?: string | null
   submitted_at?: string | null
+  last_downloaded_at?: string | null
+  download_count: number
+  receipt_id?: string | null
 }
 
 export interface CustomerPortalLinkCreated extends CustomerPortalLink {
@@ -1536,7 +1539,28 @@ export interface CustomerPortalSummary {
   accepted_at?: string | null
   submitted_at?: string | null
   criteria: ProjectAcceptanceItem[]
+  artifacts: CustomerPortalArtifact[]
+  receipt?: CustomerPortalReceipt | null
   gate: ProjectAcceptance['gate']
+}
+
+export interface CustomerPortalArtifact {
+  id: string
+  filename: string
+  content_type: string
+  file_size: number
+  file_hash?: string | null
+  created_at: string
+}
+
+export interface CustomerPortalReceipt {
+  id: string
+  contact_name: string
+  contact_email: string
+  decision: string
+  submitted_at: string
+  item_count: number
+  accepted_item_count: number
 }
 
 export interface CustomerPortalAcceptanceSubmit {
@@ -1555,6 +1579,8 @@ export const customerPortalApi = {
       `/projects/customer-portal/${encodeURIComponent(token)}/acceptance`,
       data,
     ),
+  downloadArtifact: (token: string, artifactId: string) =>
+    `${API_BASE_URL}/projects/customer-portal/${encodeURIComponent(token)}/artifacts/${artifactId}/download`,
 }
 
 export interface ProjectMilestoneCreateInput {

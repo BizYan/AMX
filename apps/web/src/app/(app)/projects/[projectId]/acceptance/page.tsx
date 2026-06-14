@@ -216,6 +216,10 @@ export default function ProjectAcceptancePage({ params }: { params: Promise<{ pr
                   <p className="text-slate-500">
                     到期：{new Date(link.expires_at).toLocaleString()} · {link.submitted_at ? '客户已提交' : link.revoked_at ? '已撤销' : '等待客户'}
                   </p>
+                  <p className="text-xs text-slate-500">
+                    下载 {link.download_count || 0} 次{link.last_downloaded_at ? ` · 最近 ${new Date(link.last_downloaded_at).toLocaleString()}` : ''}
+                    {link.receipt_id ? ` · 回执 ${link.receipt_id}` : ''}
+                  </p>
                 </div>
                 {!link.revoked_at && (
                   <Button variant="ghost" size="sm" onClick={() => revokePortalMutation.mutate(link.id)}>
