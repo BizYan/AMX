@@ -10,6 +10,7 @@ import {
   FileText,
   FolderKanban,
   MoreVertical,
+  Network,
   Plus,
   RotateCcw,
   Settings,
@@ -214,10 +215,18 @@ export default function ProjectsPage() {
           <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">项目文档</h1>
           <p className="mt-1 text-sm text-slate-500">按交付蓝图启动项目，管理资料、知识、文档和追溯关系</p>
         </div>
-        <Button data-testid="open-project-launch" onClick={() => setIsCreateOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          启动项目
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" asChild>
+            <Link href="/knowledge/graph">
+              <Network className="mr-2 h-4 w-4" />
+              知识总览
+            </Link>
+          </Button>
+          <Button data-testid="open-project-launch" onClick={() => setIsCreateOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            启动项目
+          </Button>
+        </div>
       </div>
 
       <div className="flex w-fit rounded-md border border-slate-200 p-1 dark:border-slate-700" aria-label="项目生命周期视图">
@@ -293,6 +302,7 @@ export default function ProjectsPage() {
                       <DropdownMenuItem asChild><Link href={`/projects/${project.id}`}><FolderKanban className="mr-2 h-4 w-4" />打开项目</Link></DropdownMenuItem>
                       <DropdownMenuItem asChild><Link href={`/projects/${project.id}/documents`}><FileText className="mr-2 h-4 w-4" />项目文档</Link></DropdownMenuItem>
                       <DropdownMenuItem asChild><Link href={`/projects/${project.id}/files`}><Upload className="mr-2 h-4 w-4" />项目资料</Link></DropdownMenuItem>
+                      <DropdownMenuItem asChild><Link href={`/projects/${project.id}/knowledge`}><Network className="mr-2 h-4 w-4" />项目知识</Link></DropdownMenuItem>
                       <DropdownMenuItem asChild><Link href={`/projects/${project.id}/settings`}><Settings className="mr-2 h-4 w-4" />项目设置</Link></DropdownMenuItem>
                       <DropdownMenuItem asChild><Link href={`/projects/${project.id}/members`}><Users className="mr-2 h-4 w-4" />项目成员</Link></DropdownMenuItem>
                       {project.status === 'archived' ? (

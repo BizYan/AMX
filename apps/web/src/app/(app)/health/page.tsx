@@ -45,6 +45,8 @@ import {
   ClipboardCheck,
   ExternalLink,
   Bell,
+  Gauge,
+  ServerCog,
 } from 'lucide-react'
 
 interface ProviderHealth {
@@ -458,6 +460,29 @@ export default function HealthDashboardPage() {
           刷新
         </Button>
       </div>
+
+      <nav
+        data-testid="platform-operations-navigation"
+        aria-label="平台运维子功能"
+        className="flex flex-wrap gap-2 border-b border-slate-200 pb-4 dark:border-slate-800"
+      >
+        <Button variant="secondary" size="sm" aria-current="page">
+          <Activity className="mr-2 h-4 w-4" />
+          运维总览
+        </Button>
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/providers">
+            <ServerCog className="mr-2 h-4 w-4" />
+            模型服务
+          </Link>
+        </Button>
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/quotas">
+            <Gauge className="mr-2 h-4 w-4" />
+            资源配额
+          </Link>
+        </Button>
+      </nav>
 
       {opsAccessLimited && (
         <Card className="border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950">
