@@ -11,6 +11,8 @@ import {
   KeyRound,
   LockKeyhole,
   Mail,
+  LogOut,
+  Power,
   Plus,
   RefreshCw,
   Shield,
@@ -39,7 +41,7 @@ import { Select, SelectOption } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/toast'
 import { IntegrationWorkbench } from '@/components/settings/integration-workbench'
-import { auditApi, identityApi, type Role, type TenantUser } from '@/lib/api-client'
+import { auditApi, authApi, identityApi, apiClient, type Role, type TenantUser } from '@/lib/api-client'
 
 type NormalizedUser = {
   id: string
@@ -134,6 +136,7 @@ export default function SettingsPage() {
   const [apiKeyPermissions, setApiKeyPermissions] = useState(['read'])
   const [revealedApiKey, setRevealedApiKey] = useState<{ id: string; token: string } | null>(null)
   const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null)
+  const [passwordForm, setPasswordForm] = useState({ current: '', next: '', confirm: '' })
 
   const usersQuery = useQuery({
     queryKey: ['tenant-users'],
@@ -153,6 +156,43 @@ export default function SettingsPage() {
   const apiKeysQuery = useQuery({
     queryKey: ['tenant-api-keys'],
     queryFn: () => identityApi.listApiKeys({ pageSize: 100 }),
+  })
+  const accountSecurityQuery = useQuery({
+    queryKey: ['account-security'],
+    queryFn: () => authApi.getSecurity(),
+  })
+
+  const endCurrentSession = () => {
+    localStorage.removeItem('auth_token')
+    apiClient.setToken(null)
+    window.location.assign('/login')
+  }
+
+  const changePasswordMutation = useMutation({
+    mutationFn: () => authApi.changePassword(passwordForm.current, passwordForm.next),
+    onSuccess: () => {
+      addToast({ title: '密码已更新', description: '所有现有会话已撤销，请重新登录。' })
+      endCurrentSession()
+    },
+    onError: (error: Error) => addToast({ title: '密码更新失败', description: error.message, variant: 'destructive' }),
+  })
+
+  const revokeSessionsMutation = useMutation({
+    mutationFn: () => authApi.revokeAllSessions(),
+    onSuccess: () => {
+      addToast({ title: '所有会话已撤销', description: '请重新登录。' })
+      endCurrentSession()
+    },
+    onError: (error: Error) => addToast({ title: '会话撤销失败', description: error.message, variant: 'destructive' }),
+  })
+
+  const deactivateAccountMutation = useMutation({
+    mutationFn: () => authApi.deactivateAccount(passwordForm.current),
+    onSuccess: () => {
+      addToast({ title: '账户已停用' })
+      endCurrentSession()
+    },
+    onError: (error: Error) => addToast({ title: '账户停用失败', description: error.message, variant: 'destructive' }),
   })
 
   const users = useMemo(() => (usersQuery.data?.items ?? []).map(normalizeUser), [usersQuery.data?.items])
@@ -353,6 +393,7 @@ export default function SettingsPage() {
           <TabsTrigger value="roles">角色权限</TabsTrigger>
           <TabsTrigger value="integrations">外部集成</TabsTrigger>
           <TabsTrigger value="apiKeys">API Key</TabsTrigger>
+          <TabsTrigger value="accountSecurity">账户安全</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
@@ -614,6 +655,88 @@ export default function SettingsPage() {
                   </div>
                 ))
               )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="accountSecurity" className="space-y-4" data-testid="account-security-panel">
+          <div className="grid gap-4 lg:grid-cols-3">
+            <StatCard title="会话安全版本" value={accountSecurityQuery.data?.security_version ?? '-'} detail="每次改密、撤销会话或停用账户都会递增" />
+            <StatCard title="最近登录" value={formatDateTime(accountSecurityQuery.data?.last_login_at)} detail="用于识别异常访问活动" />
+            <StatCard title="最近改密" value={formatDateTime(accountSecurityQuery.data?.password_changed_at)} detail="长期未改密时应安排更新" />
+          </div>
+
+          <div className="grid gap-6 xl:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>修改登录密码</CardTitle>
+                <CardDescription>修改成功后会立即撤销当前账户的全部登录会话。</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="current-password">当前密码</Label>
+                  <Input id="current-password" type="password" value={passwordForm.current} onChange={(event) => setPasswordForm((value) => ({ ...value, current: event.target.value }))} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="new-password">新密码</Label>
+                  <Input id="new-password" type="password" value={passwordForm.next} onChange={(event) => setPasswordForm((value) => ({ ...value, next: event.target.value }))} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="confirm-password">确认新密码</Label>
+                  <Input id="confirm-password" type="password" value={passwordForm.confirm} onChange={(event) => setPasswordForm((value) => ({ ...value, confirm: event.target.value }))} />
+                </div>
+                <Button
+                  data-testid="change-password"
+                  disabled={!passwordForm.current || passwordForm.next.length < 8 || passwordForm.next !== passwordForm.confirm || changePasswordMutation.isPending}
+                  onClick={() => changePasswordMutation.mutate()}
+                >
+                  <LockKeyhole className="mr-2 h-4 w-4" />
+                  修改密码并撤销会话
+                </Button>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>账户生命周期操作</CardTitle>
+                <CardDescription>用于安全事件处置和账户退出，操作会立即生效。</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+                  <p className="font-medium text-slate-900 dark:text-white">撤销所有会话</p>
+                  <p className="mt-1 text-sm text-slate-500">使所有已签发令牌失效，包括当前浏览器。</p>
+                  <Button className="mt-3" variant="outline" data-testid="revoke-all-sessions" onClick={() => revokeSessionsMutation.mutate()}>
+                    <LogOut className="mr-2 h-4 w-4" />
+                    撤销全部会话
+                  </Button>
+                </div>
+                <div className="rounded-lg border border-red-200 bg-red-50/40 p-4 dark:border-red-900 dark:bg-red-950/10">
+                  <p className="font-medium text-red-800 dark:text-red-200">停用我的账户</p>
+                  <p className="mt-1 text-sm text-red-700 dark:text-red-300">停用后无法再次登录，需要租户管理员重新启用。</p>
+                  <Button className="mt-3" variant="destructive" data-testid="deactivate-account" disabled={!passwordForm.current || deactivateAccountMutation.isPending} onClick={() => deactivateAccountMutation.mutate()}>
+                    <Power className="mr-2 h-4 w-4" />
+                    停用账户
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>最近安全事件</CardTitle>
+              <CardDescription>仅展示当前账户的登录、改密、会话撤销和停用证据。</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {(accountSecurityQuery.data?.recent_events ?? []).map((event) => (
+                <div key={event.id} className="flex items-center justify-between rounded-lg border border-slate-200 p-3 text-sm dark:border-slate-800">
+                  <span className="font-medium">{event.action}</span>
+                  <span className="text-slate-500">{formatDateTime(event.created_at)}</span>
+                </div>
+              ))}
+              {!accountSecurityQuery.isLoading && (accountSecurityQuery.data?.recent_events ?? []).length === 0 ? (
+                <p className="text-sm text-slate-500">暂无安全事件。</p>
+              ) : null}
             </CardContent>
           </Card>
         </TabsContent>

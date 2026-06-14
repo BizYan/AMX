@@ -25,6 +25,9 @@ from app.domains.identity.schemas import (
     FieldPermissionUpdate,
     LoginRequest,
     LoginResponse,
+    PasswordChangeRequest,
+    AccountSecurityResponse,
+    AccountDeactivateRequest,
     PaginatedResponse,
     PermissionDiagnosticCheck,
     PermissionDiagnosticFieldControl,
@@ -324,6 +327,90 @@ async def get_me(
         tenant_id=user.tenant_id,
         is_active=user.is_active,
         roles=[RoleResponse.model_validate(r) for r in roles],
+    )
+
+
+@router.get("/auth/security", response_model=AccountSecurityResponse)
+async def get_account_security(
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> AccountSecurityResponse:
+    """Return the current user's account-security state and recent events."""
+    events, _ = await AuditService(db).query_logs(
+        tenant_id=user.tenant_id,
+        user_id=user.id,
+        resource_type="user",
+        page_size=10,
+    )
+    return AccountSecurityResponse(
+        security_version=user.security_version,
+        password_changed_at=user.password_changed_at,
+        last_login_at=user.last_login_at,
+        active=user.is_active,
+        recent_events=[AuditLogResponse.model_validate(event) for event in events],
+    )
+
+
+@router.post("/auth/password", status_code=status.HTTP_204_NO_CONTENT)
+async def change_password(
+    data: PasswordChangeRequest,
+    request: Request,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> None:
+    """Change the current password and revoke all issued sessions."""
+    try:
+        await AuthService(db).change_password(user, data.current_password, data.new_password)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
+    await AuditService(db).log_action(
+        user.tenant_id,
+        user.id,
+        "auth.password_changed",
+        resource_type="user",
+        resource_id=user.id,
+        metadata={"sessions_revoked": True},
+        request=request,
+    )
+
+
+@router.post("/auth/sessions/revoke", status_code=status.HTTP_204_NO_CONTENT)
+async def revoke_all_sessions(
+    request: Request,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> None:
+    """Revoke every session for the current user, including this one."""
+    await AuthService(db).revoke_all_sessions(user)
+    await AuditService(db).log_action(
+        user.tenant_id,
+        user.id,
+        "auth.sessions_revoked",
+        resource_type="user",
+        resource_id=user.id,
+        request=request,
+    )
+
+
+@router.post("/auth/deactivate", status_code=status.HTTP_204_NO_CONTENT)
+async def deactivate_account(
+    data: AccountDeactivateRequest,
+    request: Request,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> None:
+    """Deactivate the current account and invalidate every session."""
+    try:
+        await AuthService(db).deactivate_account(user, data.current_password)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
+    await AuditService(db).log_action(
+        user.tenant_id,
+        user.id,
+        "auth.account_deactivated",
+        resource_type="user",
+        resource_id=user.id,
+        request=request,
     )
 
 

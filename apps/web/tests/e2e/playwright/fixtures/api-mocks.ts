@@ -516,6 +516,37 @@ export async function setupApiMocks(page: Page, options: SetupApiMockOptions = {
     })
   })
 
+  await page.route('**/api/v1/identity/auth/security', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        security_version: 3,
+        password_changed_at: '2026-06-01T08:00:00Z',
+        last_login_at: '2026-06-14T08:00:00Z',
+        active: true,
+        recent_events: [
+          {
+            id: 'audit-security-001',
+            tenant_id: 'tenant-e2e-001',
+            user_id: MOCK.MOCK_USER.id,
+            action: 'auth.login',
+            resource_type: 'user',
+            resource_id: MOCK.MOCK_USER.id,
+            extra_data: {},
+            ip_address: '127.0.0.1',
+            user_agent: 'playwright',
+            created_at: '2026-06-14T08:00:00Z',
+          },
+        ],
+      }),
+    })
+  })
+
+  await page.route(/\/api\/v1\/identity\/auth\/(?:password|sessions\/revoke|deactivate)$/, async (route) => {
+    await route.fulfill({ status: 204, body: '' })
+  })
+
   let integrations: any[] = [
     {
       id: 'integration-e2e-zentao',
