@@ -1,7 +1,7 @@
 name: Release
 
 permissions:
-  contents: read
+  contents: write
 
 on:
   push:
@@ -69,3 +69,41 @@ jobs:
     name: Release quality gates
     needs: validate
     uses: ./.github/workflows/ci.yml
+
+  publish:
+    name: Publish GitHub release
+    needs:
+      - validate
+      - quality-gates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve release tag
+        id: release
+        shell: bash
+        run: |
+          TAG="${{ github.ref_name }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Download validated release notes
+        uses: actions/download-artifact@v4
+        with:
+          name: release-notes
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+        shell: bash
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "GitHub release $TAG already exists."
+            exit 0
+          fi
+          gh release create "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --title "AMX $TAG" \
+            --notes-file release-notes.md
