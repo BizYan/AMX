@@ -110,8 +110,8 @@ class TestUploadProjectFile:
             assert "File too large" in exc_info.value.detail
 
     @pytest.mark.asyncio
-    async def test_upload_success_stores_file_and_triggers_ingestion(self, project_id, current_user, mock_db, mock_storage):
-        """Test successful upload stores content and starts the source ingestion pipeline."""
+    async def test_upload_success_stores_file_and_queues_ingestion(self, project_id, current_user, mock_db, mock_storage):
+        """Test successful upload stores content and queues the source ingestion pipeline."""
         file = AsyncMock(spec=UploadFile)
         file.filename = "playwright-test.txt"
         file.content_type = "text/plain"
@@ -145,7 +145,9 @@ class TestUploadProjectFile:
 
         with patch("app.domains.projects.router.check_project_membership", return_value=True), patch(
             "app.domains.projects.router.SourceFileService"
-        ) as mock_service_class:
+        ) as mock_service_class, patch(
+            "app.domains.projects.router.SourceIngestionService"
+        ) as mock_ingestion_class:
 
             mock_service = AsyncMock()
             mock_service.create_source_file.return_value = mock_source_file
@@ -160,6 +162,8 @@ class TestUploadProjectFile:
 
             mock_service.ingest_source_file.side_effect = mark_ingested
             mock_service_class.return_value = mock_service
+            mock_ingestion = AsyncMock()
+            mock_ingestion_class.return_value = mock_ingestion
 
             result = await upload_project_file(
                 project_id=project_id,
@@ -178,14 +182,8 @@ class TestUploadProjectFile:
             )
 
             mock_service.create_source_file.assert_awaited_once()
-            mock_service.ingest_source_file.assert_awaited_once_with(
-                source_file_id=mock_source_file.id,
-                tenant_id=current_user.tenant_id,
-                project_id=project_id,
-                storage=mock_storage,
-            )
-            assert result.status == SourceFileStatus.READY.value
-            assert mock_source_file.status == SourceFileStatus.READY.value
+            mock_ingestion.enqueue.assert_awaited_once_with(mock_source_file, current_user.id)
+            assert result.status == SourceFileStatus.PENDING.value
 
     @pytest.mark.asyncio
     async def test_download_uses_original_filename_header(self, project_id, current_user, mock_db, mock_storage):

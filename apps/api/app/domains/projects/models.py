@@ -235,6 +235,47 @@ class SourceFile(Base, UuidMixin, TimestampMixin, SoftDeleteMixin, TenantMixin):
     )
 
 
+class SourceIngestionJob(Base, UuidMixin, TimestampMixin, TenantMixin):
+    """Persistent execution record for source-file knowledge ingestion."""
+
+    __tablename__ = "source_ingestion_jobs"
+
+    source_file_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("source_files.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    project_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    requested_by_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    status = Column(String(20), nullable=False, default="pending", index=True)
+    stage = Column(String(50), nullable=False, default="queued")
+    attempt_count = Column(Integer, nullable=False, default=0)
+    max_attempts = Column(Integer, nullable=False, default=3)
+    error_message = Column(Text, nullable=True)
+    result_json = Column(JSONB, nullable=False, default=dict)
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+
+    source_file = relationship("SourceFile", back_populates="ingestion_jobs", lazy="selectin")
+    project = relationship("Project", lazy="selectin")
+
+    __table_args__ = (
+        Index("ix_source_ingestion_jobs_tenant_status", "tenant_id", "status"),
+        Index("ix_source_ingestion_jobs_source_status", "source_file_id", "status"),
+    )
+
+
 # Add relationships to existing Project model
 Project.settings = relationship(
     "ProjectSettings",
@@ -267,4 +308,11 @@ Project.source_files = relationship(
     back_populates="project",
     lazy="selectin",
     cascade="all, delete-orphan",
+)
+SourceFile.ingestion_jobs = relationship(
+    "SourceIngestionJob",
+    back_populates="source_file",
+    lazy="selectin",
+    cascade="all, delete-orphan",
+    order_by="SourceIngestionJob.created_at.desc()",
 )

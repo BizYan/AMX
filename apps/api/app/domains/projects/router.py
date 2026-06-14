@@ -61,6 +61,8 @@ from app.domains.projects.schemas import (
     SourceFileResponse,
     SourceFileListResponse,
     SourceFileCreate,
+    SourceIngestionJobListResponse,
+    SourceIngestionJobResponse,
     UploadUrlResponse,
     PaginationParams,
     MAX_FILE_SIZE,
@@ -75,6 +77,7 @@ from app.domains.projects.lifecycle import ProjectDocumentLifecyclePolicyService
 from app.domains.projects.launch_service import ProjectLaunchService
 from app.domains.projects.delivery_plan_service import ProjectDeliveryPlanService
 from app.domains.projects.invitation_service import InvitationError, ProjectInvitationService
+from app.domains.projects.ingestion_service import SourceIngestionError, SourceIngestionService
 from app.services.audit_service import AuditService
 from app.services.storage import StorageHandle, StorageProvider, LocalStorageProvider, get_storage_provider
 from app.models.identity import User
@@ -1529,12 +1532,7 @@ async def upload_project_file(
         ),
     )
 
-    await service.ingest_source_file(
-        source_file_id=source_file.id,
-        tenant_id=current_user.tenant_id,
-        project_id=project_id,
-        storage=storage,
-    )
+    await SourceIngestionService(db).enqueue(source_file, current_user.id)
 
     return SourceFileResponse.model_validate(source_file)
 
@@ -1674,15 +1672,10 @@ async def confirm_file_upload(
     if source_file.project_id != project_id:
         raise HTTPException(status_code=400, detail="File does not belong to this project")
 
-    # Store the provided hash and start knowledge ingestion.
+    # Store the provided hash and enqueue knowledge ingestion.
     source_file.hash = hash
     await db.flush()
-    await service.ingest_source_file(
-        source_file_id=source_file.id,
-        tenant_id=current_user.tenant_id,
-        project_id=project_id,
-        storage=storage,
-    )
+    await SourceIngestionService(db).enqueue(source_file, current_user.id)
 
     return SourceFileResponse.model_validate(source_file)
 
@@ -1736,10 +1729,114 @@ async def delete_source_file(
     except FileNotFoundError:
         pass  # File may already be deleted
 
+    await SourceIngestionService(db).retire_source_knowledge(file_id, current_user.tenant_id)
+
     # Soft delete the record
     deleted = await service.delete_source_file(file_id, current_user.tenant_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Source file not found")
+
+
+@router.get("/{project_id}/ingestion-jobs", response_model=SourceIngestionJobListResponse)
+async def list_source_ingestion_jobs(
+    project_id: UUID,
+    source_file_id: UUID | None = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List durable ingestion jobs visible to a project member."""
+    try:
+        await check_project_membership(project_id, current_user.id, db, current_user.tenant_id)
+    except HTTPException:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    jobs = await SourceIngestionService(db).list_jobs(
+        project_id,
+        current_user.tenant_id,
+        source_file_id=source_file_id,
+    )
+    return SourceIngestionJobListResponse(
+        items=[SourceIngestionJobResponse.model_validate(job) for job in jobs],
+        total=len(jobs),
+    )
+
+
+@router.post(
+    "/{project_id}/ingestion-jobs/{job_id}/execute",
+    response_model=SourceIngestionJobResponse,
+)
+async def execute_source_ingestion_job(
+    project_id: UUID,
+    job_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    storage: StorageProvider = Depends(get_storage),
+):
+    """Execute one queued ingestion job."""
+    try:
+        await check_project_membership(project_id, current_user.id, db, current_user.tenant_id)
+        service = SourceIngestionService(db)
+        existing = await service.get_job(job_id, current_user.tenant_id)
+        if not existing or existing.project_id != project_id:
+            raise SourceIngestionError("ingestion job not found")
+        job = await service.execute(
+            job_id,
+            tenant_id=current_user.tenant_id,
+            storage=storage,
+        )
+        return SourceIngestionJobResponse.model_validate(job)
+    except SourceIngestionError as error:
+        status_code = 404 if "not found" in str(error) else 409
+        raise HTTPException(status_code=status_code, detail=str(error)) from error
+
+
+@router.post(
+    "/{project_id}/ingestion-jobs/{job_id}/retry",
+    response_model=SourceIngestionJobResponse,
+)
+async def retry_source_ingestion_job(
+    project_id: UUID,
+    job_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Queue a failed ingestion job for another attempt."""
+    try:
+        await check_project_membership(project_id, current_user.id, db, current_user.tenant_id)
+        service = SourceIngestionService(db)
+        existing = await service.get_job(job_id, current_user.tenant_id)
+        if not existing or existing.project_id != project_id:
+            raise SourceIngestionError("ingestion job not found")
+        job = await service.retry(job_id, current_user.id)
+        return SourceIngestionJobResponse.model_validate(job)
+    except SourceIngestionError as error:
+        status_code = 404 if "not found" in str(error) else 409
+        raise HTTPException(status_code=status_code, detail=str(error)) from error
+
+
+@router.post(
+    "/{project_id}/files/{file_id}/reingest",
+    response_model=SourceIngestionJobResponse,
+)
+async def reingest_source_file(
+    project_id: UUID,
+    file_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Retire source-derived knowledge and queue a clean ingestion run."""
+    try:
+        await check_project_membership(project_id, current_user.id, db, current_user.tenant_id)
+        job = await SourceIngestionService(db).reingest(
+            file_id,
+            current_user.tenant_id,
+            project_id,
+            current_user.id,
+        )
+        return SourceIngestionJobResponse.model_validate(job)
+    except SourceIngestionError as error:
+        status_code = 404 if "not found" in str(error) else 409
+        raise HTTPException(status_code=status_code, detail=str(error)) from error
 
 
 @router.get("/{project_id}/files/{file_id}/download", response_class=StreamingResponse)

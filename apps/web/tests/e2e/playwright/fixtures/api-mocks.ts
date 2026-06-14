@@ -29,6 +29,23 @@ export async function setupApiMocks(page: Page, options: SetupApiMockOptions = {
   let workflowVersions: any[] = clone(MOCK.MOCK_WORKFLOW_VERSIONS)
   let exportJobs: any[] = clone(MOCK.MOCK_EXPORTS)
   let sourceFiles: any[] = clone(MOCK.MOCK_SOURCE_FILES)
+  let sourceIngestionJobs: any[] = sourceFiles.map((file, index) => ({
+    id: `ingestion-job-${index + 1}`,
+    tenant_id: 'tenant-e2e-001',
+    project_id: file.project_id || 'project-e2e-001',
+    source_file_id: file.id,
+    requested_by_id: 'user-e2e-001',
+    status: file.status === 'ready' ? 'completed' : file.status === 'failed' ? 'failed' : 'pending',
+    stage: file.ingestion_stage || 'queued',
+    attempt_count: file.status === 'pending' ? 0 : 1,
+    max_attempts: 3,
+    error_message: file.error_message || null,
+    result_json: {},
+    started_at: null,
+    completed_at: file.status === 'ready' ? new Date().toISOString() : null,
+    created_at: file.created_at || new Date().toISOString(),
+    updated_at: file.updated_at || new Date().toISOString(),
+  }))
   let projectInvitations: any[] = [
     {
       id: 'invitation-e2e-001',
@@ -2226,6 +2243,46 @@ export async function setupApiMocks(page: Page, options: SetupApiMockOptions = {
   })
 
   // 项目文件 / 源文件 接口 (包含列表与上传)
+  await page.route(/\/api\/v1\/projects\/[^/]+\/ingestion-jobs(?:\?.*)?$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ items: sourceIngestionJobs, total: sourceIngestionJobs.length }),
+    })
+  })
+
+  await page.route(/\/api\/v1\/projects\/[^/]+\/ingestion-jobs\/[^/]+\/(?:execute|retry)$/, async (route) => {
+    const url = route.request().url()
+    const jobId = url.match(/\/ingestion-jobs\/([^/]+)\//)?.[1]
+    sourceIngestionJobs = sourceIngestionJobs.map((job) =>
+      job.id === jobId
+        ? { ...job, status: url.endsWith('/execute') ? 'completed' : 'pending', stage: url.endsWith('/execute') ? 'knowledge_ready' : 'queued_for_retry' }
+        : job
+    )
+    const job = sourceIngestionJobs.find((item) => item.id === jobId)
+    if (url.endsWith('/execute') && job) {
+      sourceFiles = sourceFiles.map((file) => file.id === job.source_file_id ? { ...file, status: 'ready' } : file)
+    }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(job) })
+  })
+
+  await page.route(/\/api\/v1\/projects\/[^/]+\/files\/[^/]+\/reingest$/, async (route) => {
+    const fileId = route.request().url().match(/\/files\/([^/]+)\/reingest/)?.[1] || ''
+    const job = {
+      ...sourceIngestionJobs.find((item) => item.source_file_id === fileId),
+      id: `ingestion-job-reingest-${Date.now()}`,
+      source_file_id: fileId,
+      status: 'pending',
+      stage: 'queued',
+      attempt_count: 0,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+    sourceIngestionJobs = [job, ...sourceIngestionJobs]
+    sourceFiles = sourceFiles.map((file) => file.id === fileId ? { ...file, status: 'pending' } : file)
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(job) })
+  })
+
   await page.route(/\/api\/v1\/projects\/[^/]+\/files(?:\?.*)?$/, async (route) => {
     if (route.request().method() === 'POST') {
       const createdAt = new Date().toISOString()
@@ -2247,6 +2304,23 @@ export async function setupApiMocks(page: Page, options: SetupApiMockOptions = {
         updated_at: createdAt,
       }
       sourceFiles = [createdFile, ...sourceFiles]
+      sourceIngestionJobs = [{
+        id: `ingestion-job-${Date.now()}`,
+        tenant_id: 'tenant-e2e-001',
+        project_id: createdFile.project_id,
+        source_file_id: createdFile.id,
+        requested_by_id: 'user-e2e-001',
+        status: 'pending',
+        stage: 'queued',
+        attempt_count: 0,
+        max_attempts: 3,
+        error_message: null,
+        result_json: {},
+        started_at: null,
+        completed_at: null,
+        created_at: createdAt,
+        updated_at: createdAt,
+      }, ...sourceIngestionJobs]
       await route.fulfill({
         status: 201,
         contentType: 'application/json',
