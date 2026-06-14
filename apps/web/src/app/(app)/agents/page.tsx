@@ -600,6 +600,7 @@ export default function AgentsPage() {
           </TabsTrigger>
           <TabsTrigger value="agents">Agent</TabsTrigger>
           <TabsTrigger value="skills">Skill 市场</TabsTrigger>
+          <TabsTrigger value="workflows">工作流</TabsTrigger>
           <TabsTrigger value="runs">运行记录</TabsTrigger>
         </TabsList>
 
@@ -670,6 +671,55 @@ export default function AgentsPage() {
             <EmptyState testId="skill-empty-state" title="没有匹配的 Skill" description="调整搜索或类型筛选后重试。" />
           ) : (
             <div className="grid gap-4 lg:grid-cols-3">{filteredSkills.map(renderSkillCard)}</div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="workflows" className="space-y-4">
+          <div className="flex flex-col gap-3 rounded-md border border-slate-200 p-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="font-medium text-slate-900 dark:text-white">工作流定义与执行入口</p>
+              <p className="mt-1 text-sm text-slate-500">在智能编排中心查看绑定关系，并进入工作流工作台编辑、校验、发布和运行。</p>
+            </div>
+            <Button asChild>
+              <Link href="/workflows">
+                <Workflow className="mr-2 h-4 w-4" />
+                打开工作流工作台
+              </Link>
+            </Button>
+          </div>
+          {workflows.length === 0 ? (
+            <EmptyState testId="workflow-empty-state" title="还没有工作流" description="先初始化智能编排默认配置，或进入工作流工作台创建工作流。" />
+          ) : (
+            <div className="grid gap-4 lg:grid-cols-3">
+              {workflows.map((workflow: WorkflowDefinition) => (
+                <Card key={workflow.id} data-testid={`workflow-card-${workflow.id}`}>
+                  <CardHeader>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <CardTitle className="text-base">{workflow.name}</CardTitle>
+                        <CardDescription className="mt-1 line-clamp-2">{workflow.description || '未填写工作流说明'}</CardDescription>
+                      </div>
+                      <Badge variant={workflow.is_active ? 'secondary' : 'outline'}>{workflow.is_active ? '启用' : '停用'}</Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div className="rounded-md border border-slate-200 p-3 dark:border-slate-700">
+                        <p className="text-xs text-slate-500">分类</p>
+                        <p className="mt-1 font-medium">{workflow.category || '通用'}</p>
+                      </div>
+                      <div className="rounded-md border border-slate-200 p-3 dark:border-slate-700">
+                        <p className="text-xs text-slate-500">版本数</p>
+                        <p className="mt-1 font-medium">{workflow.version_count ?? 0}</p>
+                      </div>
+                    </div>
+                    <Button variant="outline" size="sm" className="w-full" asChild>
+                      <Link href={`/workflows/${workflow.id}/editor`}>编辑工作流</Link>
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           )}
         </TabsContent>
 
