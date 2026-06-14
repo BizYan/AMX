@@ -177,6 +177,12 @@ export const projectsApi = {
     apiClient.post<ProjectAcceptance>(`/projects/${id}/acceptance/close`, {}),
   reopenDelivery: (id: string) =>
     apiClient.post<ProjectAcceptance>(`/projects/${id}/acceptance/reopen`, {}),
+  listCustomerPortalLinks: (id: string) =>
+    apiClient.get<CustomerPortalLink[]>(`/projects/${id}/customer-portal-links`),
+  createCustomerPortalLink: (id: string, data: CustomerPortalLinkCreateInput) =>
+    apiClient.post<CustomerPortalLinkCreated>(`/projects/${id}/customer-portal-links`, data),
+  revokeCustomerPortalLink: (id: string, linkId: string) =>
+    apiClient.post<CustomerPortalLink>(`/projects/${id}/customer-portal-links/${linkId}/revoke`, {}),
   initializeDeliveryPlan: (id: string) =>
     apiClient.post<ProjectDeliveryPlan>(`/projects/${id}/delivery-plan/initialize`, {}),
   createMilestone: (id: string, data: ProjectMilestoneCreateInput) =>
@@ -1498,6 +1504,57 @@ export interface ProjectAcceptance extends ProjectAcceptanceUpdate {
     blockers: string[]
     warnings: string[]
   }
+}
+
+export interface CustomerPortalLink {
+  id: string
+  label: string
+  customer_email: string
+  created_at: string
+  expires_at: string
+  revoked_at?: string | null
+  last_accessed_at?: string | null
+  submitted_at?: string | null
+}
+
+export interface CustomerPortalLinkCreated extends CustomerPortalLink {
+  token: string
+  portal_path: string
+}
+
+export interface CustomerPortalLinkCreateInput {
+  label: string
+  customer_email: string
+  expires_in_days: number
+}
+
+export interface CustomerPortalSummary {
+  project_name: string
+  customer_name: string
+  package_ready: boolean
+  decision: ProjectAcceptanceUpdate['decision']
+  accepted_at?: string | null
+  submitted_at?: string | null
+  criteria: ProjectAcceptanceItem[]
+  gate: ProjectAcceptance['gate']
+}
+
+export interface CustomerPortalAcceptanceSubmit {
+  contact_name: string
+  contact_email: string
+  decision: 'accepted' | 'accepted_with_followups' | 'rejected'
+  notes: string
+  items: ProjectAcceptanceItem[]
+}
+
+export const customerPortalApi = {
+  get: (token: string) =>
+    apiClient.get<CustomerPortalSummary>(`/projects/customer-portal/${encodeURIComponent(token)}`),
+  submitAcceptance: (token: string, data: CustomerPortalAcceptanceSubmit) =>
+    apiClient.post<CustomerPortalSummary>(
+      `/projects/customer-portal/${encodeURIComponent(token)}/acceptance`,
+      data,
+    ),
 }
 
 export interface ProjectMilestoneCreateInput {

@@ -30,6 +30,8 @@ from app.domains.projects.delivery_plan_service import ProjectDeliveryPlanServic
 from app.domains.projects.launch_service import ProjectLaunchService
 from app.domains.projects.models import ProjectDeliveryPlan, ProjectMilestone
 from app.domains.projects.schemas import (
+    CustomerPortalAcceptanceSubmit,
+    CustomerPortalLinkCreate,
     ProjectLaunchCreate,
     ProjectAcceptanceUpdate,
     ProjectMilestoneCreate,
@@ -371,3 +373,53 @@ async def test_customer_acceptance_closes_and_reopens_formal_delivery(db_session
     reopened = await service.reopen_delivery(launched.project.id, owner.tenant_id, owner.id)
     assert reopened.closed_at is None
     assert next(item for item in plan.milestones if item.key == "release-delivery").status == "planned"
+
+
+@pytest.mark.asyncio
+async def test_customer_portal_link_is_hashed_revocable_and_submits_acceptance(db_session):
+    owner, _, launched = await _seed(db_session)
+    service = ProjectDeliveryPlanService(db_session)
+
+    created = await service.create_customer_portal_link(
+        launched.project.id,
+        owner.tenant_id,
+        owner.id,
+        CustomerPortalLinkCreate(
+            label="Sponsor acceptance",
+            customer_email="sponsor@example.com",
+            expires_in_days=7,
+        ),
+    )
+    plan = await service.get_plan(launched.project.id, owner.tenant_id)
+    persisted = plan.settings_json["customer_portal_links"][0]
+    assert created.token not in str(plan.settings_json)
+    assert persisted["token_hash"] == service._portal_token_hash(created.token)
+
+    portal = await service.get_customer_portal(created.token)
+    assert portal.project_name == launched.project.name
+    submitted = await service.submit_customer_portal_acceptance(
+        created.token,
+        CustomerPortalAcceptanceSubmit(
+            contact_name="Delivery Sponsor",
+            contact_email="sponsor@example.com",
+            decision="accepted_with_followups",
+            notes="Accepted with one tracked action.",
+            items=[
+                {
+                    "key": "scope",
+                    "title": "Scope delivered",
+                    "status": "accepted",
+                    "evidence": "Customer review meeting",
+                }
+            ],
+        ),
+    )
+    assert submitted.decision == "accepted_with_followups"
+    assert submitted.submitted_at is not None
+    assert plan.settings_json["customer_acceptance"]["external_portal_link_id"] == str(created.id)
+
+    await service.revoke_customer_portal_link(
+        launched.project.id, owner.tenant_id, owner.id, created.id
+    )
+    with pytest.raises(PermissionError, match="revoked"):
+        await service.get_customer_portal(created.token)

@@ -17,6 +17,11 @@ from app.db.session import get_db
 from app.core.security import decode_token
 from app.domains.projects.models import ProjectInvitation
 from app.domains.projects.schemas import (
+    CustomerPortalAcceptanceSubmit,
+    CustomerPortalLinkCreate,
+    CustomerPortalLinkCreatedResponse,
+    CustomerPortalLinkResponse,
+    CustomerPortalSummaryResponse,
     ProjectCreate,
     ProjectUpdate,
     ProjectResponse,
@@ -64,6 +69,37 @@ from app.models.identity import User
 
 
 router = APIRouter()
+
+
+@router.get("/customer-portal/{token}", response_model=CustomerPortalSummaryResponse)
+async def get_customer_delivery_portal(
+    token: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Open a token-scoped customer delivery portal without internal login."""
+    try:
+        return await ProjectDeliveryPlanService(db).get_customer_portal(token)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except PermissionError as error:
+        raise HTTPException(status_code=410, detail=str(error)) from error
+
+
+@router.post("/customer-portal/{token}/acceptance", response_model=CustomerPortalSummaryResponse)
+async def submit_customer_delivery_acceptance(
+    token: str,
+    data: CustomerPortalAcceptanceSubmit,
+    db: AsyncSession = Depends(get_db),
+):
+    """Submit a governed customer acceptance decision through a scoped link."""
+    try:
+        return await ProjectDeliveryPlanService(db).submit_customer_portal_acceptance(
+            token, data
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except PermissionError as error:
+        raise HTTPException(status_code=403, detail=str(error)) from error
 
 
 async def get_current_user(
@@ -425,6 +461,90 @@ async def get_project_acceptance(
         )
     except ValueError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@router.get(
+    "/{project_id}/customer-portal-links",
+    response_model=list[CustomerPortalLinkResponse],
+)
+async def list_customer_portal_links(
+    project_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List safe customer portal link metadata for project owners."""
+    await check_project_membership(
+        project_id, current_user.id, db, current_user.tenant_id, require_owner=True
+    )
+    try:
+        return await ProjectDeliveryPlanService(db).list_customer_portal_links(
+            project_id, current_user.tenant_id
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@router.post(
+    "/{project_id}/customer-portal-links",
+    response_model=CustomerPortalLinkCreatedResponse,
+    status_code=201,
+)
+async def create_customer_portal_link(
+    project_id: UUID,
+    data: CustomerPortalLinkCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Create an expiring customer portal link and reveal its token once."""
+    await check_project_membership(
+        project_id, current_user.id, db, current_user.tenant_id, require_owner=True
+    )
+    try:
+        response = await ProjectDeliveryPlanService(db).create_customer_portal_link(
+            project_id, current_user.tenant_id, current_user.id, data
+        )
+    except (ValueError, PermissionError) as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    await AuditService(db).log_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+        action="project.customer_portal_link.create",
+        resource_type="project",
+        resource_id=project_id,
+        metadata={"link_id": str(response.id), "expires_at": str(response.expires_at)},
+    )
+    return response
+
+
+@router.post(
+    "/{project_id}/customer-portal-links/{link_id}/revoke",
+    response_model=CustomerPortalLinkResponse,
+)
+async def revoke_customer_portal_link(
+    project_id: UUID,
+    link_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Revoke a customer portal link immediately."""
+    await check_project_membership(
+        project_id, current_user.id, db, current_user.tenant_id, require_owner=True
+    )
+    try:
+        response = await ProjectDeliveryPlanService(db).revoke_customer_portal_link(
+            project_id, current_user.tenant_id, current_user.id, link_id
+        )
+    except (ValueError, PermissionError) as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    await AuditService(db).log_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+        action="project.customer_portal_link.revoke",
+        resource_type="project",
+        resource_id=project_id,
+        metadata={"link_id": str(link_id)},
+    )
+    return response
 
 
 @router.put("/{project_id}/acceptance", response_model=ProjectAcceptanceResponse)

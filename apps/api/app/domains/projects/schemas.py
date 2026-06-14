@@ -259,6 +259,59 @@ class ProjectAcceptanceResponse(ProjectAcceptanceUpdate):
     gate: ProjectAcceptanceGate
 
 
+class CustomerPortalLinkCreate(BaseModel):
+    """Create a one-time visible customer delivery portal link."""
+
+    label: str = Field(default="客户验收门户", min_length=1, max_length=255)
+    customer_email: str = Field(..., min_length=3, max_length=255)
+    expires_in_days: int = Field(default=14, ge=1, le=90)
+
+
+class CustomerPortalLinkResponse(BaseModel):
+    """Safe persisted representation of a customer portal link."""
+
+    id: UUID
+    label: str
+    customer_email: str
+    created_at: datetime
+    expires_at: datetime
+    revoked_at: datetime | None = None
+    last_accessed_at: datetime | None = None
+    submitted_at: datetime | None = None
+
+
+class CustomerPortalLinkCreatedResponse(CustomerPortalLinkResponse):
+    """Portal link creation response containing the raw token once."""
+
+    token: str
+    portal_path: str
+
+
+class CustomerPortalAcceptanceSubmit(BaseModel):
+    """Customer-submitted acceptance decision through the scoped portal."""
+
+    contact_name: str = Field(..., min_length=1, max_length=255)
+    contact_email: str = Field(..., min_length=3, max_length=255)
+    decision: str = Field(
+        ..., pattern="^(accepted|accepted_with_followups|rejected)$"
+    )
+    notes: str = Field(default="", max_length=8000)
+    items: list[ProjectAcceptanceItem] = Field(default_factory=list)
+
+
+class CustomerPortalSummaryResponse(BaseModel):
+    """Public, token-scoped delivery and acceptance summary."""
+
+    project_name: str
+    customer_name: str
+    package_ready: bool
+    decision: str
+    accepted_at: datetime | None = None
+    submitted_at: datetime | None = None
+    criteria: list[ProjectAcceptanceItem] = Field(default_factory=list)
+    gate: ProjectAcceptanceGate
+
+
 class ProjectListResponse(PaginatedResponse[ProjectResponse]):
     """Schema for paginated project list response."""
 
