@@ -192,6 +192,12 @@ class ProjectInvitation(Base, UuidMixin, TimestampMixin, TenantMixin, SoftDelete
     )
     accepted_at = Column(DateTime(timezone=True), nullable=True, index=True)
     revoked_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    delivery_status = Column(String(20), nullable=False, default="pending", index=True)
+    delivery_channel = Column(String(30), nullable=True)
+    delivery_attempt_count = Column(Integer, nullable=False, default=0)
+    delivery_error = Column(Text, nullable=True)
+    last_delivery_attempt_at = Column(DateTime(timezone=True), nullable=True)
+    last_delivered_at = Column(DateTime(timezone=True), nullable=True)
 
     # Relations
     project = relationship("Project", back_populates="invitations", lazy="selectin")

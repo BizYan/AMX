@@ -844,6 +844,12 @@ class ProjectInvitationResponse(BaseModel):
     expires_at: datetime
     accepted_at: datetime | None = None
     revoked_at: datetime | None = None
+    delivery_status: Literal["pending", "sent", "failed"]
+    delivery_channel: str | None = None
+    delivery_attempt_count: int
+    delivery_error: str | None = None
+    last_delivery_attempt_at: datetime | None = None
+    last_delivered_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -861,6 +867,14 @@ class ProjectInvitationCreatedResponse(BaseModel):
     token: str
     invite_path: str
     expires_at: datetime
+
+
+class ProjectInvitationDeliveryUpdate(BaseModel):
+    """Owner-recorded external invitation delivery evidence."""
+
+    status: Literal["sent", "failed"]
+    channel: Literal["manual", "email", "messaging"] = "manual"
+    error: str | None = Field(None, max_length=1000)
 
 
 class ProjectInvitationAcceptResponse(BaseModel):

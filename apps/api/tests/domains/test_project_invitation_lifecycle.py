@@ -99,6 +99,43 @@ async def test_owner_can_create_list_and_resend_hashed_invitation(db_session):
     await db_session.refresh(stored)
     assert resent.token != created.token
     assert stored.token == hashlib.sha256(resent.token.encode("utf-8")).hexdigest()
+    assert stored.delivery_status == "pending"
+
+
+@pytest.mark.asyncio
+async def test_owner_records_delivery_failure_and_success_without_exposing_token(db_session):
+    owner, invitee, _, project = await _seed(db_session)
+    created = await project_router.create_project_invitation(project.id, invitee.email, db_session, owner)
+    invitation = (await db_session.execute(select(ProjectInvitation))).scalar_one()
+
+    failed = await project_router.record_project_invitation_delivery(
+        project.id,
+        invitation.id,
+        SimpleNamespace(status="failed", channel="email", error="mailbox unavailable"),
+        db_session,
+        owner,
+    )
+    sent = await project_router.record_project_invitation_delivery(
+        project.id,
+        invitation.id,
+        SimpleNamespace(status="sent", channel="manual", error=None),
+        db_session,
+        owner,
+    )
+
+    assert failed.delivery_status == "failed"
+    assert sent.delivery_status == "sent"
+    assert sent.delivery_attempt_count == 2
+    assert sent.last_delivered_at is not None
+    audits = list(
+        (
+            await db_session.scalars(
+                select(AuditLog).where(AuditLog.action.like("project.invitation.delivery_%"))
+            )
+        ).all()
+    )
+    assert len(audits) == 2
+    assert created.token not in str(audits)
 
 
 @pytest.mark.asyncio

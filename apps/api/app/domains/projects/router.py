@@ -48,6 +48,7 @@ from app.domains.projects.schemas import (
     ProjectInvitationActivationRequest,
     ProjectInvitationActivationResponse,
     ProjectInvitationCreatedResponse,
+    ProjectInvitationDeliveryUpdate,
     ProjectInvitationListResponse,
     ProjectInvitationPreviewResponse,
     ProjectInvitationResponse,
@@ -115,6 +116,12 @@ def _invitation_response(invitation: ProjectInvitation) -> ProjectInvitationResp
         expires_at=invitation.expires_at,
         accepted_at=invitation.accepted_at,
         revoked_at=invitation.revoked_at,
+        delivery_status=invitation.delivery_status,
+        delivery_channel=invitation.delivery_channel,
+        delivery_attempt_count=invitation.delivery_attempt_count,
+        delivery_error=invitation.delivery_error,
+        last_delivery_attempt_at=invitation.last_delivery_attempt_at,
+        last_delivered_at=invitation.last_delivered_at,
         created_at=invitation.created_at,
         updated_at=invitation.updated_at,
     )
@@ -2062,6 +2069,8 @@ async def resend_project_invitation(
     token = secrets.token_urlsafe(32)
     invitation.token = _invitation_token_digest(token)
     invitation.expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+    invitation.delivery_status = "pending"
+    invitation.delivery_error = None
     await db.flush()
     await AuditService(db).log_action(
         tenant_id=current_user.tenant_id,
@@ -2077,6 +2086,48 @@ async def resend_project_invitation(
         invite_path=f"/invitations/{token}",
         expires_at=invitation.expires_at,
     )
+
+
+@router.post(
+    "/{project_id}/invitations/{invitation_id}/delivery",
+    response_model=ProjectInvitationResponse,
+)
+async def record_project_invitation_delivery(
+    project_id: UUID,
+    invitation_id: UUID,
+    data: ProjectInvitationDeliveryUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Record external delivery evidence without persisting the raw token."""
+    invitation = await _owner_invitation(project_id, invitation_id, db, current_user)
+    if invitation.accepted_at is not None or invitation.revoked_at is not None:
+        raise HTTPException(status_code=409, detail="Closed invitation delivery cannot be updated")
+    if _invitation_expired(invitation.expires_at):
+        raise HTTPException(status_code=409, detail="Expired invitation must be renewed before delivery")
+    now = datetime.now(timezone.utc)
+    invitation.delivery_status = data.status
+    invitation.delivery_channel = data.channel
+    invitation.delivery_attempt_count += 1
+    invitation.delivery_error = data.error if data.status == "failed" else None
+    invitation.last_delivery_attempt_at = now
+    invitation.last_delivered_at = now if data.status == "sent" else invitation.last_delivered_at
+    await db.flush()
+    await AuditService(db).log_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+        action=f"project.invitation.delivery_{data.status}",
+        resource_type="project_invitation",
+        resource_id=invitation.id,
+        metadata={
+            "project_id": str(project_id),
+            "email": invitation.email,
+            "channel": data.channel,
+            "attempt": invitation.delivery_attempt_count,
+            "error": data.error if data.status == "failed" else None,
+        },
+    )
+    return _invitation_response(invitation)
 
 
 @router.post("/{project_id}/invitations/{invitation_id}/revoke", response_model=ProjectInvitationResponse)

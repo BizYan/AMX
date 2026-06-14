@@ -55,6 +55,12 @@ export async function setupApiMocks(page: Page, options: SetupApiMockOptions = {
       expires_at: new Date(Date.now() + 86400000).toISOString(),
       accepted_at: null,
       revoked_at: null,
+      delivery_status: 'pending',
+      delivery_channel: null,
+      delivery_attempt_count: 0,
+      delivery_error: null,
+      last_delivery_attempt_at: null,
+      last_delivered_at: null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     },
@@ -2266,6 +2272,24 @@ export async function setupApiMocks(page: Page, options: SetupApiMockOptions = {
 
   await page.route(/\/api\/v1\/projects\/[^/]+\/invitations\/[^/]+\/revoke$/, async (route) => {
     projectInvitations = projectInvitations.map((item) => ({ ...item, status: 'revoked', revoked_at: new Date().toISOString() }))
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(projectInvitations[0]),
+    })
+  })
+
+  await page.route(/\/api\/v1\/projects\/[^/]+\/invitations\/[^/]+\/delivery$/, async (route) => {
+    const payload = JSON.parse(route.request().postData() || '{}')
+    projectInvitations = projectInvitations.map((item) => ({
+      ...item,
+      delivery_status: payload.status,
+      delivery_channel: payload.channel,
+      delivery_attempt_count: (item.delivery_attempt_count || 0) + 1,
+      delivery_error: payload.status === 'failed' ? payload.error : null,
+      last_delivery_attempt_at: new Date().toISOString(),
+      last_delivered_at: payload.status === 'sent' ? new Date().toISOString() : item.last_delivered_at,
+    }))
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
