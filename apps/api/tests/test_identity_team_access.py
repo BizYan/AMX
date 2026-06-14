@@ -9,6 +9,7 @@ os.environ["ARQ_REDIS_URL"] = "redis://localhost:6379/1"
 os.environ["JWT_SECRET_KEY"] = "test-identity-team-access-secret"
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -18,11 +19,16 @@ import app.models.projects  # noqa: F401 - resolves User.owned_projects relation
 from app.db.base import Base
 from app.db.init_schema import deduplicate_indexes
 from app.domains.identity.models import AuditLog, TenantApiKey
-from app.domains.identity.router import get_permission_command_center, get_permission_diagnostics, list_audit_logs, list_users, simulate_permission_decision
-from app.domains.identity.schemas import FieldPermissionCreate, PermissionSimulationRequest, PolicyCreate, PolicyUpdate, TenantApiKeyCreate
+from app.domains.identity.router import create_user, get_permission_command_center, get_permission_diagnostics, list_audit_logs, list_users, simulate_permission_decision
+from app.domains.identity.schemas import FieldPermissionCreate, PermissionSimulationRequest, PolicyCreate, PolicyUpdate, TenantApiKeyCreate, UserCreate
 from app.domains.identity.service import FieldPermissionService, PolicyService, TenantApiKeyService
 from app.services.permission_evaluator import PermissionEvaluator
 from app.models.identity import Role, Tenant, User, UserRole
+
+
+class StubRequest:
+    client = None
+    headers = {}
 
 
 @pytest.fixture
@@ -93,6 +99,54 @@ async def test_list_users_returns_assigned_roles_for_team_permission_center(db_s
     member_response = next(item for item in response.items if item.id == member_id)
     assert [role.name for role in member_response.roles] == ["Reviewer"]
     assert member_response.roles[0].permissions == {"documents": ["read", "review"]}
+
+
+@pytest.mark.asyncio
+async def test_create_user_returns_conflict_when_email_already_exists(db_session):
+    tenant_id = uuid4()
+    admin_id = uuid4()
+    role_id = uuid4()
+
+    db_session.add_all([
+        Tenant(id=tenant_id, name="Conflict Tenant", slug="conflict-tenant"),
+        User(
+            id=admin_id,
+            tenant_id=tenant_id,
+            email="admin@example.com",
+            full_name="Admin",
+            hashed_password="hashed",
+        ),
+        User(
+            tenant_id=tenant_id,
+            email="houseguy@163.com",
+            full_name="Existing Member",
+            hashed_password="hashed",
+        ),
+        Role(
+            id=role_id,
+            tenant_id=tenant_id,
+            name="Team Manager",
+            permissions={"team": ["manage"]},
+        ),
+        UserRole(user_id=admin_id, role_id=role_id),
+    ])
+    await db_session.flush()
+    admin = await db_session.get(User, admin_id)
+
+    with pytest.raises(HTTPException) as error:
+        await create_user(
+            data=UserCreate(
+                email="houseguy@163.com",
+                full_name="Duplicate Member",
+                password="temporary-password",
+            ),
+            user=admin,
+            db=db_session,
+            request=StubRequest(),
+        )
+
+    assert error.value.status_code == 409
+    assert error.value.detail == "该邮箱已存在，请使用其他邮箱或管理现有成员"
 
 
 @pytest.mark.asyncio

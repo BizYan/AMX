@@ -638,6 +638,17 @@ async def create_user(
                 detail="Cannot create user in this tenant",
             )
 
+    normalized_email = str(data.email).strip().casefold()
+    existing_user_id = await db.scalar(
+        select(User.id).where(func.lower(User.email) == normalized_email)
+    )
+    if existing_user_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="该邮箱已存在，请使用其他邮箱或管理现有成员",
+        )
+    data.email = normalized_email
+
     service = UserService(db)
     new_user = await service.create_user(data)
 
