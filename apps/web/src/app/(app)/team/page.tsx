@@ -349,7 +349,7 @@ function StatCard({ icon, title, value, detail }: { icon: ReactNode; title: stri
 export default function TeamAccessPage() {
   const queryClient = useQueryClient()
   const { addToast } = useToast()
-  const [activeTab, setActiveTab] = useState('overview')
+  const [activeTab, setActiveTab] = useState('members')
   const [memberDialogOpen, setMemberDialogOpen] = useState(false)
   const [roleDialogOpen, setRoleDialogOpen] = useState(false)
   const [policyDialogOpen, setPolicyDialogOpen] = useState(false)
@@ -1319,7 +1319,7 @@ export default function TeamAccessPage() {
             <CardHeader>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <CardTitle>成员与角色分配</CardTitle>
+                  <CardTitle>租户成员列表</CardTitle>
                   <CardDescription>创建成员、停用账号，并为成员分配当前租户角色。</CardDescription>
                 </div>
                 <Button onClick={() => setMemberDialogOpen(true)}>
