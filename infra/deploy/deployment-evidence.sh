@@ -49,7 +49,7 @@ case "$EXPECTED_REF" in
 esac
 
 DEPLOYED_SHA="$(git rev-parse HEAD)"
-EXPECTED_SHA="$(git rev-parse "$RESOLVED_REF")"
+EXPECTED_SHA="$(git rev-parse "${RESOLVED_REF}^{commit}")"
 RECORDED_REF="$(tr -d '\r\n' < .deploy-ref)"
 DEPLOYED_AT="$(tr -d '\r\n' < .deploy-at)"
 
