@@ -29,6 +29,19 @@ export async function setupApiMocks(page: Page, options: SetupApiMockOptions = {
   let workflowVersions: any[] = clone(MOCK.MOCK_WORKFLOW_VERSIONS)
   let exportJobs: any[] = clone(MOCK.MOCK_EXPORTS)
   let sourceFiles: any[] = clone(MOCK.MOCK_SOURCE_FILES)
+  let projectInvitations: any[] = [
+    {
+      id: 'invitation-e2e-001',
+      project_id: 'project-e2e-001',
+      email: 'consultant@example.com',
+      status: 'active',
+      expires_at: new Date(Date.now() + 86400000).toISOString(),
+      accepted_at: null,
+      revoked_at: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    },
+  ]
   let generationSessions: any[] = []
   let notifications: any[] = [
     {
@@ -2169,14 +2182,46 @@ export async function setupApiMocks(page: Page, options: SetupApiMockOptions = {
     })
   })
 
-  await page.route(/\/api\/v1\/projects\/[^/]+\/invitations\?email=.*$/, async (route) => {
+  await page.route(/\/api\/v1\/projects\/[^/]+\/invitations(?:\?email=.*)?$/, async (route) => {
+    if (route.request().method() === 'POST') {
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: 'invitation-created-e2e',
+          token: 'mock-invite-token-998877',
+          invite_path: '/invitations/mock-invite-token-998877',
+          expires_at: new Date(Date.now() + 86400000).toISOString(),
+        }),
+      })
+      return
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ items: projectInvitations, total: projectInvitations.length, page: 1, page_size: 100, has_more: false }),
+    })
+  })
+
+  await page.route(/\/api\/v1\/projects\/[^/]+\/invitations\/[^/]+\/resend$/, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
-        token: 'mock-invite-token-998877',
-        expires_at: new Date(Date.now() + 86400000).toISOString(),
+        id: 'invitation-e2e-001',
+        token: 'mock-renewed-invite-token',
+        invite_path: '/invitations/mock-renewed-invite-token',
+        expires_at: new Date(Date.now() + 604800000).toISOString(),
       }),
+    })
+  })
+
+  await page.route(/\/api\/v1\/projects\/[^/]+\/invitations\/[^/]+\/revoke$/, async (route) => {
+    projectInvitations = projectInvitations.map((item) => ({ ...item, status: 'revoked', revoked_at: new Date().toISOString() }))
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(projectInvitations[0]),
     })
   })
 

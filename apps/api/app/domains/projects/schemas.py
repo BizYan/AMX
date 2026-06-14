@@ -834,6 +834,44 @@ class ProjectMemberListResponse(PaginatedResponse[ProjectMemberResponse]):
     pass
 
 
+class ProjectInvitationResponse(BaseModel):
+    """Owner-facing project invitation lifecycle state."""
+
+    id: UUID
+    project_id: UUID
+    email: str
+    status: Literal["active", "expired", "accepted", "revoked"]
+    expires_at: datetime
+    accepted_at: datetime | None = None
+    revoked_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ProjectInvitationListResponse(PaginatedResponse[ProjectInvitationResponse]):
+    """Paginated project invitation lifecycle response."""
+
+    pass
+
+
+class ProjectInvitationCreatedResponse(BaseModel):
+    """One-time raw invitation token returned to the project owner."""
+
+    id: UUID
+    token: str
+    invite_path: str
+    expires_at: datetime
+
+
+class ProjectInvitationAcceptResponse(BaseModel):
+    """Invitation acceptance result."""
+
+    project_id: UUID
+    project_name: str
+    user_id: UUID
+    status: Literal["accepted"]
+
+
 # Project Settings Schemas
 class ProjectSettingsUpdate(BaseModel):
     """Schema for updating project settings."""

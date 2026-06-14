@@ -427,7 +427,17 @@ export const projectMembersApi = {
       page_size: params?.pageSize,
     }),
   invite: (projectId: string, email: string) =>
-    apiClient.post<{ token: string; expires_at: string }>(`/projects/${projectId}/invitations?email=${encodeURIComponent(email)}`),
+    apiClient.post<ProjectInvitationCreated>(`/projects/${projectId}/invitations?email=${encodeURIComponent(email)}`),
+  listInvitations: (projectId: string) =>
+    apiClient.get<{ items: ProjectInvitation[]; total: number; page: number; page_size: number; has_more: boolean }>(
+      `/projects/${projectId}/invitations`
+    ),
+  resendInvitation: (projectId: string, invitationId: string) =>
+    apiClient.post<ProjectInvitationCreated>(`/projects/${projectId}/invitations/${invitationId}/resend`),
+  revokeInvitation: (projectId: string, invitationId: string) =>
+    apiClient.post<ProjectInvitation>(`/projects/${projectId}/invitations/${invitationId}/revoke`),
+  acceptInvitation: (token: string) =>
+    apiClient.post<ProjectInvitationAcceptResult>(`/projects/invitations/${encodeURIComponent(token)}/accept`),
   remove: (projectId: string, userId: string) =>
     apiClient.delete(`/projects/${projectId}/members/${userId}`),
 }
@@ -1870,6 +1880,32 @@ export interface ProjectMember {
   project_id: string
   created_at: string
   updated_at: string
+}
+
+export interface ProjectInvitation {
+  id: string
+  project_id: string
+  email: string
+  status: 'active' | 'expired' | 'accepted' | 'revoked'
+  expires_at: string
+  accepted_at?: string | null
+  revoked_at?: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ProjectInvitationCreated {
+  id: string
+  token: string
+  invite_path: string
+  expires_at: string
+}
+
+export interface ProjectInvitationAcceptResult {
+  project_id: string
+  project_name: string
+  user_id: string
+  status: 'accepted'
 }
 
 export interface KnowledgeResult {
