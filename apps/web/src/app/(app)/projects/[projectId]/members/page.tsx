@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/components/ui/toast'
-import { ArrowLeft, Ban, Copy, Mail, RefreshCw, Send, Trash2, UserPlus, Users } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Ban, CheckCircle, Copy, Mail, RefreshCw, Send, Trash2, UserPlus, Users } from 'lucide-react'
 import { formatDistanceToNow } from '@/lib/utils'
 
 interface ProjectMembersPageProps {
@@ -73,6 +73,20 @@ export default function ProjectMembersPage({ params }: ProjectMembersPageProps) 
     onError: (error: Error) => addToast({ title: '撤销失败', description: error.message, variant: 'destructive' }),
   })
 
+  const deliveryMutation = useMutation({
+    mutationFn: (data: { invitationId: string; status: 'sent' | 'failed'; error?: string }) =>
+      projectMembersApi.recordInvitationDelivery(projectId, data.invitationId, {
+        status: data.status,
+        channel: 'manual',
+        error: data.error,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project-invitations', projectId] })
+      addToast({ title: '投递证据已更新' })
+    },
+    onError: (error: Error) => addToast({ title: '投递证据更新失败', description: error.message, variant: 'destructive' }),
+  })
+
   const removeMemberMutation = useMutation({
     mutationFn: (userId: string) => projectMembersApi.remove(projectId, userId),
     onSuccess: () => {
@@ -87,6 +101,11 @@ export default function ProjectMembersPage({ params }: ProjectMembersPageProps) 
   const members = membersData?.items || []
   const users = usersData?.items || []
   const invitations = invitationsData?.items || []
+  const deliverySummary = {
+    pending: invitations.filter((item) => item.delivery_status === 'pending').length,
+    sent: invitations.filter((item) => item.delivery_status === 'sent').length,
+    failed: invitations.filter((item) => item.delivery_status === 'failed').length,
+  }
   const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
 
   const getUserLabel = (userId: string) => {
@@ -186,6 +205,11 @@ export default function ProjectMembersPage({ params }: ProjectMembersPageProps) 
           <CardDescription>跟踪邀请状态；续期会使旧链接失效，撤销后受邀人不能再加入。</CardDescription>
         </CardHeader>
         <CardContent>
+          <div className="mb-4 grid gap-3 sm:grid-cols-3" data-testid="invitation-delivery-summary">
+            <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700"><p className="text-xs text-slate-500">待确认投递</p><p className="mt-1 text-xl font-semibold">{deliverySummary.pending}</p></div>
+            <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700"><p className="text-xs text-slate-500">已送达</p><p className="mt-1 text-xl font-semibold">{deliverySummary.sent}</p></div>
+            <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700"><p className="text-xs text-slate-500">投递失败</p><p className="mt-1 text-xl font-semibold">{deliverySummary.failed}</p></div>
+          </div>
           {invitationsLoading ? (
             <div className="py-8 text-center text-slate-500">正在加载邀请...</div>
           ) : invitations.length === 0 ? (
@@ -196,12 +220,41 @@ export default function ProjectMembersPage({ params }: ProjectMembersPageProps) 
                 <div key={invitation.id} className="flex flex-col gap-3 rounded-lg border border-slate-200 p-3 dark:border-slate-700 md:flex-row md:items-center md:justify-between">
                   <div>
                     <p className="text-sm font-medium text-slate-900 dark:text-white">{invitation.email}</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      投递：{invitation.delivery_status === 'sent' ? '已送达' : invitation.delivery_status === 'failed' ? '失败' : '待确认'}
+                      {' · '}尝试 {invitation.delivery_attempt_count ?? 0} 次
+                    </p>
+                    {invitation.delivery_error ? <p className="mt-1 text-xs text-red-600">{invitation.delivery_error}</p> : null}
                     <p className="mt-1 text-xs text-slate-500">有效期至 {new Date(invitation.expires_at).toLocaleString('zh-CN')}</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant={invitation.status === 'active' ? 'secondary' : 'outline'}>
                       {invitationStatusLabel[invitation.status]}
                     </Badge>
+                    {invitation.status === 'active' && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        data-testid={`invitation-delivery-sent-${invitation.id}`}
+                        onClick={() => deliveryMutation.mutate({ invitationId: invitation.id, status: 'sent' })}
+                        disabled={deliveryMutation.isPending}
+                      >
+                        <CheckCircle className="mr-2 h-4 w-4" />
+                        确认送达
+                      </Button>
+                    )}
+                    {invitation.status === 'active' && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        data-testid={`invitation-delivery-failed-${invitation.id}`}
+                        onClick={() => deliveryMutation.mutate({ invitationId: invitation.id, status: 'failed', error: '收件人未确认收到邀请' })}
+                        disabled={deliveryMutation.isPending}
+                      >
+                        <AlertTriangle className="mr-2 h-4 w-4" />
+                        标记失败
+                      </Button>
+                    )}
                     {(invitation.status === 'active' || invitation.status === 'expired') && (
                       <Button
                         variant="outline"

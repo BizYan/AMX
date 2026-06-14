@@ -453,6 +453,11 @@ export const projectMembersApi = {
     apiClient.post<ProjectInvitationCreated>(`/projects/${projectId}/invitations/${invitationId}/resend`),
   revokeInvitation: (projectId: string, invitationId: string) =>
     apiClient.post<ProjectInvitation>(`/projects/${projectId}/invitations/${invitationId}/revoke`),
+  recordInvitationDelivery: (
+    projectId: string,
+    invitationId: string,
+    data: { status: 'sent' | 'failed'; channel: 'manual' | 'email' | 'messaging'; error?: string }
+  ) => apiClient.post<ProjectInvitation>(`/projects/${projectId}/invitations/${invitationId}/delivery`, data),
   acceptInvitation: (token: string) =>
     apiClient.post<ProjectInvitationAcceptResult>(`/projects/invitations/${encodeURIComponent(token)}/accept`),
   previewInvitation: (token: string) =>
@@ -1919,6 +1924,12 @@ export interface ProjectInvitation {
   expires_at: string
   accepted_at?: string | null
   revoked_at?: string | null
+  delivery_status: 'pending' | 'sent' | 'failed'
+  delivery_channel?: string | null
+  delivery_attempt_count: number
+  delivery_error?: string | null
+  last_delivery_attempt_at?: string | null
+  last_delivered_at?: string | null
   created_at: string
   updated_at: string
 }
