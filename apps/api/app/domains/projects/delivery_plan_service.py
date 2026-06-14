@@ -1,7 +1,9 @@
 """Executable project delivery plans and milestone gate evaluation."""
 
-from datetime import datetime, timezone
-from uuid import UUID
+import hashlib
+import secrets
+from datetime import datetime, timedelta, timezone
+from uuid import UUID, uuid4
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +14,11 @@ from app.domains.documents.models import Document, DocumentType
 from app.domains.export.models import ExportArtifact, ExportJob, ExportStatus, ExportType
 from app.domains.projects.models import ProjectDeliveryPlan, ProjectMilestone
 from app.domains.projects.schemas import (
+    CustomerPortalAcceptanceSubmit,
+    CustomerPortalLinkCreate,
+    CustomerPortalLinkCreatedResponse,
+    CustomerPortalLinkResponse,
+    CustomerPortalSummaryResponse,
     ProjectAcceptanceResponse,
     ProjectAcceptanceUpdate,
     ProjectDeliveryPlanResponse,
@@ -336,6 +343,143 @@ class ProjectDeliveryPlanService:
             await self._set_work_item_status(release, "open")
         await self._refresh_plan(plan)
         return await self._acceptance_response(plan)
+
+    async def list_customer_portal_links(
+        self, project_id: UUID, tenant_id: UUID
+    ) -> list[CustomerPortalLinkResponse]:
+        plan = await self.get_plan(project_id, tenant_id)
+        if not plan:
+            raise ValueError("Project delivery plan not found")
+        return [
+            CustomerPortalLinkResponse.model_validate(item)
+            for item in (plan.settings_json or {}).get("customer_portal_links", [])
+        ]
+
+    async def create_customer_portal_link(
+        self,
+        project_id: UUID,
+        tenant_id: UUID,
+        requested_by: UUID,
+        data: CustomerPortalLinkCreate,
+    ) -> CustomerPortalLinkCreatedResponse:
+        plan = await self.get_plan(project_id, tenant_id)
+        if not plan:
+            raise ValueError("Project delivery plan not found")
+        await self._require_project_owner(project_id, tenant_id, requested_by)
+        now = datetime.now(timezone.utc)
+        token = secrets.token_urlsafe(32)
+        record = {
+            "id": str(uuid4()),
+            "label": data.label,
+            "customer_email": data.customer_email.strip().lower(),
+            "token_hash": self._portal_token_hash(token),
+            "created_at": now.isoformat(),
+            "created_by": str(requested_by),
+            "expires_at": (now + timedelta(days=data.expires_in_days)).isoformat(),
+            "revoked_at": None,
+            "last_accessed_at": None,
+            "submitted_at": None,
+        }
+        links = list((plan.settings_json or {}).get("customer_portal_links", []))
+        links.append(record)
+        plan.settings_json = {**(plan.settings_json or {}), "customer_portal_links": links}
+        await self.db.flush()
+        return CustomerPortalLinkCreatedResponse.model_validate(
+            {**record, "token": token, "portal_path": f"/delivery-portal/{token}"}
+        )
+
+    async def revoke_customer_portal_link(
+        self, project_id: UUID, tenant_id: UUID, requested_by: UUID, link_id: UUID
+    ) -> CustomerPortalLinkResponse:
+        plan = await self.get_plan(project_id, tenant_id)
+        if not plan:
+            raise ValueError("Project delivery plan not found")
+        await self._require_project_owner(project_id, tenant_id, requested_by)
+        links = list((plan.settings_json or {}).get("customer_portal_links", []))
+        link = next((item for item in links if item.get("id") == str(link_id)), None)
+        if not link:
+            raise ValueError("Customer portal link not found")
+        link["revoked_at"] = datetime.now(timezone.utc).isoformat()
+        plan.settings_json = {**(plan.settings_json or {}), "customer_portal_links": links}
+        await self.db.flush()
+        return CustomerPortalLinkResponse.model_validate(link)
+
+    async def get_customer_portal(self, token: str) -> CustomerPortalSummaryResponse:
+        plan, link = await self._portal_plan_and_link(token)
+        link["last_accessed_at"] = datetime.now(timezone.utc).isoformat()
+        plan.settings_json = {**(plan.settings_json or {})}
+        await self.db.flush()
+        return await self._customer_portal_response(plan, link)
+
+    async def submit_customer_portal_acceptance(
+        self, token: str, data: CustomerPortalAcceptanceSubmit
+    ) -> CustomerPortalSummaryResponse:
+        plan, link = await self._portal_plan_and_link(token)
+        if data.contact_email.strip().lower() != link["customer_email"]:
+            raise PermissionError("Contact email does not match this customer portal link")
+        existing = dict((plan.settings_json or {}).get("customer_acceptance") or {})
+        now = datetime.now(timezone.utc).isoformat()
+        acceptance = {
+            **existing,
+            "customer_name": existing.get("customer_name") or "客户",
+            "contact_name": data.contact_name,
+            "contact_email": data.contact_email.strip().lower(),
+            "decision": data.decision,
+            "notes": data.notes,
+            "items": [item.model_dump(mode="json") for item in data.items],
+            "accepted_at": now if data.decision in {"accepted", "accepted_with_followups"} else None,
+            "updated_by": None,
+            "external_portal_link_id": link["id"],
+            "closed_at": existing.get("closed_at"),
+        }
+        link["submitted_at"] = now
+        plan.settings_json = {**(plan.settings_json or {}), "customer_acceptance": acceptance}
+        await self.db.flush()
+        return await self._customer_portal_response(plan, link)
+
+    async def _portal_plan_and_link(
+        self, token: str
+    ) -> tuple[ProjectDeliveryPlan, dict]:
+        token_hash = self._portal_token_hash(token)
+        plans = list((await self.db.scalars(select(ProjectDeliveryPlan))).all())
+        for plan in plans:
+            link = next(
+                (
+                    item
+                    for item in (plan.settings_json or {}).get("customer_portal_links", [])
+                    if secrets.compare_digest(item.get("token_hash", ""), token_hash)
+                ),
+                None,
+            )
+            if not link:
+                continue
+            if link.get("revoked_at"):
+                raise PermissionError("Customer portal link has been revoked")
+            expires_at = datetime.fromisoformat(link["expires_at"])
+            if expires_at < datetime.now(timezone.utc):
+                raise PermissionError("Customer portal link has expired")
+            return plan, link
+        raise ValueError("Customer portal link not found")
+
+    async def _customer_portal_response(
+        self, plan: ProjectDeliveryPlan, link: dict
+    ) -> CustomerPortalSummaryResponse:
+        acceptance = await self._acceptance_response(plan)
+        project = await self._project(plan.project_id, plan.tenant_id)
+        return CustomerPortalSummaryResponse(
+            project_name=project.name,
+            customer_name=acceptance.customer_name,
+            package_ready=acceptance.package_ready,
+            decision=acceptance.decision,
+            accepted_at=acceptance.accepted_at,
+            submitted_at=link.get("submitted_at"),
+            criteria=acceptance.items,
+            gate=acceptance.gate,
+        )
+
+    @staticmethod
+    def _portal_token_hash(token: str) -> str:
+        return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
     async def _acceptance_response(
         self, plan: ProjectDeliveryPlan

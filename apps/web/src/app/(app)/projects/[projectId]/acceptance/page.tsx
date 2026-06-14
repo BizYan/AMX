@@ -3,14 +3,14 @@
 import { use, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, CheckCircle2, PackageCheck, Plus, RotateCcw, Trash2 } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Copy, Link2, PackageCheck, Plus, RotateCcw, Trash2, XCircle } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
-import { ProjectAcceptanceItem, ProjectAcceptanceUpdate, projectsApi } from '@/lib/api-client'
+import { CustomerPortalLinkCreated, ProjectAcceptanceItem, ProjectAcceptanceUpdate, projectsApi } from '@/lib/api-client'
 
 const emptyItem = (): ProjectAcceptanceItem => ({
   key: `acceptance-${Date.now()}`,
@@ -31,6 +31,8 @@ export default function ProjectAcceptancePage({ params }: { params: Promise<{ pr
     notes: '',
     items: [],
   })
+  const [portalEmail, setPortalEmail] = useState('')
+  const [createdPortal, setCreatedPortal] = useState<CustomerPortalLinkCreated | null>(null)
 
   const acceptanceQuery = useQuery({
     queryKey: ['project-acceptance', projectId],
@@ -39,6 +41,10 @@ export default function ProjectAcceptancePage({ params }: { params: Promise<{ pr
   const projectQuery = useQuery({
     queryKey: ['project', projectId],
     queryFn: () => projectsApi.get(projectId),
+  })
+  const portalLinksQuery = useQuery({
+    queryKey: ['customer-portal-links', projectId],
+    queryFn: () => projectsApi.listCustomerPortalLinks(projectId),
   })
 
   useEffect(() => {
@@ -80,6 +86,24 @@ export default function ProjectAcceptancePage({ params }: { params: Promise<{ pr
       refresh()
       addToast({ title: '正式交付已重新打开', description: '可继续处理客户后续事项。' })
     },
+  })
+  const createPortalMutation = useMutation({
+    mutationFn: () => projectsApi.createCustomerPortalLink(projectId, {
+      label: '客户验收门户',
+      customer_email: portalEmail,
+      expires_in_days: 14,
+    }),
+    onSuccess: (created) => {
+      setCreatedPortal(created)
+      setPortalEmail('')
+      queryClient.invalidateQueries({ queryKey: ['customer-portal-links', projectId] })
+      addToast({ title: '客户门户链接已创建', description: '原始链接仅在本次创建后显示，请立即发送给客户。' })
+    },
+    onError: (error: Error) => addToast({ title: '创建链接失败', description: error.message, variant: 'destructive' }),
+  })
+  const revokePortalMutation = useMutation({
+    mutationFn: (linkId: string) => projectsApi.revokeCustomerPortalLink(projectId, linkId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['customer-portal-links', projectId] }),
   })
 
   const acceptance = acceptanceQuery.data
@@ -144,6 +168,64 @@ export default function ProjectAcceptancePage({ params }: { params: Promise<{ pr
             <option value="rejected">拒绝验收</option>
           </select>
           <textarea className="min-h-24 rounded-md border border-slate-300 bg-white p-3 text-sm md:col-span-2 dark:border-slate-700 dark:bg-slate-900" placeholder="验收结论与后续事项" value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
+        </CardContent>
+      </Card>
+
+      <Card data-testid="customer-portal-links">
+        <CardHeader>
+          <CardTitle>客户交付门户</CardTitle>
+          <CardDescription>为客户创建有期限、可撤销的验收链接。系统仅保存令牌哈希，原始链接只显示一次。</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Input
+              data-testid="customer-portal-email"
+              placeholder="客户签署邮箱"
+              value={portalEmail}
+              onChange={(event) => setPortalEmail(event.target.value)}
+            />
+            <Button
+              data-testid="create-customer-portal"
+              disabled={!portalEmail || createPortalMutation.isPending}
+              onClick={() => createPortalMutation.mutate()}
+            >
+              <Link2 className="mr-2 h-4 w-4" />创建 14 天链接
+            </Button>
+          </div>
+          {createdPortal && (
+            <div className="rounded-md border border-emerald-300 bg-emerald-50 p-3 text-sm dark:border-emerald-800 dark:bg-emerald-950/30">
+              <p className="font-medium">一次性可见门户地址</p>
+              <div className="mt-2 flex items-center gap-2">
+                <code className="min-w-0 flex-1 break-all">{`${window.location.origin}${createdPortal.portal_path}`}</code>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  title="复制门户地址"
+                  onClick={() => navigator.clipboard.writeText(`${window.location.origin}${createdPortal.portal_path}`)}
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+          <div className="space-y-2">
+            {(portalLinksQuery.data || []).map((link) => (
+              <div key={link.id} className="flex flex-col gap-2 rounded-md border border-slate-200 p-3 text-sm sm:flex-row sm:items-center sm:justify-between dark:border-slate-700">
+                <div>
+                  <p className="font-medium">{link.label} · {link.customer_email}</p>
+                  <p className="text-slate-500">
+                    到期：{new Date(link.expires_at).toLocaleString()} · {link.submitted_at ? '客户已提交' : link.revoked_at ? '已撤销' : '等待客户'}
+                  </p>
+                </div>
+                {!link.revoked_at && (
+                  <Button variant="ghost" size="sm" onClick={() => revokePortalMutation.mutate(link.id)}>
+                    <XCircle className="mr-2 h-4 w-4" />撤销
+                  </Button>
+                )}
+              </div>
+            ))}
+            {!portalLinksQuery.data?.length && <p className="py-4 text-center text-sm text-slate-500">尚未创建客户门户链接。</p>}
+          </div>
         </CardContent>
       </Card>
 
