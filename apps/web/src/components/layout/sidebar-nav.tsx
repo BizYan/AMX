@@ -133,10 +133,13 @@ export function SidebarNav({ user }: SidebarNavProps) {
   }
 
   return (
-    <div className={cn(
-      'flex h-full flex-col border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 transition-all duration-300',
-      collapsed ? 'w-16' : 'w-16 md:w-64'
-    )}>
+    <div
+      data-testid="primary-sidebar"
+      className={cn(
+        'flex h-full shrink-0 flex-col border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 transition-all duration-300',
+        collapsed ? 'w-16' : 'w-16 md:w-[220px]'
+      )}
+    >
       {/* Logo */}
       <div className="flex h-16 items-center justify-center border-b border-slate-200 px-4 dark:border-slate-700 md:justify-between">
         {!collapsed && (
