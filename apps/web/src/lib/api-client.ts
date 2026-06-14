@@ -438,6 +438,10 @@ export const projectMembersApi = {
     apiClient.post<ProjectInvitation>(`/projects/${projectId}/invitations/${invitationId}/revoke`),
   acceptInvitation: (token: string) =>
     apiClient.post<ProjectInvitationAcceptResult>(`/projects/invitations/${encodeURIComponent(token)}/accept`),
+  previewInvitation: (token: string) =>
+    apiClient.get<ProjectInvitationPreview>(`/projects/invitations/${encodeURIComponent(token)}/preview`),
+  activateInvitation: (token: string, data: ProjectInvitationActivationInput) =>
+    apiClient.post<ProjectInvitationActivationResult>(`/projects/invitations/${encodeURIComponent(token)}/activate`, data),
   remove: (projectId: string, userId: string) =>
     apiClient.delete(`/projects/${projectId}/members/${userId}`),
 }
@@ -1906,6 +1910,23 @@ export interface ProjectInvitationAcceptResult {
   project_name: string
   user_id: string
   status: 'accepted'
+}
+
+export interface ProjectInvitationPreview {
+  status: 'active' | 'expired' | 'accepted' | 'revoked' | 'invalid'
+  project_name?: string | null
+  masked_email?: string | null
+  expires_at?: string | null
+}
+
+export interface ProjectInvitationActivationInput {
+  full_name: string
+  password: string
+}
+
+export interface ProjectInvitationActivationResult extends ProjectInvitationAcceptResult {
+  access_token: string
+  token_type: 'bearer'
 }
 
 export interface KnowledgeResult {

@@ -2,6 +2,7 @@
 
 import hashlib
 import os
+from types import SimpleNamespace
 from uuid import uuid4
 
 os.environ["DATABASE_URL"] = "postgresql+asyncpg://postgres:postgres@localhost/postgres"
@@ -19,9 +20,11 @@ import app.domains.identity.models  # noqa: F401
 import app.domains.projects.models  # noqa: F401
 from app.db.base import Base
 from app.db.init_schema import deduplicate_indexes
+from app.core.security import decode_token, verify_password
+from app.domains.identity.models import AuditLog
 from app.domains.projects import router as project_router
 from app.domains.projects.models import ProjectInvitation
-from app.models.identity import Tenant, User
+from app.models.identity import Role, Tenant, User, UserRole
 from app.models.projects import Project, ProjectMember
 
 
@@ -132,3 +135,132 @@ async def test_invitation_rejects_wrong_email_and_revoked_token(db_session):
     await project_router.revoke_project_invitation(project.id, invitation.id, db_session, owner)
     with pytest.raises(HTTPException, match="Invitation has been revoked"):
         await project_router.accept_project_invitation(created.token, db_session, invitee)
+
+
+@pytest.mark.asyncio
+async def test_public_preview_hides_invalid_tokens_and_exposes_active_invitation(db_session):
+    owner, _, _, project = await _seed(db_session)
+    created = await project_router.create_project_invitation(
+        project.id, "new.consultant@example.com", db_session, owner
+    )
+
+    preview = await project_router.preview_project_invitation(created.token, db_session)
+    invalid = await project_router.preview_project_invitation("unknown-token", db_session)
+
+    assert preview.status == "active"
+    assert preview.project_name == project.name
+    assert preview.masked_email == "n************t@example.com"
+    assert preview.expires_at == created.expires_at
+    assert invalid.status == "invalid"
+    assert invalid.project_name is None
+    assert invalid.masked_email is None
+
+
+@pytest.mark.asyncio
+async def test_external_invitee_activates_account_with_lowest_role_and_session(db_session):
+    owner, _, _, project = await _seed(db_session)
+    created = await project_router.create_project_invitation(
+        project.id, "new.consultant@example.com", db_session, owner
+    )
+
+    activated = await project_router.activate_project_invitation(
+        created.token,
+        SimpleNamespace(full_name="New Consultant", password="SecurePass123!"),
+        db_session,
+    )
+
+    user = (
+        await db_session.execute(select(User).where(User.email == "new.consultant@example.com"))
+    ).scalar_one()
+    role = (
+        await db_session.execute(
+            select(Role)
+            .join(UserRole, UserRole.role_id == Role.id)
+            .where(UserRole.user_id == user.id)
+        )
+    ).scalar_one()
+    membership = (
+        await db_session.execute(
+            select(ProjectMember).where(
+                ProjectMember.project_id == project.id,
+                ProjectMember.user_id == user.id,
+            )
+        )
+    ).scalar_one()
+    invitation = (await db_session.execute(select(ProjectInvitation))).scalar_one()
+    audit = (
+        await db_session.execute(
+            select(AuditLog).where(AuditLog.action == "project.invitation.activate")
+        )
+    ).scalar_one()
+
+    assert activated.project_id == project.id
+    assert activated.user_id == user.id
+    assert activated.status == "accepted"
+    assert activated.access_token
+    assert decode_token(activated.access_token)["sub"] == str(user.id)
+    assert verify_password("SecurePass123!", user.hashed_password)
+    assert user.tenant_id == project.tenant_id
+    assert role.name == "project_member"
+    assert role.permissions == {
+        "projects": ["read"],
+        "documents": ["read", "comment"],
+        "collaboration": ["read", "write"],
+    }
+    assert membership.role_id == role.id
+    assert invitation.accepted_at is not None
+    assert audit.user_id == user.id
+    assert created.token not in str(audit.extra_data)
+    assert "SecurePass123!" not in str(audit.extra_data)
+
+    with pytest.raises(HTTPException, match="already been accepted"):
+        await project_router.activate_project_invitation(
+            created.token,
+            SimpleNamespace(full_name="Second User", password="OtherPass123!"),
+            db_session,
+        )
+
+
+@pytest.mark.asyncio
+async def test_activation_requires_existing_account_to_sign_in(db_session):
+    owner, invitee, _, project = await _seed(db_session)
+    created = await project_router.create_project_invitation(project.id, invitee.email, db_session, owner)
+
+    with pytest.raises(HTTPException, match="Existing account must sign in"):
+        await project_router.activate_project_invitation(
+            created.token,
+            SimpleNamespace(full_name="Duplicate User", password="SecurePass123!"),
+            db_session,
+        )
+
+    invitation = (await db_session.execute(select(ProjectInvitation))).scalar_one()
+    assert invitation.accepted_at is None
+
+
+@pytest.mark.asyncio
+async def test_activation_rejects_email_owned_by_another_tenant(db_session):
+    owner, _, _, project = await _seed(db_session)
+    created = await project_router.create_project_invitation(
+        project.id, "external@example.com", db_session, owner
+    )
+    other_tenant = Tenant(id=uuid4(), name="Other Tenant", slug=f"other-{uuid4().hex[:8]}")
+    db_session.add_all(
+        [
+            other_tenant,
+            User(
+                id=uuid4(),
+                tenant_id=other_tenant.id,
+                email="External@Example.com",
+                full_name="External User",
+                hashed_password="hashed",
+            ),
+        ]
+    )
+    await db_session.flush()
+
+    with pytest.raises(HTTPException, match="Email belongs to another tenant"):
+        await project_router.activate_project_invitation(
+            created.token,
+            SimpleNamespace(full_name="External User", password="SecurePass123!"),
+            db_session,
+        )
