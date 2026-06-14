@@ -41,6 +41,7 @@ def test_deployment_evidence_requires_gitnexus_indexed_commit_to_match_release()
     evidence_script = (REPO_ROOT / "infra/deploy/deployment-evidence.sh").read_text(encoding="utf-8")
 
     assert 'GITNEXUS_REPOSITORY_PATH="${GITNEXUS_REPOSITORY_PATH:-/workspace/AMX}"' in evidence_script
+    assert 'EXPECTED_SHA="$(git rev-parse "${RESOLVED_REF}^{commit}")"' in evidence_script
     assert 'exec -T gitnexus-server git -C "$GITNEXUS_REPOSITORY_PATH" rev-parse HEAD' in evidence_script
     assert 'if [[ "$gitnexus_repo_sha" != "$DEPLOYED_SHA" ]]' in evidence_script
     assert '"gitnexus_indexed_sha": os.environ["GITNEXUS_REPO_SHA"]' in evidence_script
