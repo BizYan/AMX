@@ -15,7 +15,7 @@ test.describe('Sidebar information architecture', () => {
   test('groups primary navigation by delivery workflow and removes duplicate entries', async ({ page }) => {
     const sidebar = page.locator('nav').first()
 
-    await expect(page.getByTestId('primary-sidebar')).toHaveCSS('width', '220px')
+    await expect(page.getByTestId('primary-sidebar')).toHaveCSS('width', '200px')
 
     await expect(page.getByTestId('sidebar-section-sectionOverview')).toContainText('总览')
     await expect(page.getByTestId('sidebar-section-sectionDelivery')).toContainText('项目交付')
