@@ -138,6 +138,12 @@ export const authApi = {
     apiClient.post<{ access_token: string; token_type: string; expires_in: number }>('/identity/auth/login', { email, password }),
   logout: () => apiClient.post('/identity/auth/logout'),
   me: () => apiClient.get<User>('/identity/auth/me'),
+  getSecurity: () => apiClient.get<AccountSecurity>('/identity/auth/security'),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    apiClient.post<void>('/identity/auth/password', { current_password: currentPassword, new_password: newPassword }),
+  revokeAllSessions: () => apiClient.post<void>('/identity/auth/sessions/revoke'),
+  deactivateAccount: (currentPassword: string) =>
+    apiClient.post<void>('/identity/auth/deactivate', { current_password: currentPassword }),
 }
 
 export const projectsApi = {
@@ -1124,6 +1130,14 @@ export interface User {
   tenant_id?: string
   full_name?: string
   is_active?: boolean
+}
+
+export interface AccountSecurity {
+  security_version: number
+  password_changed_at: string | null
+  last_login_at: string | null
+  active: boolean
+  recent_events: AuditLog[]
 }
 
 export interface UserNotification {

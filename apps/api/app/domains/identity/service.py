@@ -230,8 +230,11 @@ class AuthService:
             "sub": str(user.id),
             "email": user.email,
             "tenant_id": str(user.tenant_id) if user.tenant_id else None,
+            "security_version": user.security_version,
         }
         access_token = create_access_token(token_data)
+        user.last_login_at = datetime.now(timezone.utc)
+        await self.db.flush()
 
         return user, access_token
 
@@ -280,6 +283,8 @@ class AuthService:
 
             if user and not user.is_active:
                 return None
+            if user and payload.get("security_version", 1) != user.security_version:
+                return None
 
             return user
         except (InvalidTokenError, ValueError):
@@ -288,6 +293,30 @@ class AuthService:
     def get_token_expiry(self) -> int:
         """Get token expiry time in seconds."""
         return settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60
+
+    async def change_password(self, user: User, current_password: str, new_password: str) -> None:
+        """Change a password and revoke all existing sessions."""
+        if not verify_password(current_password, user.hashed_password):
+            raise ValueError("Current password is incorrect")
+        if verify_password(new_password, user.hashed_password):
+            raise ValueError("New password must be different")
+        user.hashed_password = hash_password(new_password)
+        user.password_changed_at = datetime.now(timezone.utc)
+        user.security_version += 1
+        await self.db.flush()
+
+    async def revoke_all_sessions(self, user: User) -> None:
+        """Invalidate every token issued for the user."""
+        user.security_version += 1
+        await self.db.flush()
+
+    async def deactivate_account(self, user: User, current_password: str) -> None:
+        """Deactivate the current account and invalidate all sessions."""
+        if not verify_password(current_password, user.hashed_password):
+            raise ValueError("Current password is incorrect")
+        user.is_active = False
+        user.security_version += 1
+        await self.db.flush()
 
 
 class TenantService:
@@ -537,9 +566,13 @@ class UserService:
         if data.full_name is not None:
             user.full_name = data.full_name
         if data.is_active is not None:
+            if user.is_active and not data.is_active:
+                user.security_version += 1
             user.is_active = data.is_active
         if data.password is not None:
             user.hashed_password = hash_password(data.password)
+            user.password_changed_at = datetime.now(timezone.utc)
+            user.security_version += 1
 
         await self.db.flush()
         await self.db.refresh(user)

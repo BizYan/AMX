@@ -381,6 +381,29 @@ class LoginResponse(BaseModel):
     expires_in: int
 
 
+class PasswordChangeRequest(BaseModel):
+    """Authenticated password-change request."""
+
+    current_password: str
+    new_password: str = Field(..., min_length=8, max_length=100)
+
+
+class AccountDeactivateRequest(BaseModel):
+    """Authenticated self-deactivation request."""
+
+    current_password: str
+
+
+class AccountSecurityResponse(BaseModel):
+    """Current account security lifecycle state."""
+
+    security_version: int
+    password_changed_at: datetime | None
+    last_login_at: datetime | None
+    active: bool
+    recent_events: list["AuditLogResponse"] = Field(default_factory=list)
+
+
 class AuthMeResponse(BaseModel):
     """Schema for auth me response."""
 

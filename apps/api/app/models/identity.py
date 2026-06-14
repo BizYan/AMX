@@ -6,7 +6,9 @@ User, Role, Tenant and related models for authentication and authorization.
 from sqlalchemy import (
     Boolean,
     Column,
+    DateTime,
     ForeignKey,
+    Integer,
     String,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -46,6 +48,9 @@ class User(Base, UuidMixin, TimestampMixin, SoftDeleteMixin, TenantMixin):
     hashed_password = Column(String(255), nullable=False)
     full_name = Column(String(255), nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
+    security_version = Column(Integer, default=1, nullable=False)
+    password_changed_at = Column(DateTime(timezone=True), nullable=True)
+    last_login_at = Column(DateTime(timezone=True), nullable=True)
 
     # Override TenantMixin.tenant_id to add ForeignKey for proper relationship
     tenant_id = Column(
