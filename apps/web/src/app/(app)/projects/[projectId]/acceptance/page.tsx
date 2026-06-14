@@ -155,6 +155,20 @@ export default function ProjectAcceptancePage({ params }: { params: Promise<{ pr
         </Card>
       )}
 
+      <Card data-testid="acceptance-follow-ups">
+        <CardHeader><CardTitle>客户整改执行队列</CardTitle><CardDescription>客户拒绝或待确认的验收项会自动进入协同中心，完成后客户可重新提交验收。</CardDescription></CardHeader>
+        <CardContent className="space-y-2">
+          {(acceptance.follow_ups || []).map((item) => (
+            <div key={item.key} className="flex items-center justify-between rounded-md border p-3 text-sm">
+              <div><p className="font-medium">{item.title}</p><p className="text-xs text-slate-500">{item.priority} · {new Date(item.updated_at).toLocaleString()}</p></div>
+              <Badge variant={item.status === 'done' ? 'default' : 'secondary'}>{item.status}</Badge>
+            </div>
+          ))}
+          {!acceptance.follow_ups?.length && <p className="text-sm text-slate-500">当前没有客户整改事项。</p>}
+          <Button variant="outline" asChild><Link href="/collaboration">打开协同中心</Link></Button>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader><CardTitle>客户签署记录</CardTitle><CardDescription>由项目负责人维护客户、联系人和最终验收结论。</CardDescription></CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">

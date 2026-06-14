@@ -248,6 +248,16 @@ class ProjectAcceptanceGate(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class CustomerAcceptanceFollowUp(BaseModel):
+    """Safe status of a collaboration task created from an acceptance criterion."""
+
+    key: str
+    title: str
+    status: str
+    priority: str
+    updated_at: datetime
+
+
 class ProjectAcceptanceResponse(ProjectAcceptanceUpdate):
     """Customer acceptance record with formal delivery gate evidence."""
 
@@ -257,6 +267,7 @@ class ProjectAcceptanceResponse(ProjectAcceptanceUpdate):
     closed_at: datetime | None = None
     package_ready: bool = False
     gate: ProjectAcceptanceGate
+    follow_ups: list[CustomerAcceptanceFollowUp] = Field(default_factory=list)
 
 
 class CustomerPortalLinkCreate(BaseModel):
@@ -339,6 +350,7 @@ class CustomerPortalSummaryResponse(BaseModel):
     criteria: list[ProjectAcceptanceItem] = Field(default_factory=list)
     artifacts: list[CustomerPortalArtifact] = Field(default_factory=list)
     receipt: CustomerPortalReceipt | None = None
+    follow_ups: list[CustomerAcceptanceFollowUp] = Field(default_factory=list)
     gate: ProjectAcceptanceGate
 
 

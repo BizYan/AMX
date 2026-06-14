@@ -302,6 +302,7 @@ class ProjectDeliveryPlanService:
         )
         payload["closed_at"] = existing.get("closed_at")
         plan.settings_json = {**(plan.settings_json or {}), "customer_acceptance": payload}
+        await self._sync_acceptance_follow_ups(plan, data.items, requested_by)
         await self.db.flush()
         return await self._acceptance_response(plan)
 
@@ -441,8 +442,89 @@ class ProjectDeliveryPlanService:
         link["submitted_at"] = now
         link["receipt_id"] = acceptance["receipt_id"]
         plan.settings_json = {**(plan.settings_json or {}), "customer_acceptance": acceptance}
+        project = await self._project(plan.project_id, plan.tenant_id)
+        await self._sync_acceptance_follow_ups(plan, data.items, project.owner_id)
         await self.db.flush()
         return await self._customer_portal_response(plan, link)
+
+    async def _sync_acceptance_follow_ups(
+        self,
+        plan: ProjectDeliveryPlan,
+        items: list,
+        created_by: UUID,
+    ) -> None:
+        """Create, reopen, or close governed follow-ups for acceptance criteria."""
+        service = CollaborationWorkItemService(self.db)
+        project = await self._project(plan.project_id, plan.tenant_id)
+        for item in items:
+            source_key = f"acceptance:{plan.project_id}:{item.key}"
+            existing = await self.db.scalar(
+                select(CollaborationWorkItem).where(
+                    CollaborationWorkItem.tenant_id == plan.tenant_id,
+                    CollaborationWorkItem.source_key == source_key,
+                )
+            )
+            if item.status == "accepted":
+                if existing:
+                    existing.status = "done"
+                    existing.completed_at = datetime.now(timezone.utc)
+                    existing.metadata_json = {
+                        **(existing.metadata_json or {}),
+                        "acceptance_status": item.status,
+                        "evidence": item.evidence,
+                    }
+                continue
+            priority = "high" if item.status == "rejected" else "medium"
+            work_item = existing or await service.create_work_item(
+                tenant_id=plan.tenant_id,
+                created_by=created_by,
+                project_id=plan.project_id,
+                title=f"客户验收整改：{item.title}",
+                description=item.evidence or "客户验收项需要项目团队跟进。",
+                work_type="follow_up",
+                priority=priority,
+                assigned_to=project.owner_id,
+                source_key=source_key,
+                metadata={"acceptance_key": item.key, "acceptance_status": item.status},
+            )
+            work_item.status = "blocked" if item.status == "rejected" else "open"
+            work_item.priority = priority
+            work_item.assigned_to = project.owner_id
+            work_item.title = f"客户验收整改：{item.title}"
+            work_item.description = item.evidence or "客户验收项需要项目团队跟进。"
+            work_item.completed_at = None
+            work_item.metadata_json = {
+                **(work_item.metadata_json or {}),
+                "acceptance_key": item.key,
+                "acceptance_status": item.status,
+                "evidence": item.evidence,
+            }
+        await self.db.flush()
+
+    async def _acceptance_follow_ups(self, plan: ProjectDeliveryPlan) -> list[dict]:
+        items = list(
+            (
+                await self.db.scalars(
+                    select(CollaborationWorkItem)
+                    .where(
+                        CollaborationWorkItem.tenant_id == plan.tenant_id,
+                        CollaborationWorkItem.project_id == plan.project_id,
+                        CollaborationWorkItem.source_key.like(f"acceptance:{plan.project_id}:%"),
+                    )
+                    .order_by(CollaborationWorkItem.updated_at.desc())
+                )
+            ).all()
+        )
+        return [
+            {
+                "key": (item.metadata_json or {}).get("acceptance_key", ""),
+                "title": item.title,
+                "status": item.status,
+                "priority": item.priority,
+                "updated_at": item.updated_at,
+            }
+            for item in items
+        ]
 
     async def get_customer_portal_artifact(
         self, token: str, artifact_id: UUID
@@ -533,6 +615,7 @@ class ProjectDeliveryPlanService:
             criteria=acceptance.items,
             artifacts=[CustomerPortalArtifact.model_validate(item) for item in artifacts],
             receipt=receipt,
+            follow_ups=await self._acceptance_follow_ups(plan),
             gate=acceptance.gate,
         )
 
@@ -612,6 +695,7 @@ class ProjectDeliveryPlanService:
                 "blockers": blockers,
                 "warnings": warnings,
             },
+            follow_ups=await self._acceptance_follow_ups(plan),
         )
 
     async def _evaluate_gates(self, milestone: ProjectMilestone) -> list[dict]:

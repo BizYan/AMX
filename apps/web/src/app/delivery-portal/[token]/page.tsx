@@ -99,6 +99,19 @@ export default function CustomerDeliveryPortalPage({ params }: { params: Promise
         </CardContent>
       </Card>
 
+      <Card data-testid="portal-follow-ups">
+        <CardHeader><CardTitle>整改跟进状态</CardTitle><CardDescription>未接受或待确认的验收项会进入项目团队整改队列，完成后可在本页重新验收。</CardDescription></CardHeader>
+        <CardContent className="space-y-2">
+          {(portal.follow_ups || []).map((item) => (
+            <div key={item.key} className="flex items-center justify-between rounded-md border p-3 text-sm">
+              <div><p className="font-medium">{item.title}</p><p className="text-xs text-slate-500">更新于 {new Date(item.updated_at).toLocaleString()}</p></div>
+              <Badge variant={item.status === 'done' ? 'default' : 'secondary'}>{item.status === 'done' ? '已整改' : item.status === 'blocked' ? '整改中' : '待处理'}</Badge>
+            </div>
+          ))}
+          {!portal.follow_ups?.length && <p className="text-sm text-slate-500">当前没有客户验收整改事项。</p>}
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader><CardTitle>提交验收结论</CardTitle><CardDescription>签署邮箱必须与收到本链接的邮箱一致。</CardDescription></CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-2">
