@@ -5,7 +5,6 @@ Creates the initial bootstrap admin user on application startup.
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from unittest.mock import Mock
 
 from app.core.security import hash_password
 from app.core.settings import settings
@@ -25,17 +24,11 @@ async def create_bootstrap_admin(db: AsyncSession) -> None:
     if not settings.BOOTSTRAP_ADMIN_EMAIL:
         return
 
-    # Check if admin user already exists. Keep the mock branch for unit tests
-    # that patch the model object directly instead of providing a SQLAlchemy mapper.
-    if isinstance(User, Mock):
-        existing_admin = User.where(
-            User.email == settings.BOOTSTRAP_ADMIN_EMAIL
-        ).scalar_one_or_none()
-    else:
-        result = await db.execute(
-            select(User).where(User.email == settings.BOOTSTRAP_ADMIN_EMAIL)
-        )
-        existing_admin = result.scalar_one_or_none()
+    # Check if admin user already exists.
+    result = await db.execute(
+        select(User).where(User.email == settings.BOOTSTRAP_ADMIN_EMAIL)
+    )
+    existing_admin = result.scalar_one_or_none()
 
     if existing_admin is not None:
         return  # Admin already exists, skip

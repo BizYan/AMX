@@ -3,10 +3,37 @@
 Tests for the bootstrap admin user creation functionality.
 """
 
+import os
+
+os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost/postgres")
+os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
+os.environ.setdefault("ARQ_REDIS_URL", "redis://localhost:6379/1")
+os.environ.setdefault("JWT_SECRET_KEY", "test-bootstrap-secret")
+
 import pytest
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import app.db.init_schema  # noqa: F401
 from app.core.security import hash_password, verify_password, create_access_token, decode_token
+from app.db.base import Base
+from app.db.init_schema import deduplicate_indexes
+from app.models.identity import Role, Tenant, User, UserRole
+
+
+@pytest.fixture
+async def db_session():
+    deduplicate_indexes()
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+
+    Session = async_sessionmaker(engine, expire_on_commit=False)
+    async with Session() as session:
+        yield session
+
+    await engine.dispose()
 
 
 class TestPasswordHashing:
@@ -137,34 +164,37 @@ class TestBootstrapIdempotency:
     """Tests for bootstrap admin creation idempotency."""
 
     @pytest.mark.asyncio
-    async def test_bootstrap_skips_existing_admin(self):
+    async def test_bootstrap_skips_existing_admin(self, db_session):
         """Test that bootstrap doesn't create duplicate admins."""
         from app.db.bootstrap import create_bootstrap_admin
 
-        # Mock settings
         with patch("app.db.bootstrap.settings") as mock_settings:
             mock_settings.BOOTSTRAP_ADMIN_EMAIL = "admin@example.com"
             mock_settings.BOOTSTRAP_ADMIN_PASSWORD = "secure_password"
             mock_settings.BOOTSTRAP_ADMIN_NAME = "Admin User"
+            tenant = Tenant(name="Existing Tenant", slug="existing")
+            db_session.add(tenant)
+            await db_session.flush()
+            db_session.add(
+                User(
+                    tenant_id=tenant.id,
+                    email="admin@example.com",
+                    hashed_password=hash_password("existing_password"),
+                    full_name="Existing Admin",
+                    is_active=True,
+                )
+            )
+            await db_session.flush()
 
-            # Mock the User model to simulate existing user
-            with patch("app.db.bootstrap.User") as mock_user:
-                mock_existing = MagicMock()
-                mock_existing.email = "admin@example.com"
-                mock_user.where.return_value.scalar_one_or_none.return_value = mock_existing
+            await create_bootstrap_admin(db_session)
 
-                # Mock session
-                mock_db = AsyncMock()
-
-                # Call bootstrap
-                await create_bootstrap_admin(mock_db)
-
-                # Verify no add/commit happened since user exists
-                mock_db.add.assert_not_called()
-                mock_db.commit.assert_not_called()
+            users = list((await db_session.scalars(select(User).where(User.email == "admin@example.com"))).all())
+            default_tenant = await db_session.scalar(select(Tenant).where(Tenant.slug == "default"))
+            assert len(users) == 1
+            assert default_tenant is None
 
     @pytest.mark.asyncio
-    async def test_bootstrap_creates_admin_when_none_exists(self):
+    async def test_bootstrap_creates_admin_when_none_exists(self, db_session):
         """Test that bootstrap creates admin when none exists."""
         from app.db.bootstrap import create_bootstrap_admin
 
@@ -173,16 +203,21 @@ class TestBootstrapIdempotency:
             mock_settings.BOOTSTRAP_ADMIN_PASSWORD = "secure_password"
             mock_settings.BOOTSTRAP_ADMIN_NAME = "New Admin"
 
-            with patch("app.db.bootstrap.User") as mock_user:
-                mock_user.where.return_value.scalar_one_or_none.return_value = None
+            await create_bootstrap_admin(db_session)
 
-                mock_db = AsyncMock()
-                mock_db.flush = AsyncMock()
-
-                await create_bootstrap_admin(mock_db)
-
-                # Verify add was called for new entities
-                assert mock_db.add.called
+            admin = await db_session.scalar(select(User).where(User.email == "new_admin@example.com"))
+            assert admin is not None
+            assert admin.full_name == "New Admin"
+            assert verify_password("secure_password", admin.hashed_password)
+            tenant = await db_session.scalar(select(Tenant).where(Tenant.id == admin.tenant_id))
+            assert tenant is not None
+            assert tenant.slug == "default"
+            role = await db_session.scalar(select(Role).where(Role.tenant_id == tenant.id, Role.name == "admin"))
+            assert role is not None
+            user_role = await db_session.scalar(
+                select(UserRole).where(UserRole.user_id == admin.id, UserRole.role_id == role.id)
+            )
+            assert user_role is not None
 
 
 class TestBlacklistFunctions:
@@ -197,12 +232,11 @@ class TestBlacklistFunctions:
             mock_redis_client = AsyncMock()
             mock_redis.return_value = mock_redis_client
 
-            with patch("app.core.security.JWTBlacklist"):
-                mock_db = AsyncMock()
-                await add_to_blacklist("test-jti", mock_db)
+            mock_db = AsyncMock()
+            await add_to_blacklist("test-jti", mock_db)
 
-                # Verify Redis was called
-                mock_redis_client.setex.assert_called_once()
+            # Verify Redis was called
+            mock_redis_client.setex.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_is_token_blacklisted_redis_hit(self):
@@ -231,12 +265,14 @@ class TestBlacklistFunctions:
             mock_redis_client.exists.return_value = 0  # Not in Redis
             mock_redis.return_value = mock_redis_client
 
-            with patch("app.core.security.JWTBlacklist") as mock_blacklist:
-                mock_result = MagicMock()
-                mock_result.scalar_one_or_none.return_value = None  # Not in DB
-                mock_db = AsyncMock()
-                mock_db.execute.return_value = mock_result
+            from uuid import uuid4
 
-                result = await is_token_blacklisted("test-jti", mock_db)
+            mock_result = MagicMock()
+            mock_result.scalar_one_or_none.return_value = None  # Not in DB
+            mock_db = AsyncMock()
+            mock_db.execute.return_value = mock_result
 
-                assert result is False
+            result = await is_token_blacklisted(str(uuid4()), mock_db)
+
+            assert result is False
+            mock_db.execute.assert_called_once()
