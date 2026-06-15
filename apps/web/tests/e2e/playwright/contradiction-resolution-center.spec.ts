@@ -44,11 +44,14 @@ test.describe('Document contradiction resolution center', () => {
     await expect(page.getByTestId('persisted-conflict-governance')).toContainText('Persisted conflict governance')
     await expect(page.getByTestId('persisted-conflict-governance')).toContainText('High-severity downstream document mismatch')
     await expect(page.getByTestId('persisted-conflict-governance')).toContainText('unassigned')
+    await expect(page.getByTestId('persisted-conflict-history-conflict-e2e-001')).toContainText('Conflict decision history')
+    await expect(page.getByTestId('persisted-conflict-history-conflict-e2e-001')).toContainText('assign')
 
     await page.getByTestId('persisted-conflict-accept-risk-conflict-e2e-001').click()
 
     await expect(page.getByTestId('persisted-conflict-governance')).toContainText('risk_accepted')
     await expect(page.getByTestId('persisted-conflict-governance')).toContainText('Risk accepted until')
+    await expect(page.getByTestId('persisted-conflict-history-conflict-e2e-001')).toContainText('accept_risk')
   })
 
   test('runs persisted scans and lets the current operator claim conflicts', async ({ page }) => {

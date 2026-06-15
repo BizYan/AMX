@@ -476,6 +476,8 @@ export const changeApi = {
       severity: params?.severity,
       status: params?.status,
     }),
+  listDocumentConflictDecisions: (id: string) =>
+    apiClient.get<DocumentConflictDecisionListResponse>(`/change/conflicts/${id}/decisions`),
   scanDocumentConflicts: (projectId: string) =>
     apiClient.post<ConflictScanResponse>(`/change/conflicts/projects/${projectId}/scan`, {}),
   assignDocumentConflict: (id: string, data: ConflictAssignmentPayload) =>
@@ -3462,6 +3464,26 @@ export interface DocumentConflict {
 
 export interface DocumentConflictListResponse {
   items: DocumentConflict[]
+  total: number
+}
+
+export interface DocumentConflictDecision {
+  id: string
+  tenant_id?: string | null
+  project_id: string
+  conflict_id: string
+  actor_id: string
+  action: string
+  previous_status?: string | null
+  resulting_status: string
+  reason?: string | null
+  evidence_json: Record<string, any>
+  created_at: string
+  updated_at: string
+}
+
+export interface DocumentConflictDecisionListResponse {
+  items: DocumentConflictDecision[]
   total: number
 }
 

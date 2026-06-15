@@ -21,6 +21,7 @@ export async function setupApiMocks(page: Page, options: SetupApiMockOptions = {
   let templateVersions: any[] = clone(MOCK.MOCK_TEMPLATE_VERSIONS)
   let traceabilityImpactAnalysis = clone(MOCK.MOCK_TRACEABILITY_BOARD_IMPACT)
   let documentConflicts: any[] = clone(MOCK.MOCK_DOCUMENT_CONFLICTS)
+  let documentConflictDecisions: any[] = clone(MOCK.MOCK_DOCUMENT_CONFLICT_DECISIONS)
   let skillCatalog: any[] = clone(MOCK.MOCK_SKILL_CATALOG)
   let agentProfiles: any[] = clone(MOCK.MOCK_AGENT_PROFILES)
   let agentRuns: any[] = clone(MOCK.MOCK_AGENT_RUNS)
@@ -47,6 +48,35 @@ export async function setupApiMocks(page: Page, options: SetupApiMockOptions = {
     created_at: file.created_at || new Date().toISOString(),
     updated_at: file.updated_at || new Date().toISOString(),
   }))
+  const appendDocumentConflictDecision = (
+    conflictId: string,
+    action: string,
+    previousStatus: string | null,
+    resultingStatus: string,
+    reason: string | null,
+    evidence: Record<string, any>
+  ) => {
+    const conflict = documentConflicts.find((item) => item.id === conflictId)
+    if (!conflict) return
+    const createdAt = new Date().toISOString()
+    documentConflictDecisions = [
+      ...documentConflictDecisions,
+      {
+        id: `conflict-decision-e2e-${Date.now()}-${documentConflictDecisions.length + 1}`,
+        tenant_id: conflict.tenant_id,
+        project_id: conflict.project_id,
+        conflict_id: conflictId,
+        actor_id: MOCK.MOCK_USER.id,
+        action,
+        previous_status: previousStatus,
+        resulting_status: resultingStatus,
+        reason,
+        evidence_json: evidence,
+        created_at: createdAt,
+        updated_at: createdAt,
+      },
+    ]
+  }
   let projectInvitations: any[] = [
     {
       id: 'invitation-e2e-001',
@@ -5036,9 +5066,23 @@ export async function setupApiMocks(page: Page, options: SetupApiMockOptions = {
     })
   })
 
+  await page.route(/\/api\/v1\/change\/conflicts\/[^/]+\/decisions$/, async (route) => {
+    const conflictId = route.request().url().match(/\/conflicts\/([^/]+)\/decisions$/)?.[1] || ''
+    const items = documentConflictDecisions
+      .filter((item) => item.conflict_id === conflictId)
+      .sort((left, right) => Date.parse(left.created_at) - Date.parse(right.created_at))
+
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ items, total: items.length }),
+    })
+  })
+
   await page.route(/\/api\/v1\/change\/conflicts\/[^/]+\/assign$/, async (route) => {
     const conflictId = route.request().url().match(/\/conflicts\/([^/]+)\/assign$/)?.[1] || ''
     const payload = JSON.parse(route.request().postData() || '{}')
+    const previousConflict = documentConflicts.find((item) => item.id === conflictId)
     documentConflicts = documentConflicts.map((item) =>
       item.id === conflictId
         ? {
@@ -5049,6 +5093,15 @@ export async function setupApiMocks(page: Page, options: SetupApiMockOptions = {
             updated_at: new Date().toISOString(),
           }
         : item
+    )
+    const updatedConflict = documentConflicts.find((item) => item.id === conflictId)
+    appendDocumentConflictDecision(
+      conflictId,
+      'assign',
+      previousConflict?.status ?? null,
+      updatedConflict?.status ?? previousConflict?.status ?? 'analysis',
+      payload.reason ?? null,
+      { assignee_user_id: payload.assignee_user_id }
     )
 
     await route.fulfill({
@@ -5064,11 +5117,18 @@ export async function setupApiMocks(page: Page, options: SetupApiMockOptions = {
     const action = match?.[2] || ''
     const payload = JSON.parse(route.request().postData() || '{}')
     const updatedAt = new Date().toISOString()
+    const previousConflict = documentConflicts.find((item) => item.id === conflictId)
     const statusByAction: Record<string, string> = {
       'complete-analysis': 'decision',
       'accept-risk': 'risk_accepted',
       'accept-revision': 'revision_accepted',
       'close-after-rescan': 'closed',
+    }
+    const decisionActionByRoute: Record<string, string> = {
+      'complete-analysis': 'complete_analysis',
+      'accept-risk': 'accept_risk',
+      'accept-revision': 'accept_revision',
+      'close-after-rescan': 'close',
     }
 
     documentConflicts = documentConflicts.map((item) => {
@@ -5088,6 +5148,15 @@ export async function setupApiMocks(page: Page, options: SetupApiMockOptions = {
         closed_at: action === 'close-after-rescan' ? updatedAt : item.closed_at,
       }
     })
+    const updatedConflict = documentConflicts.find((item) => item.id === conflictId)
+    appendDocumentConflictDecision(
+      conflictId,
+      decisionActionByRoute[action] || action,
+      previousConflict?.status ?? null,
+      updatedConflict?.status ?? previousConflict?.status ?? statusByAction[action] ?? 'analysis',
+      payload.reason ?? null,
+      payload
+    )
 
     await route.fulfill({
       status: 200,

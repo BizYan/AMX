@@ -45,6 +45,7 @@ from app.domains.change.schemas import (
     ConflictRiskAcceptanceRequest,
     ConflictRevisionAcceptanceRequest,
     ConflictScanResponse,
+    DocumentConflictDecisionListResponse,
     DocumentConflictListResponse,
     DocumentConflictResponse,
     FullTraceabilityMatrixResponse,
@@ -179,6 +180,26 @@ async def get_persisted_conflict(
     if not conflict:
         raise HTTPException(status_code=404, detail="Document conflict not found")
     return conflict
+
+
+@router.get("/conflicts/{conflict_id}/decisions", response_model=DocumentConflictDecisionListResponse)
+async def list_persisted_conflict_decisions(
+    conflict_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List append-only decisions for one persisted document conflict."""
+    service = ConflictGovernanceService(db)
+    conflict = await service.get_conflict(
+        tenant_id=current_user.tenant_id,
+        conflict_id=conflict_id,
+    )
+    if not conflict:
+        raise HTTPException(status_code=404, detail="Document conflict not found")
+    return await service.list_conflict_decisions(
+        tenant_id=current_user.tenant_id,
+        conflict_id=conflict_id,
+    )
 
 
 @router.post("/conflicts/{conflict_id}/assign", response_model=DocumentConflictResponse)

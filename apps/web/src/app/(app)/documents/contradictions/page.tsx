@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Select, SelectOption } from '@/components/ui/select'
 import { useCurrentUser } from '@/lib/auth'
-import { changeApi, documentsApi, projectsApi, type Document, type DocumentConflict } from '@/lib/api-client'
+import { changeApi, documentsApi, projectsApi, type Document, type DocumentConflict, type DocumentConflictDecision } from '@/lib/api-client'
 import {
   AlertCircle,
   AlertTriangle,
@@ -49,6 +49,8 @@ interface DecisionRecord {
   note: string
   decidedAt: string
 }
+
+const PERSISTED_CONFLICT_DECISIONS_QUERY_KEY = 'persisted-document-conflict-decisions'
 
 const DOC_TYPE_LABELS: Record<string, string> = {
   urs: 'URS 用户需求',
@@ -292,6 +294,48 @@ function getConflictTypeLabel(type: Contradiction['conflictType']) {
   return labels[type]
 }
 
+function PersistedConflictDecisionHistory({ conflictId }: { conflictId: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey: [PERSISTED_CONFLICT_DECISIONS_QUERY_KEY, conflictId],
+    queryFn: () => changeApi.listDocumentConflictDecisions(conflictId),
+  })
+  const decisions = data?.items ?? []
+
+  return (
+    <div
+      data-testid={`persisted-conflict-history-${conflictId}`}
+      className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900"
+    >
+      <div className="flex items-center gap-2 text-sm font-medium text-slate-800 dark:text-slate-100">
+        <History className="h-4 w-4" />
+        Conflict decision history
+      </div>
+      {isLoading ? (
+        <p className="mt-2 text-xs text-slate-500">Loading decision history...</p>
+      ) : decisions.length === 0 ? (
+        <p className="mt-2 text-xs text-slate-500">No decisions recorded yet.</p>
+      ) : (
+        <ol className="mt-2 space-y-2 text-xs text-slate-600 dark:text-slate-300">
+          {decisions.slice(-4).reverse().map((decision: DocumentConflictDecision) => (
+            <li key={decision.id} className="rounded border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-950">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline">{decision.action}</Badge>
+                <span>
+                  {decision.previous_status || 'none'} -&gt; {decision.resulting_status}
+                </span>
+              </div>
+              <p className="mt-1 text-slate-500">
+                {formatDateTime(decision.created_at)}
+                {decision.reason ? ` - ${decision.reason}` : ''}
+              </p>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  )
+}
+
 export default function ContradictionsPage() {
   const { addToast } = useToast()
   const queryClient = useQueryClient()
@@ -374,6 +418,7 @@ export default function ContradictionsPage() {
     },
     onSuccess: (updatedConflict) => {
       queryClient.invalidateQueries({ queryKey: persistedConflictQueryKey })
+      queryClient.invalidateQueries({ queryKey: [PERSISTED_CONFLICT_DECISIONS_QUERY_KEY, updatedConflict.id] })
       addToast({
         title: 'Persisted conflict updated',
         description: `${updatedConflict.summary}: ${updatedConflict.status}`,
@@ -420,6 +465,7 @@ export default function ContradictionsPage() {
     },
     onSuccess: (updatedConflict) => {
       queryClient.invalidateQueries({ queryKey: persistedConflictQueryKey })
+      queryClient.invalidateQueries({ queryKey: [PERSISTED_CONFLICT_DECISIONS_QUERY_KEY, updatedConflict.id] })
       addToast({
         title: 'Persisted conflict assigned',
         description: `${updatedConflict.summary}: assigned to current operator.`,
@@ -712,6 +758,7 @@ export default function ContradictionsPage() {
                         ))}
                       </ul>
                     )}
+                    <PersistedConflictDecisionHistory conflictId={conflict.id} />
                   </div>
                 )
               })}
