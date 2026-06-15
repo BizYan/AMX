@@ -270,6 +270,33 @@ async def test_project_scan_creates_and_refreshes_same_conflict(db_session):
 
 
 @pytest.mark.asyncio
+async def test_project_scan_assigns_new_conflict_to_primary_document_owner(db_session):
+    tenant, project, _, child = await create_project_graph(db_session)
+    service = ConflictGovernanceService(db_session)
+
+    scan = await service.scan_project(tenant_id=tenant.id, project_id=project.id)
+
+    conflict = scan.items[0]
+    assert conflict.assignee_user_id == child.created_by
+    assert conflict.assignment_source == "primary_document_owner"
+    assert conflict.assigned_at is not None
+    assert conflict.status == ConflictStatus.ANALYSIS.value
+
+    decisions = (
+        await db_session.execute(
+            select(DocumentConflictDecision).where(
+                DocumentConflictDecision.conflict_id == conflict.id,
+            )
+        )
+    ).scalars().all()
+    assert len(decisions) == 1
+    assert decisions[0].action == "assign"
+    assert decisions[0].actor_id == child.created_by
+    assert decisions[0].resulting_status == ConflictStatus.ANALYSIS.value
+    assert decisions[0].evidence_json["assignment_source"] == "primary_document_owner"
+
+
+@pytest.mark.asyncio
 async def test_project_scan_marks_missing_fingerprint_absent_without_closing(db_session):
     tenant, project, parent, child = await create_project_graph(db_session)
     service = ConflictGovernanceService(db_session)
