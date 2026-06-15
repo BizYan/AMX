@@ -45,6 +45,9 @@ services:
     container_name: consultant_ai_api
     env_file:
       - ../.env
+    environment:
+      REDIS_URL: ${CONTAINER_REDIS_URL:-redis://redis:6379/0}
+      ARQ_REDIS_URL: ${CONTAINER_ARQ_REDIS_URL:-redis://redis:6379/1}
     ports:
       - "${API_BIND_ADDRESS:-127.0.0.1}:${API_HOST_PORT:-18000}:8000"
     depends_on:
@@ -63,6 +66,9 @@ services:
     container_name: consultant_ai_worker
     env_file:
       - ../.env
+    environment:
+      REDIS_URL: ${CONTAINER_REDIS_URL:-redis://redis:6379/0}
+      ARQ_REDIS_URL: ${CONTAINER_ARQ_REDIS_URL:-redis://redis:6379/1}
     depends_on:
       postgres:
         condition: service_healthy
