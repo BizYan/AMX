@@ -93,6 +93,15 @@ def test_ci_replaces_placeholder_jwt_secret_before_production_preflight():
     )
 
 
+def test_ci_replaces_placeholder_bootstrap_admin_password_before_production_preflight():
+    workflow = read(".github/workflows/ci.yml")
+
+    assert "BOOTSTRAP_ADMIN_PASSWORD=ci-bootstrap-admin-password" in workflow
+    assert workflow.index("BOOTSTRAP_ADMIN_PASSWORD=ci-bootstrap-admin-password") < workflow.index(
+        "bash infra/deploy/validate-runtime-security.sh --environment production"
+    )
+
+
 def test_runtime_security_validator_rejects_public_binds_and_permissive_env():
     validator = read("infra/deploy/validate-runtime-security.sh")
 
@@ -117,3 +126,12 @@ def test_runtime_security_validator_rejects_placeholder_jwt_secret():
     assert "JWT_SECRET_KEY" in validator
     assert "your-super-secret-jwt-key-change-in-production" in validator
     assert "Production JWT_SECRET_KEY must be a real non-placeholder secret" in validator
+
+
+def test_runtime_security_validator_rejects_placeholder_bootstrap_admin_password():
+    validator = read("infra/deploy/validate-runtime-security.sh")
+
+    assert "BOOTSTRAP_ADMIN_EMAIL" in validator
+    assert "BOOTSTRAP_ADMIN_PASSWORD" in validator
+    assert "change-me-in-production" in validator
+    assert "Production BOOTSTRAP_ADMIN_PASSWORD must be a real non-placeholder password" in validator

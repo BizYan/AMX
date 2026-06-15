@@ -75,6 +75,20 @@ if [[ "${#jwt_secret}" -lt 32 ]]; then
   exit 1
 fi
 
+bootstrap_admin_email="$(read_env_value "BOOTSTRAP_ADMIN_EMAIL")"
+bootstrap_admin_email="$(printf '%s' "$bootstrap_admin_email" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+if [[ -n "$bootstrap_admin_email" ]]; then
+  bootstrap_admin_password="$(read_env_value "BOOTSTRAP_ADMIN_PASSWORD")"
+  bootstrap_admin_password="$(printf '%s' "$bootstrap_admin_password" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+  bootstrap_admin_password_normalized="$(printf '%s' "$bootstrap_admin_password" | tr '[:upper:]' '[:lower:]')"
+  case "$bootstrap_admin_password_normalized" in
+    ""|admin|admin123|change-me|change-me-in-production|changeme|consultant|consultant123|password|password123|test|test-password|test_password)
+      echo "Production BOOTSTRAP_ADMIN_PASSWORD must be a real non-placeholder password" >&2
+      exit 1
+      ;;
+  esac
+fi
+
 for variable in \
   POSTGRES_BIND_ADDRESS \
   REDIS_BIND_ADDRESS \
