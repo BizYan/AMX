@@ -438,6 +438,9 @@ class ChangeService:
         Returns:
             Created ChangeRequest
         """
+        if requested_by is None:
+            raise ValueError("requested_by is required")
+
         change_request = ChangeRequest(
             tenant_id=tenant_id,
             project_id=project_id,
@@ -450,7 +453,7 @@ class ChangeService:
             rationale=rationale,
             impact_analysis=impact_analysis,
             risk_assessment=risk_assessment,
-            requested_by=requested_by or UUID("00000000-0000-0000-0000-000000000000"),
+            requested_by=requested_by,
         )
 
         # Capture source document version if provided
@@ -2591,6 +2594,8 @@ class ControlledBackwriteService:
 
         if patch.status != PatchStatus.APPROVED.value:
             raise ValueError("Can only apply approved patches")
+        if patch.reviewed_by is None:
+            raise ValueError("Approved patch reviewer is required")
 
         # Get document
         doc_result = await self.db.execute(
@@ -2611,7 +2616,7 @@ class ControlledBackwriteService:
             version=document.version,
             content=document.content,
             changes_summary=f"Snapshot before patch {patch_id}",
-            created_by=patch.reviewed_by or UUID("00000000-0000-0000-0000-000000000000"),
+            created_by=patch.reviewed_by,
         )
         self.db.add(old_version)
 
