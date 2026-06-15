@@ -4,9 +4,9 @@ This repository follows `docs/architecture.md`, `docs/product-spec.md`, the on-d
 
 ## Authority Model
 
-The human owner keeps final authority for product scope, merges to protected branches, releases, and production deployment.
+The human owner keeps final authority for product scope.
 
-Agents may create branches, commits, tests, reports, and pull requests. Agents must not directly merge `main`, publish production, rewrite protected history, or bypass CI and review gates.
+Codex may create branches, commits, tests, reports, pull requests, merge ready PRs into `main`, publish releases, and deploy production after all repository gates pass. Agents must not rewrite protected history or bypass CI, review, release, deployment, or production verification gates.
 
 ## Required Workspaces
 
@@ -44,7 +44,7 @@ Default rule: do not keep Antigravity or Claude active on every task. Add them o
 7. The working agent pushes a branch and opens a PR using `.github/pull_request_template.md`.
 8. Claude performs business and UX acceptance only when the change needs independent business review or documentation acceptance.
 9. GitHub Actions must pass.
-10. The human owner decides whether to merge and deploy.
+10. Codex may merge ready PRs after all gates pass, then release and deploy automatically when cadence or urgency requires it.
 
 ## GitNexus Rules
 
@@ -110,7 +110,7 @@ For database or migration changes, verify Alembic upgrade on a disposable databa
 
 Production release verification is a separate gate: deploy through GitHub Actions, verify production health, OCI commit/status, GitNexus service health, and release-critical smoke paths.
 
-Do not deploy every merge by default. Multiple stable PRs may be grouped into a release slice and validated together, unless the change is a production hotfix or the human owner requests immediate deployment.
+Do not deploy every merge by default. Multiple stable PRs may be grouped into a release slice and validated together. Deploy automatically when the workspace cadence is reached: 5 merged major or critical PRs, 10 merged normal or medium PRs, or 15 merged PRs total since the last successfully verified production deployment. Approved hotfixes and urgent security fixes may deploy immediately.
 
 ## Continuous Improvement Rules
 
