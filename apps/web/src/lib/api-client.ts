@@ -1,23 +1,28 @@
-function resolveApiBaseUrl(): string {
-  const configuredUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:18000/api/v1'
+type ApiRuntimeLocation = {
+  protocol: string
+  hostname: string
+}
 
-  if (typeof window === 'undefined') {
-    return configuredUrl
+export function resolveApiBaseUrl(
+  configuredUrl: string | undefined = process.env.NEXT_PUBLIC_API_URL,
+  runtimeLocation: ApiRuntimeLocation | undefined = typeof window === 'undefined' ? undefined : window.location,
+): string {
+  const normalizedConfiguredUrl = configuredUrl?.trim()
+  const { protocol, hostname } = runtimeLocation ?? { protocol: 'https:', hostname: '' }
+  const isLocalBrowser = hostname === 'localhost' || hostname === '127.0.0.1'
+
+  if (!normalizedConfiguredUrl) {
+    return isLocalBrowser ? `${protocol}//${hostname}:18000/api/v1` : '/api/v1'
   }
 
-  const { protocol, hostname } = window.location
-  const isRemoteBrowser = hostname !== 'localhost' && hostname !== '127.0.0.1'
-  const pointsToLocalhost = configuredUrl.includes('://localhost:') || configuredUrl.includes('://127.0.0.1:')
+  const pointsToLocalhost =
+    normalizedConfiguredUrl.includes('://localhost:') || normalizedConfiguredUrl.includes('://127.0.0.1:')
 
-  if (isRemoteBrowser && pointsToLocalhost) {
-    if (protocol === 'https:') {
-      return `${protocol}//${hostname}/api/v1`
-    }
-
-    return `${protocol}//${hostname}:18000/api/v1`
+  if (!isLocalBrowser && pointsToLocalhost) {
+    return '/api/v1'
   }
 
-  return configuredUrl
+  return normalizedConfiguredUrl
 }
 
 const API_BASE_URL = resolveApiBaseUrl()
