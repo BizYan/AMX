@@ -19,13 +19,14 @@ enforce delivery gates according to unresolved conflict risk.
 - Audit-oriented change and traceability command-center summaries.
 - A visible contradiction-resolution page with document-derived conflict cues.
 - Delivery-readiness and customer-acceptance gate infrastructure.
+- Idempotent persisted conflict scan and read API.
+- Automatic primary document owner assignment, manual reassignment, governed
+  analysis/rejection transitions, and append-only decision history.
 
 ### Partial
 
-- Conflict detection exists in backend traceability helpers and frontend-derived
-  document comparisons, but there is no canonical persisted conflict record.
 - The contradiction-resolution page can display and locally classify conflicts,
-  but decisions are not durable domain events.
+  but is not yet backed by the persisted conflict governance API.
 - Existing change requests and sync proposals can execute downstream changes,
   but accepting a conflict revision does not create a linked change-request draft.
 - Delivery readiness includes traceability signals, but does not enforce the
@@ -33,9 +34,6 @@ enforce delivery gates according to unresolved conflict risk.
 
 ### Missing
 
-- Idempotent persisted conflict scan and rescan.
-- Conflict assignment to document owners with project-lead fallback.
-- Governed conflict status transitions and durable decision history.
 - Linked change-request draft creation from an accepted revision.
 - Conflict closure gated by applied change and successful traceability rescan.
 - High-risk conflict delivery blocking and audited risk acceptance.
@@ -70,8 +68,9 @@ Excluded:
 - Extend the existing `change` and traceability domain rather than create a
   separate conflict-governance domain.
 - Rule detection is authoritative and auditable; AI is advisory.
-- Conflict assignment defaults to the related document owner and may be manually
-  reassigned.
+- Conflict assignment defaults to the primary affected document owner, then the
+  related document owner when rule evidence exposes one, then project owner
+  fallback; project owners may manually reassign.
 - Accepting revision creates a change-request draft rather than submitting or
   applying it automatically.
 - High-risk unresolved conflicts block formal delivery unless an authorized,
@@ -129,11 +128,11 @@ Rollback boundary:
 
 ## Active Work
 
-- Branch: `feature/traceability-conflict-governance`
-- Current phase: PR 1 ready for human review and merge.
+- Branch: `feature/conflict-assignment-governance`
+- Current phase: PR 2 implemented locally; ready for PR creation and CI.
 - Design: `docs/superpowers/specs/2026-06-15-traceability-conflict-governance-design.md`
-- Implementation plan: `docs/superpowers/plans/2026-06-15-persisted-conflict-scan.md`
-- Open PRs for this program: PR #47, `feat: persist document conflict scans`.
+- Implementation plan: `docs/superpowers/plans/2026-06-15-conflict-assignment-governance.md`
+- Open PRs for this program: none at local evidence update time.
 
 ### PR 1: Persisted Conflict Scan
 
@@ -166,16 +165,57 @@ Verification limitation:
   CI or a disposable PostgreSQL environment must still prove the runtime
   migration cycle before merge.
 
-## External Dependency
+Merge:
 
-- PR #46, `infra: add evidence-driven continuous improvement loop`, is green and
-  awaiting human merge authority. It is not a functional dependency for this
-  program.
+- PR #47 merged to `main` at `a0b2ec35f3dae62c241135a9ee3fca308903e18a` on
+  2026-06-15.
+
+### PR 2: Conflict Assignment Governance
+
+Implemented:
+
+- additive assignment-governance migration with assignment columns and
+  `document_conflict_decisions` history table;
+- SQLAlchemy `DocumentConflictDecision` model and conflict assignment fields;
+- response and mutation schemas for assignment, analysis completion, and
+  rejection;
+- scan-time primary document owner assignment with append-only history;
+- manual project-owner reassignment;
+- assignee or project-owner `analysis -> decision` transition;
+- project-owner `decision -> rejected` transition with required reason;
+- tenant isolation, permission checks, invalid-transition protection, and
+  no-history-on-failed-transition behavior;
+- authenticated API endpoints for assign, complete-analysis, and reject;
+- audit events for successful API mutations:
+  `document_conflict.assign`, `document_conflict.complete_analysis`, and
+  `document_conflict.reject`.
+
+Verification:
+
+- focused backend suite:
+  `uv run --directory apps/api --extra dev python -m pytest tests/test_persisted_conflict_scan.py tests/test_alembic_migrations.py tests/test_api_router_contract.py -v`
+  returned `22 passed`;
+- full API suite:
+  `uv run --directory apps/api --extra dev python -m pytest` returned
+  `548 passed, 15 warnings`;
+- `git diff --check origin/main...HEAD`: passed;
+- GitNexus change-record wrapper:
+  `C:\amx\reports\gitnexus-change-record-20260615-182302.md`;
+- GitNexus result: Git changed-file evidence detected for 9 files; symbol mapping
+  returned zero indexed symbols, so fallback changed-file evidence is required.
+
+Verification limitation:
+
+- Disposable PostgreSQL Alembic upgrade/downgrade/upgrade was not run locally
+  because Docker CLI is unavailable in this Windows environment. Migration
+  revision length, single-head, source contract, model contract, and full API
+  tests passed locally; CI or a disposable PostgreSQL environment must still
+  prove runtime migration before merge.
 
 ## Next Actions
 
-1. Run final focused and full API verification after the evidence update.
-2. Push PR 1 and require CI plus disposable PostgreSQL migration evidence before
+1. Push PR 2 and require CI plus disposable PostgreSQL migration evidence before
    merge.
-3. After PR 1 is ready or merged, plan PR 2 assignment, status governance,
-   permissions, and audit history.
+2. After PR 2 is ready or merged, plan PR 3 accepted-revision linkage to
+   change-request drafts, applied-change verification, rescan, and controlled
+   closure.
