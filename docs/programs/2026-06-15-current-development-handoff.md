@@ -31,7 +31,6 @@ Recommended Thread unit:
 - PR #46: `infra: add evidence-driven continuous improvement loop`
 - URL: `https://github.com/BizYan/AMX/pull/46`
 - Branch: `infra/evidence-driven-continuous-improvement`
-- Head SHA: `6fbf984bd02d3b48c99621f162ef5ab342d9a3f7`
 - Status: mergeable; API, web build, deterministic E2E, Docker Compose, and collaboration-governance checks passed before this handoff update.
 - Scope: continuous-improvement runbook, registry, deterministic validator, CI contract, and user-visible discoverability verification standard.
 
