@@ -28,7 +28,7 @@ class GraphifyProvider(GraphifyContract):
             fixture_data: Optional fixture data to use instead of real API calls
         """
         self.config = config
-        self.endpoint = config.get("endpoint", "http://localhost:8000")
+        self.endpoint = self._configured_endpoint(config)
         self.api_key = config.get("api_key")
         self.timeout = config.get("timeout", 30)
         self.fixture_data = fixture_data
@@ -60,6 +60,14 @@ class GraphifyProvider(GraphifyContract):
 
         # Call actual Graphify endpoint
         return await self._call_graphify_api(document_id, content, params)
+
+    @staticmethod
+    def _configured_endpoint(config: dict[str, Any]) -> str | None:
+        for key in ("endpoint", "base_url", "server_url", "api_url", "url"):
+            value = config.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip().rstrip("/")
+        return None
 
     def _process_fixture(self, fixture: dict[str, Any], document_id: str) -> GraphifyOutput:
         """Process fixture data and inject document_id.
@@ -108,6 +116,9 @@ class GraphifyProvider(GraphifyContract):
             ProviderError: If API call fails
         """
         import httpx
+
+        if not self.endpoint:
+            raise ProviderError(message="Graphify endpoint is required")
 
         headers = {}
         if self.api_key:

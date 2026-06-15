@@ -33,7 +33,10 @@ def _normalize_path(value: Any, default: str) -> str:
 def load_gitnexus_runtime_config(config: dict[str, Any] | None) -> GitNexusRuntimeConfig:
     """Normalize AMX GitNexus provider config for all runtime call sites."""
     raw_config = config or {}
-    endpoint = (_first_string(raw_config, ENDPOINT_KEYS) or "http://localhost:8001").rstrip("/")
+    endpoint = _first_string(raw_config, ENDPOINT_KEYS)
+    if endpoint is None:
+        raise ValueError("GitNexus endpoint is required")
+    endpoint = endpoint.rstrip("/")
     api_key = _first_string(raw_config, SECRET_KEYS)
     health_path = _normalize_path(raw_config.get("health_path"), "/api/health")
 

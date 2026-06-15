@@ -718,6 +718,22 @@ async def test_gitnexus_health_uses_registration_config_aliases():
 
 
 @pytest.mark.asyncio
+async def test_provider_health_checks_do_not_fall_back_to_localhost():
+    """Provider health checks should fail closed when endpoint config is missing."""
+    from app.domains.providers.models import HealthStatus
+    from app.workers.health_jobs import _check_gitnexus_health, _check_graphify_health
+
+    provider = MagicMock()
+    provider.config_json = {}
+
+    with patch("app.workers.health_jobs.httpx.AsyncClient") as client:
+        assert await _check_graphify_health(provider, MagicMock()) == HealthStatus.DOWN
+        assert await _check_gitnexus_health(provider, MagicMock()) == HealthStatus.DOWN
+
+    client.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_agent_failure_rate_query_does_not_require_run_and_run_failed():
     """Failed-run count must not add a contradictory metric_name=run filter."""
     import app.models.identity  # noqa: F401 - register Tenant relationship for query compilation
