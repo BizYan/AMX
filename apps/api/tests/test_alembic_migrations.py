@@ -31,3 +31,14 @@ def test_alembic_migrations_have_single_head():
     heads = ScriptDirectory.from_config(config).get_heads()
 
     assert len(heads) == 1
+
+
+def test_document_conflicts_migration_defines_idempotent_project_fingerprint():
+    migration = (VERSIONS_DIR / "0022_document_conflicts.py").read_text(encoding="utf-8")
+
+    assert 'revision = "0022_document_conflicts"' in migration
+    assert 'down_revision = "0021_invitation_delivery"' in migration
+    assert 'op.create_table(' in migration
+    assert '"document_conflicts"' in migration
+    assert '"uq_document_conflicts_tenant_project_fingerprint"' in migration
+    assert 'op.drop_table("document_conflicts")' in migration
