@@ -876,10 +876,25 @@ class IntegrationService:
         return urljoin(base_url.rstrip("/") + "/", path.lstrip("/"))
 
     def _integration_has_endpoint(self, config: dict[str, Any]) -> bool:
-        return bool(config.get("base_url") or config.get("endpoint") or config.get("url") or config.get("server_url") or config.get("api_url"))
+        return bool(
+            config.get("base_url")
+            or config.get("endpoint")
+            or config.get("url")
+            or config.get("server_url")
+            or config.get("api_url")
+            or config.get("runtime_ref")
+            or config.get("managed_runtime_ref")
+        )
 
     def _integration_has_auth(self, config: dict[str, Any]) -> bool:
-        return bool(config.get("api_key") or config.get("token") or config.get("access_token") or config.get("secret") or config.get("service_key"))
+        return bool(
+            config.get("api_key")
+            or config.get("token")
+            or config.get("access_token")
+            or config.get("secret")
+            or config.get("service_key")
+            or config.get("credential_ref")
+        )
 
     def _build_headers(self, config: dict[str, Any]) -> dict[str, str]:
         headers = {

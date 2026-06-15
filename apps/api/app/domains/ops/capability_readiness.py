@@ -708,7 +708,7 @@ class CapabilityReadinessService:
         )
 
     def _has_integration_endpoint(self, config: dict[str, Any]) -> bool:
-        for key in ("endpoint", "base_url", "url", "server_url", "api_url"):
+        for key in ("endpoint", "base_url", "url", "server_url", "api_url", "runtime_ref", "managed_runtime_ref"):
             value = config.get(key)
             if isinstance(value, str) and value.strip():
                 return True

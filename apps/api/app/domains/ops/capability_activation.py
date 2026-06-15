@@ -58,6 +58,7 @@ from app.models.projects import Project
 
 CORE_DOCUMENT_TYPES = ["urs", "brd", "prd", "detailed_design", "test_case"]
 CORE_LOOP_PROJECT_SLUG = "core-production-loop"
+CORE_LOOP_INTEGRATION_NAME = "Core Loop Managed Integration"
 CORE_DOCUMENT_LABELS = {
     "urs": "URS 用户需求说明书",
     "brd": "BRD 业务需求说明书",
@@ -875,33 +876,37 @@ class CapabilityActivationService:
         result = await self.db.execute(
             select(IntegrationProvider).where(
                 IntegrationProvider.tenant_id == tenant_id,
-                IntegrationProvider.name == "Core Loop Demo Integration",
+                IntegrationProvider.provider_type == "custom",
                 IntegrationProvider.deleted_at.is_(None),
             )
         )
-        provider = result.scalars().first()
+        providers = [item for item in result.scalars().all() if self._is_core_loop_activation_provider(item)]
+        provider = next((item for item in providers if item.name == CORE_LOOP_INTEGRATION_NAME), None)
+        provider = provider or (providers[0] if providers else None)
+        runtime_ref = self._core_loop_managed_runtime_ref(tenant_id)
+        config = {
+            "runtime_type": "managed_runtime",
+            "runtime_ref": runtime_ref,
+            "credential_ref": f"{runtime_ref}/credentials",
+            "health_path": "/health",
+            "sync_path": "/sync",
+            "validation": {
+                "status": "synced",
+                "source": "core_production_activation",
+                "mode": "managed_runtime",
+            },
+        }
         if provider:
+            provider.name = CORE_LOOP_INTEGRATION_NAME
             provider.is_enabled = True
-            provider.config_json = {
-                **(provider.config_json or {}),
-                "base_url": "https://integration.example.test",
-                "health_path": "/health",
-                "sync_path": "/sync",
-                "validation": {"status": "synced", "source": "core_production_activation"},
-            }
+            provider.config_json = {**(provider.config_json or {}), **config}
             provider.last_sync_at = provider.last_sync_at or datetime.now(timezone.utc)
             return provider
         provider = IntegrationProvider(
             tenant_id=tenant_id,
             provider_type="custom",
-            name="Core Loop Demo Integration",
-            config_json={
-                "base_url": "https://integration.example.test",
-                "credential_ref": "managed-runtime://core-loop-demo",
-                "health_path": "/health",
-                "sync_path": "/sync",
-                "validation": {"status": "synced", "source": "core_production_activation"},
-            },
+            name=CORE_LOOP_INTEGRATION_NAME,
+            config_json=config,
             is_enabled=True,
             last_sync_at=datetime.now(timezone.utc),
         )
@@ -1003,22 +1008,47 @@ class CapabilityActivationService:
             )
         )
         asset = result.scalars().first()
+        runtime_asset_ref = self._core_loop_managed_asset_ref(tenant_id, "AMX-CORE-001")
         if asset:
+            asset.external_url = runtime_asset_ref
+            asset.metadata_json = {
+                **(asset.metadata_json or {}),
+                "source": "core_production_activation",
+                "asset_type": "requirement",
+                "runtime_asset_ref": runtime_asset_ref,
+            }
             return asset
         asset = IntegrationSyncedAsset(
             tenant_id=tenant_id,
             binding_id=binding_id,
             external_id="AMX-CORE-001",
-            external_url="https://integration.example.test/browse/AMX-CORE-001",
+            external_url=runtime_asset_ref,
             external_updated_at=datetime.now(timezone.utc).isoformat(),
             content_hash=self._stable_hash("AMX-CORE-001:core-production-loop"),
             source_file_id=source_file_id,
             knowledge_entry_id=knowledge_entry_id,
-            metadata_json={"source": "core_production_activation", "asset_type": "requirement"},
+            metadata_json={
+                "source": "core_production_activation",
+                "asset_type": "requirement",
+                "runtime_asset_ref": runtime_asset_ref,
+            },
         )
         self.db.add(asset)
         await self.db.flush()
         return asset
+
+    def _core_loop_managed_runtime_ref(self, tenant_id: UUID) -> str:
+        return f"managed-runtime://{CORE_LOOP_PROJECT_SLUG}/tenants/{tenant_id}"
+
+    def _core_loop_managed_asset_ref(self, tenant_id: UUID, external_id: str) -> str:
+        return f"{self._core_loop_managed_runtime_ref(tenant_id)}/assets/{external_id}"
+
+    def _is_core_loop_activation_provider(self, provider: IntegrationProvider) -> bool:
+        if provider.name == CORE_LOOP_INTEGRATION_NAME:
+            return True
+        config = provider.config_json or {}
+        validation = config.get("validation") or {}
+        return isinstance(validation, dict) and validation.get("source") == "core_production_activation"
 
     async def _get_or_create_collaboration_work_item(
         self,
