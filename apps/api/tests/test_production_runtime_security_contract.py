@@ -23,6 +23,13 @@ def test_runtime_ports_bind_to_loopback_by_default():
         assert f"${{{variable.replace('BIND_ADDRESS', 'HOST_PORT')}:-{port}}}" in compose
 
 
+def test_runtime_containers_use_internal_redis_service_by_default():
+    compose = read("infra/docker-compose.yml")
+
+    assert compose.count("REDIS_URL: ${CONTAINER_REDIS_URL:-redis://redis:6379/0}") == 2
+    assert compose.count("ARQ_REDIS_URL: ${CONTAINER_ARQ_REDIS_URL:-redis://redis:6379/1}") == 2
+
+
 def test_production_deploy_runs_runtime_security_preflight_before_compose():
     deploy = read("infra/deploy/deploy-oci.sh")
 
