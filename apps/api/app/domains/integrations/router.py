@@ -14,6 +14,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Header, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.settings import settings
 from app.db.session import get_db
 from app.core.security import decode_token
 from app.domains.integrations.models import (
@@ -55,6 +56,10 @@ from app.models.identity import User
 
 
 router = APIRouter()
+
+
+def _is_production_environment() -> bool:
+    return str(getattr(settings, "ENVIRONMENT", "development")).strip().lower() == "production"
 
 
 async def get_current_user(
@@ -593,8 +598,8 @@ async def receive_inbound_webhook(
     """Receive an incoming webhook from a third-party integration.
 
     This endpoint verifies the webhook signature using HMAC-SHA256 if a
-    webhook_secret is configured on the integration. If no secret is
-    configured, signature verification is skipped (not recommended for production).
+    webhook_secret is configured on the integration. Production rejects
+    unsigned inbound webhooks when no secret is configured.
 
     Args:
         request: FastAPI request object for reading raw body
@@ -615,7 +620,13 @@ async def receive_inbound_webhook(
         raise HTTPException(status_code=404, detail="Integration not found")
 
     # Verify HMAC-SHA256 signature if webhook_secret is configured
-    webhook_secret = integration.config_json.get("webhook_secret")
+    webhook_secret = (integration.config_json or {}).get("webhook_secret")
+    if not webhook_secret and _is_production_environment():
+        raise HTTPException(
+            status_code=401,
+            detail="Inbound webhook requires webhook_secret in production.",
+        )
+
     if webhook_secret:
         # Get raw request body for signature verification
         body = await request.body()
