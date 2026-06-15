@@ -76,27 +76,27 @@ const PROVIDER_TYPES = [
 const PROVIDER_CONFIG_TEMPLATES: Record<string, Record<string, unknown>> = {
   llm: {
     api_key: "",
-    base_url: "https://api.example.com/v1",
+    base_url: "",
     model: "production-model",
     mode: "production",
   },
   graphify: {
     service_key: "",
-    base_url: "https://graphify.example.com",
+    base_url: "",
     health_path: "/health",
     mode: "production",
   },
   gitnexus: {
     service_key: "",
-    endpoint: "https://gitnexus.example.com",
-    base_url: "https://gitnexus.example.com",
+    endpoint: "",
+    base_url: "",
     health_path: "/api/health",
-    repo_url: "https://github.com/org/repo",
+    repo_url: "",
     mode: "production",
   },
   custom: {
     api_key: "",
-    base_url: "https://api.example.com",
+    base_url: "",
     health_path: "/health",
     mode: "production",
   },

@@ -54,7 +54,7 @@ const INTEGRATION_TYPES = [
 
 const CONFIG_TEMPLATES: Record<string, Record<string, unknown>> = {
   jira: {
-    base_url: 'https://jira.example.com',
+    base_url: '',
     api_key: '',
     health_path: '/rest/api/2/myself',
     sync_path: '/rest/api/2/search',
@@ -63,7 +63,7 @@ const CONFIG_TEMPLATES: Record<string, Record<string, unknown>> = {
     auth_scheme: 'Bearer',
   },
   confluence: {
-    base_url: 'https://confluence.example.com',
+    base_url: '',
     api_key: '',
     health_path: '/wiki/rest/api/user/current',
     sync_path: '/wiki/rest/api/content',
@@ -72,7 +72,7 @@ const CONFIG_TEMPLATES: Record<string, Record<string, unknown>> = {
     auth_scheme: 'Bearer',
   },
   zentao: {
-    base_url: 'https://zentao.example.com',
+    base_url: '',
     api_key: '',
     health_path: '/api.php/v1/users',
     sync_path: '/api.php/v1/stories',
@@ -90,7 +90,7 @@ const CONFIG_TEMPLATES: Record<string, Record<string, unknown>> = {
     auth_scheme: 'Bearer',
   },
   custom: {
-    base_url: 'https://api.example.com',
+    base_url: '',
     api_key: '',
     health_path: '/health',
     sync_path: '/sync',
@@ -955,7 +955,7 @@ export function IntegrationWorkbench() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="webhook-url">URL</Label>
-                  <Input id="webhook-url" value={webhookForm.url} onChange={(event) => setWebhookForm((value) => ({ ...value, url: event.target.value }))} placeholder="https://example.com/webhook/amx" />
+                  <Input id="webhook-url" value={webhookForm.url} onChange={(event) => setWebhookForm((value) => ({ ...value, url: event.target.value }))} placeholder="输入 Webhook URL" />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="webhook-events">事件</Label>
