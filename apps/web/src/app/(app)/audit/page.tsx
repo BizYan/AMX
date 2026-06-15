@@ -223,6 +223,11 @@ function ChangeAuditCommandCenterPanel({
 
   const { summary, release_gate: gate } = commandCenter
   const metrics = [
+    {
+      label: 'Document conflicts',
+      value: summary.open_document_conflicts,
+      detail: `High ${summary.high_open_document_conflicts} / expired risks ${summary.expired_conflict_risk_acceptances}`,
+    },
     { label: '打开变更', value: summary.open_changes, detail: `高优先级 ${summary.critical_or_high_open_changes}` },
     { label: '待审补丁', value: summary.pending_field_patches, detail: '字段级回写' },
     { label: '影响分析', value: summary.open_impact_analyses, detail: `高影响 ${summary.critical_or_high_open_impacts}` },
@@ -256,7 +261,7 @@ function ChangeAuditCommandCenterPanel({
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
           {metrics.map((metric) => (
             <div key={metric.label} className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950/20">
               <p className="text-sm text-slate-500">{metric.label}</p>

@@ -3416,6 +3416,10 @@ export interface ChangeAuditCommandCenterSummary {
   open_impact_analyses: number
   critical_or_high_open_impacts: number
   pending_sync_proposals: number
+  open_document_conflicts: number
+  high_open_document_conflicts: number
+  expired_conflict_risk_acceptances: number
+  revision_accepted_conflicts: number
 }
 
 export interface ChangeAuditReleaseGate {

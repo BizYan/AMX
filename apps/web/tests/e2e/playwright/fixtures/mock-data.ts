@@ -2307,6 +2307,10 @@ export const MOCK_CHANGE_AUDIT_COMMAND_CENTER = {
     open_impact_analyses: 2,
     critical_or_high_open_impacts: 1,
     pending_sync_proposals: 2,
+    open_document_conflicts: 3,
+    high_open_document_conflicts: 1,
+    expired_conflict_risk_acceptances: 1,
+    revision_accepted_conflicts: 1,
   },
   change_status_counts: { draft: 1, open: 2, approved: 1 },
   priority_counts: { critical: 1, high: 1, medium: 2 },
@@ -2319,6 +2323,14 @@ export const MOCK_CHANGE_AUDIT_COMMAND_CENTER = {
       detail: '关键或高优先级变更仍处于草稿/打开状态，发布前必须完成审批或关闭。',
       count: 2,
       href: '/audit',
+    },
+    {
+      code: 'high_open_document_conflicts',
+      severity: 'critical',
+      title: 'High-severity document conflicts are unresolved',
+      detail: 'Persisted document conflicts with high severity must be rejected, risk-accepted, revised, or closed before release.',
+      count: 1,
+      href: '/documents/contradictions',
     },
     {
       code: 'pending_field_patches',
@@ -2338,6 +2350,13 @@ export const MOCK_CHANGE_AUDIT_COMMAND_CENTER = {
     },
   ],
   priority_actions: [
+    {
+      code: 'resolve_document_conflicts',
+      title: 'Resolve document conflict governance queue',
+      description: 'Review persisted conflicts, renew or close expired risk acceptances, and verify accepted revisions by rescan.',
+      href: '/documents/contradictions',
+      priority: 'critical',
+    },
     {
       code: 'resolve_traceability_risks',
       title: '处理文档追溯与同步建议',
