@@ -398,6 +398,11 @@ class ConflictItem(BaseModel):
     conflict_type: str = Field(..., description="Type of conflict (content/inconsistent_link/missing_parent)")
     description: str
     affected_entities: list[str] = Field(default_factory=list)
+    rule_key: str | None = None
+    severity: str = "medium"
+    related_document_id: UUID | None = None
+    related_document_version: int | None = None
+    evidence: dict[str, Any] = Field(default_factory=dict)
 
 
 class ConflictAnalysisResponse(BaseModel):

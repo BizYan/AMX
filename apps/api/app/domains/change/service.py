@@ -2010,6 +2010,12 @@ class TraceabilityService:
                     conflict_type="missing_parent",
                     description=f"Document of type {doc.doc_type} is missing a parent link. Found {len(existing_parents)} potential parent(s).",
                     affected_entities=[],
+                    rule_key="missing_parent",
+                    severity="high",
+                    evidence={
+                        "candidate_parent_ids": sorted(str(parent.id) for parent in existing_parents),
+                        "potential_parent_count": len(existing_parents),
+                    },
                 ))
 
         # Check for inconsistent links (document links to another doc that doesn't link back)
@@ -2036,6 +2042,10 @@ class TraceabilityService:
                                 conflict_type="inconsistent_link",
                                 description=f"Document links to non-existent or deleted document: {linked_id}",
                                 affected_entities=[],
+                                rule_key="linked_document_missing",
+                                severity="high",
+                                related_document_id=linked_uuid,
+                                evidence={"linked_document_id": str(linked_uuid)},
                             ))
                             continue
 
@@ -2051,6 +2061,11 @@ class TraceabilityService:
                                     conflict_type="inconsistent_link",
                                     description=f"Document links to '{linked_doc.title}' but '{linked_doc.title}' does not link back",
                                     affected_entities=[],
+                                    rule_key="missing_back_link",
+                                    severity="medium",
+                                    related_document_id=linked_doc.id,
+                                    related_document_version=linked_doc.version,
+                                    evidence={"linked_document_id": str(linked_doc.id)},
                                 ))
                     except (ValueError, TypeError):
                         continue
@@ -2067,6 +2082,13 @@ class TraceabilityService:
                     conflict_type="inconsistent_link",
                     description="parent_document_id differs from metadata_json.parent_document_id",
                     affected_entities=[],
+                    rule_key="parent_metadata_mismatch",
+                    severity="high",
+                    related_document_id=doc.parent_document_id,
+                    evidence={
+                        "metadata_parent_document_id": str(metadata_parent),
+                        "parent_document_id": str(doc.parent_document_id),
+                    },
                 ))
 
         # Check child documents for inconsistent back-links
@@ -2085,6 +2107,26 @@ class TraceabilityService:
                     pass
 
         return ConflictAnalysisResponse(document_id=document_id, conflicts=conflicts)
+
+    async def find_project_conflicts(
+        self,
+        *,
+        project_id: UUID,
+        tenant_id: UUID,
+    ) -> list[ConflictItem]:
+        """Return all deterministic conflict findings for one project."""
+        result = await self.db.execute(
+            select(Document.id).where(
+                Document.project_id == project_id,
+                Document.tenant_id == tenant_id,
+                Document.deleted_at.is_(None),
+            )
+        )
+        findings: list[ConflictItem] = []
+        for document_id in result.scalars().all():
+            analysis = await self.find_conflicts(document_id=document_id, tenant_id=tenant_id)
+            findings.extend(analysis.conflicts)
+        return findings
 
     async def generate_full_traceability_matrix(
         self,
