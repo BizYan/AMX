@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     )
 
     # Application
+    ENVIRONMENT: str = "development"
     DEBUG: bool = False
     APP_NAME: str = "Consultant AI Workbench"
     API_V1_PREFIX: str = "/api/v1"

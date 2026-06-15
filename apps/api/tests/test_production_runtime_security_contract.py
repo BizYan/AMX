@@ -30,6 +30,15 @@ def test_runtime_containers_use_internal_redis_service_by_default():
     assert compose.count("ARQ_REDIS_URL: ${CONTAINER_ARQ_REDIS_URL:-redis://redis:6379/1}") == 2
 
 
+def test_runtime_containers_receive_explicit_environment():
+    compose = read("infra/docker-compose.yml")
+    deploy = read("infra/deploy/deploy-oci.sh")
+
+    assert compose.count("ENVIRONMENT: ${ENVIRONMENT:-development}") == 2
+    assert "export ENVIRONMENT" in deploy
+    assert deploy.index("export ENVIRONMENT") < deploy.index('docker compose -f "$COMPOSE_FILE" config')
+
+
 def test_worker_image_uses_single_runtime_worker_source():
     dockerfile = read("apps/worker/Dockerfile")
 

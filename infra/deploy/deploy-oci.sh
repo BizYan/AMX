@@ -33,6 +33,7 @@ if [[ -z "$BASE_PATH" ]]; then
 fi
 
 cd "$BASE_PATH"
+export ENVIRONMENT
 
 if [[ ! -f "$COMPOSE_FILE" ]]; then
   echo "Compose file not found at $BASE_PATH/$COMPOSE_FILE" >&2
