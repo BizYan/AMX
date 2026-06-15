@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, timezone
 from uuid import uuid4
 
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
@@ -295,3 +296,73 @@ async def test_failed_webhook_delivery_enqueues_arq_retry_without_fake_attempt(d
         {"_defer_by": 5},
     )
     assert calls[2] == ("closed",)
+
+
+@pytest.mark.asyncio
+async def test_outbox_publish_routes_by_provider_and_event_type(db_session, monkeypatch):
+    tenant_id, _user_id, _project_id, integration = await make_context(db_session)
+    other_integration = await IntegrationService(db_session).create_integration(
+        tenant_id=tenant_id,
+        provider_type="confluence",
+        name="Delivery Confluence",
+        config={"base_url": "https://confluence.example.com", "api_key": "secret"},
+    )
+    matching_subscription = WebhookSubscription(
+        tenant_id=tenant_id,
+        integration_provider_id=integration.id,
+        url="https://hooks.example.com/matching",
+        events=["project.updated"],
+        is_active=True,
+    )
+    wrong_event_subscription = WebhookSubscription(
+        tenant_id=tenant_id,
+        integration_provider_id=integration.id,
+        url="https://hooks.example.com/wrong-event",
+        events=["project.deleted"],
+        is_active=True,
+    )
+    wrong_provider_subscription = WebhookSubscription(
+        tenant_id=tenant_id,
+        integration_provider_id=other_integration.id,
+        url="https://hooks.example.com/wrong-provider",
+        events=["project.updated"],
+        is_active=True,
+    )
+    event = OutboxEvent(
+        tenant_id=tenant_id,
+        aggregate_type="integration_provider",
+        aggregate_id=integration.id,
+        event_type="project.updated",
+        payload={"status": "ready"},
+        published=False,
+    )
+    db_session.add_all(
+        [
+            matching_subscription,
+            wrong_event_subscription,
+            wrong_provider_subscription,
+            event,
+        ]
+    )
+    await db_session.flush()
+    delivered_subscription_ids = []
+
+    async def fake_deliver_webhook(self, subscription_id, event_payload):
+        delivered_subscription_ids.append(subscription_id)
+        return WebhookDeliveryEvent(
+            tenant_id=tenant_id,
+            webhook_subscription_id=subscription_id,
+            event_id=event_payload["event_id"],
+            url="https://hooks.example.com/matching",
+            request_headers={},
+            request_body=event_payload,
+            delivered_at=datetime.now(timezone.utc),
+        )
+
+    monkeypatch.setattr(WebhookService, "deliver_webhook", fake_deliver_webhook)
+
+    result = await OutboxService(db_session).publish_pending_events(batch_size=10)
+
+    assert delivered_subscription_ids == [matching_subscription.id]
+    assert result == {"processed": 1, "published": 1, "failed": 0}
+    assert event.published is True

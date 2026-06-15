@@ -1409,6 +1409,42 @@ class OutboxService:
         await self.db.flush()
         return True
 
+    def _provider_id_for_event(self, event: OutboxEvent) -> UUID | None:
+        if event.aggregate_type in {"integration", "integration_provider"}:
+            return event.aggregate_id
+
+        payload = event.payload if isinstance(event.payload, dict) else {}
+        raw_provider_id = payload.get("integration_provider_id") or payload.get("provider_id")
+        if raw_provider_id is None:
+            return None
+        try:
+            return raw_provider_id if isinstance(raw_provider_id, UUID) else UUID(str(raw_provider_id))
+        except (TypeError, ValueError):
+            return None
+
+    def _subscription_accepts_event(self, subscription: WebhookSubscription, event_type: str) -> bool:
+        events = subscription.events or []
+        return not events or event_type in events
+
+    async def _subscriptions_for_event(self, event: OutboxEvent) -> list[WebhookSubscription]:
+        conditions = [
+            WebhookSubscription.tenant_id == event.tenant_id,
+            WebhookSubscription.deleted_at.is_(None),
+            WebhookSubscription.is_active == True,
+        ]
+        provider_id = self._provider_id_for_event(event)
+        if provider_id is not None:
+            conditions.append(WebhookSubscription.integration_provider_id == provider_id)
+
+        subscriptions_result = await self.db.execute(
+            select(WebhookSubscription).where(*conditions)
+        )
+        return [
+            subscription
+            for subscription in subscriptions_result.scalars().all()
+            if self._subscription_accepts_event(subscription, event.event_type)
+        ]
+
     async def publish_pending_events(
         self,
         batch_size: int = 100,
@@ -1434,16 +1470,7 @@ class OutboxService:
 
         for event in pending_events:
             try:
-                # Find webhook subscriptions for this integration's tenant
-                # This is simplified - in production would have proper routing
-                subscriptions_result = await self.db.execute(
-                    select(WebhookSubscription).where(
-                        WebhookSubscription.tenant_id == event.tenant_id,
-                        WebhookSubscription.deleted_at.is_(None),
-                        WebhookSubscription.is_active == True,
-                    )
-                )
-                subscriptions = list(subscriptions_result.scalars().all())
+                subscriptions = await self._subscriptions_for_event(event)
 
                 # If no subscriptions, mark as published (nothing to deliver)
                 if not subscriptions:
