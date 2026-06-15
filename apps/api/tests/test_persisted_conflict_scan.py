@@ -27,8 +27,8 @@ import app.models.projects  # noqa: F401
 from app.db.base import Base
 from app.db.init_schema import deduplicate_indexes
 from app.domains.change.conflict_service import ConflictGovernanceService, build_conflict_fingerprint
-from app.domains.change.models import ConflictStatus, DocumentConflict
-from app.domains.change.schemas import DocumentConflictResponse
+from app.domains.change.models import ConflictStatus, DocumentConflict, DocumentConflictDecision
+from app.domains.change.schemas import DocumentConflictDecisionResponse, DocumentConflictResponse
 from app.domains.documents.models import Document, DocumentStatus, DocumentType
 from app.models.identity import Tenant, User
 from app.models.projects import Project
@@ -143,6 +143,9 @@ async def test_document_conflict_model_persists_rule_evidence(db_session):
         first_detected_at=now,
         last_detected_at=now,
         last_scan_id=uuid4(),
+        assignee_user_id=user.id,
+        assignment_source="primary_document_owner",
+        assigned_at=now,
     )
     db_session.add(conflict)
     await db_session.flush()
@@ -150,6 +153,55 @@ async def test_document_conflict_model_persists_rule_evidence(db_session):
     payload = DocumentConflictResponse.model_validate(conflict)
     assert payload.rule_key == "missing_parent"
     assert payload.evidence_json == {"potential_parent_count": 1}
+    assert payload.assignee_user_id == user.id
+    assert payload.assignment_source == "primary_document_owner"
+    assert payload.assigned_at == now
+
+
+@pytest.mark.asyncio
+async def test_document_conflict_decision_schema_serializes_history(db_session):
+    tenant, project, _, child = await create_project_graph(db_session)
+    actor = await db_session.scalar(select(User).where(User.tenant_id == tenant.id))
+    assert actor is not None
+    now = datetime.now(timezone.utc)
+    conflict = DocumentConflict(
+        tenant_id=tenant.id,
+        project_id=project.id,
+        rule_key="missing_parent",
+        fingerprint="b" * 64,
+        severity="high",
+        status=ConflictStatus.DECISION.value,
+        primary_document_id=child.id,
+        primary_document_version=child.version,
+        summary="BRD is missing an upstream document",
+        evidence_json={"candidate_parent_count": 1},
+        first_detected_at=now,
+        last_detected_at=now,
+        last_scan_id=uuid4(),
+    )
+    db_session.add(conflict)
+    await db_session.flush()
+    decision = DocumentConflictDecision(
+        tenant_id=tenant.id,
+        project_id=project.id,
+        conflict_id=conflict.id,
+        actor_id=actor.id,
+        action="complete_analysis",
+        previous_status=ConflictStatus.ANALYSIS.value,
+        resulting_status=ConflictStatus.DECISION.value,
+        reason="Ready for decision",
+        evidence_json={"notes": "Reviewed rule evidence"},
+    )
+    db_session.add(decision)
+    await db_session.flush()
+
+    payload = DocumentConflictDecisionResponse.model_validate(decision)
+
+    assert payload.action == "complete_analysis"
+    assert payload.previous_status == ConflictStatus.ANALYSIS.value
+    assert payload.resulting_status == ConflictStatus.DECISION.value
+    assert payload.reason == "Ready for decision"
+    assert payload.evidence_json == {"notes": "Reviewed rule evidence"}
 
 
 def test_conflict_fingerprint_is_stable_when_summary_changes():
