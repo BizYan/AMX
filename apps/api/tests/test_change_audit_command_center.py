@@ -1,6 +1,7 @@
 """Change audit command center aggregation tests."""
 
 import os
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///./test-change-audit-command-center.db"
@@ -22,7 +23,9 @@ from app.db.base import Base
 from app.db.init_schema import deduplicate_indexes
 from app.domains.change.models import (
     ChangeRequest,
+    ConflictStatus,
     DocumentImpactAnalysis,
+    DocumentConflict,
     DocumentSyncProposal,
     FieldPatch,
 )
@@ -180,6 +183,129 @@ async def test_change_audit_command_center_blocks_release_for_open_traceability_
         "open_impact_analyses",
         "pending_sync_proposals",
     }
+    assert command_center.priority_actions[0].href == "/documents/contradictions"
+
+
+@pytest.mark.asyncio
+async def test_change_audit_command_center_blocks_release_for_persisted_conflict_risks(db_session):
+    tenant_id = uuid4()
+    user_id = uuid4()
+    project_id = uuid4()
+    document_id = uuid4()
+    now = datetime.now(timezone.utc)
+
+    tenant = Tenant(id=tenant_id, name="Conflict Tenant", slug="conflict-tenant")
+    user = User(
+        id=user_id,
+        tenant_id=tenant_id,
+        email="conflict-owner@example.com",
+        hashed_password="test",
+        full_name="Conflict Owner",
+    )
+    project = Project(
+        id=project_id,
+        tenant_id=tenant_id,
+        owner_id=user_id,
+        name="Conflict Project",
+        slug="conflict-project",
+    )
+    document = Document(
+        id=document_id,
+        tenant_id=tenant_id,
+        project_id=project_id,
+        doc_type=DocumentType.BRD.value,
+        title="BRD Conflict Source",
+        content="Business requirements with unresolved traceability.",
+        status=DocumentStatus.PUBLISHED.value,
+        version=1,
+        created_by=user_id,
+        metadata_json={},
+    )
+    high_decision_conflict = DocumentConflict(
+        tenant_id=tenant_id,
+        project_id=project_id,
+        rule_key="missing_parent",
+        fingerprint="a" * 64,
+        severity="high",
+        status=ConflictStatus.DECISION.value,
+        primary_document_id=document_id,
+        primary_document_version=1,
+        related_document_id=None,
+        related_document_version=None,
+        summary="BRD has no parent URS.",
+        evidence_json={"rule": "missing_parent"},
+        first_detected_at=now,
+        last_detected_at=now,
+        last_scan_id=uuid4(),
+    )
+    expired_risk_conflict = DocumentConflict(
+        tenant_id=tenant_id,
+        project_id=project_id,
+        rule_key="stale_reference",
+        fingerprint="b" * 64,
+        severity="medium",
+        status=ConflictStatus.RISK_ACCEPTED.value,
+        primary_document_id=document_id,
+        primary_document_version=1,
+        related_document_id=None,
+        related_document_version=None,
+        summary="Accepted risk has expired.",
+        evidence_json={"rule": "stale_reference"},
+        first_detected_at=now,
+        last_detected_at=now,
+        last_scan_id=uuid4(),
+        risk_accepted_by=user_id,
+        risk_accepted_at=now - timedelta(days=10),
+        risk_acceptance_expires_at=now - timedelta(days=1),
+        risk_acceptance_json={"mitigation_plan": "Temporary exception."},
+    )
+    accepted_revision_conflict = DocumentConflict(
+        tenant_id=tenant_id,
+        project_id=project_id,
+        rule_key="conflicting_parent",
+        fingerprint="c" * 64,
+        severity="medium",
+        status=ConflictStatus.REVISION_ACCEPTED.value,
+        primary_document_id=document_id,
+        primary_document_version=1,
+        related_document_id=None,
+        related_document_version=None,
+        summary="Accepted revision still needs applied-change rescan closure.",
+        evidence_json={"rule": "conflicting_parent"},
+        first_detected_at=now,
+        last_detected_at=now,
+        last_scan_id=uuid4(),
+        linked_change_request_id=uuid4(),
+        accepted_revision_json={"suggested_revision": "Update parent link."},
+        revision_accepted_at=now - timedelta(hours=1),
+    )
+    db_session.add_all([
+        tenant,
+        user,
+        project,
+        document,
+        high_decision_conflict,
+        expired_risk_conflict,
+        accepted_revision_conflict,
+    ])
+    await db_session.flush()
+
+    command_center = await ChangeAuditCommandCenterService(db_session).get_command_center(
+        tenant_id=tenant_id,
+        project_id=project_id,
+    )
+
+    assert command_center.release_gate.status == "blocked"
+    assert command_center.summary.open_document_conflicts == 3
+    assert command_center.summary.high_open_document_conflicts == 1
+    assert command_center.summary.expired_conflict_risk_acceptances == 1
+    assert command_center.summary.revision_accepted_conflicts == 1
+    assert {item.code for item in command_center.risk_items} >= {
+        "high_open_document_conflicts",
+        "expired_conflict_risk_acceptances",
+        "revision_accepted_conflicts",
+    }
+    assert command_center.priority_actions[0].code == "resolve_document_conflicts"
     assert command_center.priority_actions[0].href == "/documents/contradictions"
 
 

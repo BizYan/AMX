@@ -17,7 +17,9 @@ from app.domains.change.models import (
     ChangeRequestComment,
     ChangeStatus,
     ChangeType,
+    ConflictStatus,
     DocumentImpactAnalysis,
+    DocumentConflict,
     DocumentReference,
     DocumentSyncProposal,
     FieldPatch,
@@ -129,6 +131,42 @@ class ChangeAuditCommandCenterService:
             [*impact_filters, DocumentImpactAnalysis.status == "open"],
         )
 
+        conflict_filters = [
+            DocumentConflict.tenant_id == tenant_id,
+            DocumentConflict.status.notin_([
+                ConflictStatus.CLOSED.value,
+                ConflictStatus.REJECTED.value,
+            ]),
+        ]
+        if project_id is not None:
+            conflict_filters.append(DocumentConflict.project_id == project_id)
+        open_document_conflicts = await self._count(
+            DocumentConflict.id,
+            conflict_filters,
+        )
+        high_open_document_conflicts = await self._count(
+            DocumentConflict.id,
+            [
+                *conflict_filters,
+                DocumentConflict.severity == "high",
+            ],
+        )
+        expired_conflict_risk_acceptances = await self._count(
+            DocumentConflict.id,
+            [
+                *conflict_filters,
+                DocumentConflict.status == ConflictStatus.RISK_ACCEPTED.value,
+                DocumentConflict.risk_acceptance_expires_at < datetime.now(timezone.utc),
+            ],
+        )
+        revision_accepted_conflicts = await self._count(
+            DocumentConflict.id,
+            [
+                *conflict_filters,
+                DocumentConflict.status == ConflictStatus.REVISION_ACCEPTED.value,
+            ],
+        )
+
         critical_or_high_open_changes = await self._count(
             ChangeRequest.id,
             [
@@ -148,6 +186,10 @@ class ChangeAuditCommandCenterService:
             open_impact_analyses=open_impact_analyses,
             critical_or_high_open_impacts=critical_or_high_open_impacts,
             pending_sync_proposals=pending_sync_proposals,
+            open_document_conflicts=open_document_conflicts,
+            high_open_document_conflicts=high_open_document_conflicts,
+            expired_conflict_risk_acceptances=expired_conflict_risk_acceptances,
+            revision_accepted_conflicts=revision_accepted_conflicts,
         )
         risk_items = self._build_risk_items(summary)
         release_gate = self._build_release_gate(summary, risk_items)
@@ -226,6 +268,33 @@ class ChangeAuditCommandCenterService:
                 count=summary.pending_sync_proposals,
                 href="/documents/contradictions",
             ))
+        if summary.high_open_document_conflicts:
+            risks.append(ChangeAuditRiskItem(
+                code="high_open_document_conflicts",
+                severity="critical",
+                title="High-severity document conflicts are unresolved",
+                detail="Persisted document conflicts with high severity must be rejected, risk-accepted, revised, or closed before release.",
+                count=summary.high_open_document_conflicts,
+                href="/documents/contradictions",
+            ))
+        if summary.expired_conflict_risk_acceptances:
+            risks.append(ChangeAuditRiskItem(
+                code="expired_conflict_risk_acceptances",
+                severity="critical",
+                title="Conflict risk acceptances have expired",
+                detail="Accepted conflict risks with expired mitigation windows must be reviewed before release.",
+                count=summary.expired_conflict_risk_acceptances,
+                href="/documents/contradictions",
+            ))
+        if summary.revision_accepted_conflicts:
+            risks.append(ChangeAuditRiskItem(
+                code="revision_accepted_conflicts",
+                severity="high",
+                title="Accepted conflict revisions need closure",
+                detail="Accepted revisions must be applied and verified absent by rescan before release.",
+                count=summary.revision_accepted_conflicts,
+                href="/documents/contradictions",
+            ))
         if summary.approved_unapplied_changes:
             risks.append(ChangeAuditRiskItem(
                 code="approved_unapplied_changes",
@@ -281,6 +350,20 @@ class ChangeAuditCommandCenterService:
         summary: ChangeAuditCommandCenterSummary,
     ) -> list[ChangeAuditPriorityAction]:
         actions: list[ChangeAuditPriorityAction] = []
+        if (
+            summary.open_document_conflicts
+            or summary.expired_conflict_risk_acceptances
+            or summary.revision_accepted_conflicts
+        ):
+            actions.append(ChangeAuditPriorityAction(
+                code="resolve_document_conflicts",
+                title="Resolve document conflict governance queue",
+                description="Review persisted conflicts, renew or close expired risk acceptances, and verify accepted revisions by rescan.",
+                href="/documents/contradictions",
+                priority="critical"
+                if summary.high_open_document_conflicts or summary.expired_conflict_risk_acceptances
+                else "high",
+            ))
         if summary.pending_sync_proposals or summary.open_impact_analyses or summary.pending_field_patches:
             actions.append(ChangeAuditPriorityAction(
                 code="resolve_traceability_risks",
