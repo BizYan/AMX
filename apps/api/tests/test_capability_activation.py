@@ -18,7 +18,12 @@ from app.db.init_schema import deduplicate_indexes
 from app.domains.documents.models import Document
 from app.domains.export.models import ExportJob, ExportStatus
 from app.domains.identity.models import AuditLog, FieldPermission, Policy
-from app.domains.integrations.models import IntegrationProjectBinding, IntegrationSyncRun, IntegrationSyncedAsset
+from app.domains.integrations.models import (
+    IntegrationProjectBinding,
+    IntegrationProvider,
+    IntegrationSyncRun,
+    IntegrationSyncedAsset,
+)
 from app.domains.knowledge.models import KnowledgeEntry, KnowledgeLink
 from app.domains.collaboration.models import CollaborationWorkItem, WorkItemStatus
 from app.domains.notifications.models import NotificationPreference, UserNotification
@@ -323,6 +328,11 @@ async def test_activation_run_seeds_core_loop_evidence_in_database(db_session):
     assert actions["seed_integration_sync_evidence"].status == "completed"
     assert actions["seed_collaboration_execution_evidence"].status == "completed"
     assert actions["seed_notification_alert_evidence"].status == "completed"
+    external_integrations = next(
+        item for item in response.readiness_after.capabilities if item.key == "external_integrations"
+    )
+    assert external_integrations.status == "ready"
+    assert external_integrations.evidence["configured_integration_count"] == 1
 
     assert (await db_session.execute(select(Project))).scalars().first().slug == "core-production-loop"
     assert len((await db_session.execute(select(SourceFile))).scalars().all()) == 1
@@ -361,7 +371,22 @@ async def test_activation_run_seeds_core_loop_evidence_in_database(db_session):
     assert (await db_session.execute(select(AlertRule))).scalars().first().is_active is True
     assert len((await db_session.execute(select(IntegrationProjectBinding))).scalars().all()) == 1
     assert len((await db_session.execute(select(IntegrationSyncRun))).scalars().all()) == 1
-    assert len((await db_session.execute(select(IntegrationSyncedAsset))).scalars().all()) == 1
+    integration_provider = (await db_session.execute(select(IntegrationProvider))).scalars().first()
+    assert integration_provider is not None
+    assert integration_provider.name == "Core Loop Managed Integration"
+    integration_config_text = str(integration_provider.config_json).lower()
+    assert "demo" not in integration_config_text
+    assert "example.test" not in integration_config_text
+    assert integration_provider.config_json["runtime_ref"] == (
+        f"managed-runtime://core-production-loop/tenants/{tenant.id}"
+    )
+    assert integration_provider.config_json["credential_ref"] == (
+        f"managed-runtime://core-production-loop/tenants/{tenant.id}/credentials"
+    )
+
+    synced_asset = (await db_session.execute(select(IntegrationSyncedAsset))).scalars().first()
+    assert synced_asset is not None
+    assert synced_asset.external_url == f"managed-runtime://core-production-loop/tenants/{tenant.id}/assets/AMX-CORE-001"
     work_items = (await db_session.execute(select(CollaborationWorkItem))).scalars().all()
     assert {item.status for item in work_items} == {WorkItemStatus.DONE.value, WorkItemStatus.IN_PROGRESS.value}
     assert len((await db_session.execute(select(NotificationPreference))).scalars().all()) == 1

@@ -71,6 +71,17 @@ async def db_session():
     await engine.dispose()
 
 
+def test_operations_summary_counts_managed_runtime_integration_as_configured():
+    service = IntegrationService(db=None)
+    config = {
+        "runtime_ref": "managed-runtime://core-production-loop/tenants/tenant-id",
+        "credential_ref": "managed-runtime://core-production-loop/tenants/tenant-id/credentials",
+    }
+
+    assert service._integration_has_endpoint(config)
+    assert service._integration_has_auth(config)
+
+
 @pytest.mark.asyncio
 async def test_connection_probes_configured_endpoint_and_masks_credentials(db_session, monkeypatch):
     FakeAsyncClient.requests = []

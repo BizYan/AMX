@@ -287,7 +287,7 @@ class CapabilityCommissioningService:
             config = provider.config_json or {}
         except AttributeError:
             return True
-        for key in ("endpoint", "base_url", "url", "server_url", "api_url"):
+        for key in ("endpoint", "base_url", "url", "server_url", "api_url", "runtime_ref", "managed_runtime_ref"):
             value = config.get(key)
             if isinstance(value, str) and value.strip():
                 return True

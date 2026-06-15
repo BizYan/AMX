@@ -67,6 +67,17 @@ def count_result(value: int) -> FakeExecuteResult:
     return FakeExecuteResult(count=value)
 
 
+def test_readiness_counts_managed_runtime_integration_as_configured():
+    service = CapabilityReadinessService(AsyncMock())
+
+    assert service._has_integration_endpoint(
+        {
+            "runtime_ref": "managed-runtime://core-production-loop/tenants/tenant-id",
+            "credential_ref": "managed-runtime://core-production-loop/tenants/tenant-id/credentials",
+        }
+    )
+
+
 @pytest.mark.asyncio
 async def test_provider_test_rejects_sandbox_as_production_ready():
     provider = make_provider(

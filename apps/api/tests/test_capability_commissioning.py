@@ -166,6 +166,16 @@ def readiness_response(*, tenant_id, production_ready=False):
     )
 
 
+def test_commissioning_counts_managed_runtime_integration_as_configured():
+    provider = MagicMock()
+    provider.config_json = {
+        "runtime_ref": "managed-runtime://core-production-loop/tenants/tenant-id",
+        "credential_ref": "managed-runtime://core-production-loop/tenants/tenant-id/credentials",
+    }
+
+    assert CapabilityCommissioningService(AsyncMock())._integration_has_endpoint(provider)
+
+
 @pytest.mark.asyncio
 async def test_commissioning_build_surfaces_actionable_blockers():
     tenant_id = uuid4()
