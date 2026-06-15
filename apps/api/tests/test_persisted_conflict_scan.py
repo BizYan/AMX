@@ -596,3 +596,123 @@ async def test_accept_revision_requires_decision_status_and_does_not_create_chan
     ).scalars().all()
     assert change_requests == []
     assert accept_decisions == []
+
+
+async def accept_conflict_revision(db_session):
+    tenant, project, parent, child = await create_project_graph(db_session)
+    service = ConflictGovernanceService(db_session)
+    scan = await service.scan_project(tenant_id=tenant.id, project_id=project.id)
+    ready = await service.complete_analysis(
+        tenant_id=tenant.id,
+        conflict_id=scan.items[0].id,
+        actor_id=child.created_by,
+        reason="Revision needed",
+        evidence={"finding": "valid"},
+    )
+    accepted = await service.accept_revision(
+        tenant_id=tenant.id,
+        conflict_id=ready.id,
+        actor_id=project.owner_id,
+        suggested_revision="Link the BRD to the approved URS parent.",
+        reason="Use existing URS as upstream source",
+        evidence={"target_section": "parent link"},
+    )
+    change_request = await db_session.get(ChangeRequest, accepted.linked_change_request_id)
+    assert change_request is not None
+    return tenant, project, parent, child, accepted, change_request, service
+
+
+@pytest.mark.asyncio
+async def test_project_owner_closes_accepted_revision_after_applied_change_rescan(db_session):
+    tenant, project, parent, child, accepted, change_request, service = await accept_conflict_revision(
+        db_session
+    )
+    change_request.status = ChangeStatus.APPLIED.value
+    change_request.applied_at = datetime.now(timezone.utc)
+    child.parent_document_id = parent.id
+    await db_session.flush()
+
+    closed = await service.close_after_rescan(
+        tenant_id=tenant.id,
+        conflict_id=accepted.id,
+        actor_id=project.owner_id,
+        reason="Applied change removed the missing parent finding",
+        evidence={"verification": "parent linked"},
+    )
+
+    assert closed.status == ConflictStatus.CLOSED.value
+    assert closed.closed_at is not None
+    assert closed.absent_since is not None
+    assert closed.closure_scan_id is not None
+    assert closed.closure_verified_at is not None
+    assert closed.closure_evidence_json["change_request_id"] == str(change_request.id)
+    assert closed.closure_evidence_json["verification"] == "parent linked"
+
+    decisions = (
+        await db_session.execute(
+            select(DocumentConflictDecision)
+            .where(DocumentConflictDecision.conflict_id == closed.id)
+            .order_by(DocumentConflictDecision.created_at)
+        )
+    ).scalars().all()
+    assert decisions[-1].action == "close"
+    assert decisions[-1].previous_status == ConflictStatus.REVISION_ACCEPTED.value
+    assert decisions[-1].resulting_status == ConflictStatus.CLOSED.value
+    assert decisions[-1].evidence_json["scan_id"] == str(closed.closure_scan_id)
+
+
+@pytest.mark.asyncio
+async def test_close_after_rescan_requires_applied_linked_change_request(db_session):
+    tenant, project, parent, child, accepted, _, service = await accept_conflict_revision(db_session)
+    child.parent_document_id = parent.id
+    await db_session.flush()
+
+    with pytest.raises(ValueError, match="Linked change request must be applied"):
+        await service.close_after_rescan(
+            tenant_id=tenant.id,
+            conflict_id=accepted.id,
+            actor_id=project.owner_id,
+            reason="Too early",
+            evidence={},
+        )
+
+    close_decisions = (
+        await db_session.execute(
+            select(DocumentConflictDecision).where(
+                DocumentConflictDecision.conflict_id == accepted.id,
+                DocumentConflictDecision.action == "close",
+            )
+        )
+    ).scalars().all()
+    assert accepted.status == ConflictStatus.REVISION_ACCEPTED.value
+    assert close_decisions == []
+
+
+@pytest.mark.asyncio
+async def test_close_after_rescan_rejects_still_detected_conflict(db_session):
+    tenant, project, _, _, accepted, change_request, service = await accept_conflict_revision(
+        db_session
+    )
+    change_request.status = ChangeStatus.APPLIED.value
+    change_request.applied_at = datetime.now(timezone.utc)
+    await db_session.flush()
+
+    with pytest.raises(ValueError, match="Conflict still detected after rescan"):
+        await service.close_after_rescan(
+            tenant_id=tenant.id,
+            conflict_id=accepted.id,
+            actor_id=project.owner_id,
+            reason="Verify close",
+            evidence={},
+        )
+
+    close_decisions = (
+        await db_session.execute(
+            select(DocumentConflictDecision).where(
+                DocumentConflictDecision.conflict_id == accepted.id,
+                DocumentConflictDecision.action == "close",
+            )
+        )
+    ).scalars().all()
+    assert accepted.status == ConflictStatus.REVISION_ACCEPTED.value
+    assert close_decisions == []

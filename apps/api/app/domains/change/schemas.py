@@ -442,6 +442,9 @@ class DocumentConflictResponse(BaseModel):
     linked_change_request_id: UUID | None = None
     accepted_revision_json: dict[str, Any] | None = None
     revision_accepted_at: datetime | None = None
+    closure_scan_id: UUID | None = None
+    closure_verified_at: datetime | None = None
+    closure_evidence_json: dict[str, Any] | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -490,6 +493,13 @@ class ConflictRevisionAcceptanceRequest(BaseModel):
     """Accept a suggested revision and create a linked change-request draft."""
 
     suggested_revision: str = Field(..., min_length=1)
+    reason: str = Field(..., min_length=1)
+    evidence: dict[str, Any] = Field(default_factory=dict)
+
+
+class ConflictClosureRequest(BaseModel):
+    """Close a conflict after the linked change is applied and a rescan verifies absence."""
+
     reason: str = Field(..., min_length=1)
     evidence: dict[str, Any] = Field(default_factory=dict)
 

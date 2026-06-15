@@ -134,3 +134,26 @@ def test_conflict_change_request_linkage_model_matches_migration_contract():
     assert "accepted_revision_json" in conflict_columns
     assert "revision_accepted_at" in conflict_columns
     assert "ix_document_conflicts_linked_change_request_id" in index_names
+
+
+def test_conflict_closure_rescan_migration_is_additive():
+    migration = (VERSIONS_DIR / "0025_conflict_closure_rescan.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'revision = "0025_conflict_closure"' in migration
+    assert 'down_revision = "0024_conflict_change_linkage"' in migration
+    assert '"closure_scan_id"' in migration
+    assert '"closure_verified_at"' in migration
+    assert '"closure_evidence_json"' in migration
+    assert '"ix_document_conflicts_closure_scan_id"' in migration
+
+
+def test_conflict_closure_rescan_model_matches_migration_contract():
+    conflict_columns = DocumentConflict.__table__.c
+    index_names = {index.name for index in DocumentConflict.__table__.indexes}
+
+    assert "closure_scan_id" in conflict_columns
+    assert "closure_verified_at" in conflict_columns
+    assert "closure_evidence_json" in conflict_columns
+    assert "ix_document_conflicts_closure_scan_id" in index_names

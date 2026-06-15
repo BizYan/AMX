@@ -257,8 +257,43 @@ Verification limitation:
   migration harness, and is covered by source/model contract tests plus full API
   tests. GitHub CI must still prove runtime migration.
 
+Merge:
+
+- PR #49 merged to `main` at `f9e4f681ed5c5d7bf3ce1f21bff6a678d07666f6` on
+  2026-06-15.
+
+### PR 4: Applied Change Rescan Closure
+
+Implemented:
+
+- additive `0025_conflict_closure` migration with `closure_scan_id`,
+  `closure_verified_at`, and `closure_evidence_json`;
+- conflict response fields for closure verification evidence;
+- `close_after_rescan` governance service method;
+- project-owner-only `revision_accepted -> closed` transition;
+- linked change request must be `applied` before closure;
+- deterministic project rescan must prove the conflict fingerprint is absent;
+- durable conflict decision history with closure scan and change-request IDs;
+- authenticated `POST /change/conflicts/{conflict_id}/close-after-rescan` API;
+- audit event `document_conflict.close`;
+- invalid-transition and still-detected protections with no close history row.
+
+Verification:
+
+- focused backend suite:
+  `uv run --directory apps/api --extra dev python -m pytest tests/test_persisted_conflict_scan.py tests/test_alembic_migrations.py tests/test_api_router_contract.py -q`
+  returned `31 passed`;
+
+Verification limitation:
+
+- Disposable PostgreSQL migration cycle was not run locally because Docker CLI is
+  unavailable in this Windows environment. The migration is additive, avoids
+  extra foreign keys that are incompatible with the repository's partial CI
+  migration harness, and is covered by source/model contract tests. GitHub CI
+  must still prove runtime migration.
+
 ## Next Actions
 
-1. Push PR 3 and require CI migration evidence before merge.
-2. After PR 3 is ready or merged, implement applied-change verification, rescan,
-   and controlled closure.
+1. Push PR 4 and require CI migration evidence before merge.
+2. After PR 4 is merged, continue with high-risk conflict acceptance, user-facing
+   command center workflows, and deployment-readiness gates.
