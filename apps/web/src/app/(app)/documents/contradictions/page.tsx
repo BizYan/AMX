@@ -2,14 +2,14 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useToast } from '@/components/ui/toast'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Select, SelectOption } from '@/components/ui/select'
-import { documentsApi, projectsApi, type Document } from '@/lib/api-client'
+import { changeApi, documentsApi, projectsApi, type Document, type DocumentConflict } from '@/lib/api-client'
 import {
   AlertCircle,
   AlertTriangle,
@@ -81,6 +81,24 @@ const STATE_LABELS: Record<ConflictState, string> = {
 }
 
 const EMPTY_DOCUMENTS: Document[] = []
+
+type PersistedConflictAction = 'complete_analysis' | 'accept_risk' | 'accept_revision' | 'close_after_rescan'
+
+function formatDateTime(value?: string | null) {
+  if (!value) return 'n/a'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleDateString()
+}
+
+function summarizeConflictEvidence(conflict: DocumentConflict) {
+  const evidence = conflict.evidence_json || {}
+  const values = Object.values(evidence)
+    .flatMap((item) => Array.isArray(item) ? item : [item])
+    .filter((item) => item !== null && item !== undefined)
+    .map((item) => typeof item === 'string' ? item : JSON.stringify(item))
+  return values.slice(0, 2)
+}
 
 function getDocType(document: Document) {
   return document.doc_type || document.type || 'document'
@@ -275,6 +293,7 @@ function getConflictTypeLabel(type: Contradiction['conflictType']) {
 
 export default function ContradictionsPage() {
   const { addToast } = useToast()
+  const queryClient = useQueryClient()
   const [projectId, setProjectId] = useState('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [severityFilter, setSeverityFilter] = useState('all')
@@ -302,7 +321,77 @@ export default function ContradictionsPage() {
   })
 
   const projects = projectsData?.items || []
+  const persistedProjectId = projectId === 'all' ? projects[0]?.id : projectId
   const documents = documentsData?.items ?? EMPTY_DOCUMENTS
+  const persistedConflictQueryKey = ['persisted-document-conflicts', persistedProjectId]
+
+  const {
+    data: persistedConflictsData,
+    isLoading: isPersistedConflictLoading,
+    refetch: refetchPersistedConflicts,
+  } = useQuery({
+    queryKey: persistedConflictQueryKey,
+    queryFn: () => changeApi.listDocumentConflicts(persistedProjectId as string),
+    enabled: Boolean(persistedProjectId),
+  })
+
+  const persistedConflictMutation = useMutation({
+    mutationFn: ({ conflict, action }: { conflict: DocumentConflict; action: PersistedConflictAction }) => {
+      const evidence = { source: 'contradiction_resolution_center', action }
+
+      if (action === 'complete_analysis') {
+        return changeApi.completeDocumentConflictAnalysis(conflict.id, {
+          reason: 'Operator completed analysis from the contradiction resolution center.',
+          evidence,
+        })
+      }
+
+      if (action === 'accept_risk') {
+        const acceptedUntil = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
+        return changeApi.acceptDocumentConflictRisk(conflict.id, {
+          reason: 'Operator accepted this conflict risk with mitigation evidence.',
+          mitigation_plan: 'Monitor linked delivery evidence and renew or close before expiry.',
+          accepted_until: acceptedUntil,
+          evidence,
+        })
+      }
+
+      if (action === 'accept_revision') {
+        return changeApi.acceptDocumentConflictRevision(conflict.id, {
+          suggested_revision: conflict.accepted_revision_json?.suggested_revision || conflict.summary,
+          reason: 'Operator accepted the suggested revision from the governance queue.',
+          evidence,
+        })
+      }
+
+      return changeApi.closeDocumentConflictAfterRescan(conflict.id, {
+        reason: 'Operator verified the linked change after rescan.',
+        evidence,
+      })
+    },
+    onSuccess: (updatedConflict) => {
+      queryClient.invalidateQueries({ queryKey: persistedConflictQueryKey })
+      addToast({
+        title: 'Persisted conflict updated',
+        description: `${updatedConflict.summary}: ${updatedConflict.status}`,
+      })
+    },
+    onError: (error) => {
+      addToast({
+        title: 'Persisted conflict update failed',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const persistedConflicts = persistedConflictsData?.items || []
+  const persistedConflictSummary = {
+    total: persistedConflicts.length,
+    high: persistedConflicts.filter((item) => item.severity === 'high').length,
+    open: persistedConflicts.filter((item) => !['closed', 'rejected', 'risk_accepted', 'revision_accepted'].includes(item.status)).length,
+  }
+
   const contradictions = useMemo(() => buildContradictions(documents), [documents])
   const filteredContradictions = contradictions.filter((item) => {
     const decisionState = decisions[item.id]?.status || 'open'
@@ -369,7 +458,14 @@ export default function ContradictionsPage() {
               <SelectOption key={project.id} value={project.id}>{project.name}</SelectOption>
             ))}
           </Select>
-          <Button variant="outline" onClick={() => refetch()} data-testid="contradiction-rescan">
+          <Button
+            variant="outline"
+            onClick={() => {
+              refetch()
+              if (persistedProjectId) refetchPersistedConflicts()
+            }}
+            data-testid="contradiction-rescan"
+          >
             <RefreshCw className="mr-2 h-4 w-4" />
             重新扫描
           </Button>
@@ -440,6 +536,107 @@ export default function ContradictionsPage() {
             <SelectOption value="accepted">已接受修订</SelectOption>
             <SelectOption value="rejected">无需处理</SelectOption>
           </Select>
+        </CardContent>
+      </Card>
+
+      <Card data-testid="persisted-conflict-governance">
+        <CardHeader>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <ShieldCheck className="h-5 w-5" />
+                Persisted conflict governance
+              </CardTitle>
+              <CardDescription>
+                Backend-governed document conflicts that can block release until rejected, risk-accepted, revised, or closed.
+              </CardDescription>
+            </div>
+            <div className="flex flex-wrap gap-2 text-xs">
+              <Badge variant="outline">total {persistedConflictSummary.total}</Badge>
+              <Badge className={getSeverityClass('high')}>high {persistedConflictSummary.high}</Badge>
+              <Badge className={getStateClass('open')}>open {persistedConflictSummary.open}</Badge>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {!persistedProjectId ? (
+            <p className="text-sm text-slate-500">Select a project to load persisted conflict governance.</p>
+          ) : isPersistedConflictLoading ? (
+            <p className="text-sm text-slate-500">Loading persisted conflicts...</p>
+          ) : persistedConflicts.length === 0 ? (
+            <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200">
+              No persisted conflicts are currently open for this project.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {persistedConflicts.map((conflict) => {
+                const evidence = summarizeConflictEvidence(conflict)
+                return (
+                  <div key={conflict.id} className="rounded-md border border-slate-200 p-4 dark:border-slate-700">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge className={getSeverityClass(conflict.severity as ConflictSeverity)}>{conflict.severity}</Badge>
+                          <Badge variant="outline">{conflict.rule_key}</Badge>
+                          <Badge className={getStateClass(conflict.status as ConflictState)}>{conflict.status}</Badge>
+                        </div>
+                        <h3 className="mt-2 font-semibold text-slate-900 dark:text-white">{conflict.summary}</h3>
+                        <p className="mt-1 text-xs text-slate-500">
+                          Last detected {formatDateTime(conflict.last_detected_at)}
+                          {conflict.risk_acceptance_expires_at ? ` · Risk accepted until ${formatDateTime(conflict.risk_acceptance_expires_at)}` : ''}
+                          {conflict.linked_change_request_id ? ` · Change ${conflict.linked_change_request_id}` : ''}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={persistedConflictMutation.isPending}
+                          onClick={() => persistedConflictMutation.mutate({ conflict, action: 'complete_analysis' })}
+                        >
+                          Complete analysis
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          data-testid={`persisted-conflict-accept-risk-${conflict.id}`}
+                          disabled={persistedConflictMutation.isPending}
+                          onClick={() => persistedConflictMutation.mutate({ conflict, action: 'accept_risk' })}
+                        >
+                          Accept risk
+                        </Button>
+                        <Button
+                          size="sm"
+                          disabled={persistedConflictMutation.isPending}
+                          onClick={() => persistedConflictMutation.mutate({ conflict, action: 'accept_revision' })}
+                        >
+                          Accept revision
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={persistedConflictMutation.isPending}
+                          onClick={() => persistedConflictMutation.mutate({ conflict, action: 'close_after_rescan' })}
+                        >
+                          Close after rescan
+                        </Button>
+                      </div>
+                    </div>
+                    {evidence.length > 0 && (
+                      <ul className="mt-3 space-y-1 text-sm text-slate-600 dark:text-slate-300">
+                        {evidence.map((item) => (
+                          <li key={item} className="flex gap-2">
+                            <span className="mt-2 h-1.5 w-1.5 rounded-full bg-indigo-500" />
+                            <span>{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </CardContent>
       </Card>
 
