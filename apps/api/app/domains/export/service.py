@@ -411,6 +411,9 @@ class ExportService:
         Returns:
             Created ExportJob
         """
+        if created_by is None:
+            raise ValueError("created_by is required")
+
         job = ExportJob(
             tenant_id=tenant_id,
             project_id=project_id,
@@ -418,7 +421,7 @@ class ExportService:
             template_id=template_id,
             export_type=export_type,
             status=ExportStatus.PENDING.value,
-            created_by=created_by or UUID("00000000-0000-0000-0000-000000000000"),
+            created_by=created_by,
         )
         self.db.add(job)
         await self.db.flush()
