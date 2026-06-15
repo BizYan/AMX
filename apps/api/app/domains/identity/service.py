@@ -51,6 +51,39 @@ from app.domains.identity.schemas import (
 )
 
 
+def _role_grants_admin(role: Role) -> bool:
+    permissions = role.permissions or {}
+    return bool(permissions.get("*") or permissions.get("admin"))
+
+
+def _user_has_admin_role(user: User) -> bool:
+    return any(
+        assignment.role is not None and _role_grants_admin(assignment.role)
+        for assignment in (user.roles or [])
+    )
+
+
+async def _is_last_active_tenant_admin(db: AsyncSession, user: User) -> bool:
+    if not user.tenant_id or not user.is_active:
+        return False
+
+    result = await db.execute(
+        select(User)
+        .options(selectinload(User.roles).selectinload(UserRole.role))
+        .where(
+            User.tenant_id == user.tenant_id,
+            User.deleted_at.is_(None),
+            User.is_active.is_(True),
+        )
+    )
+    active_admin_ids = {
+        candidate.id
+        for candidate in result.scalars().all()
+        if _user_has_admin_role(candidate)
+    }
+    return user.id in active_admin_ids and len(active_admin_ids) == 1
+
+
 class TenantApiKeyService:
     """Manage tenant-scoped API keys with one-time secret reveal."""
 
@@ -314,6 +347,8 @@ class AuthService:
         """Deactivate the current account and invalidate all sessions."""
         if not verify_password(current_password, user.hashed_password):
             raise ValueError("Current password is incorrect")
+        if await _is_last_active_tenant_admin(self.db, user):
+            raise ValueError("Cannot deactivate the last active admin")
         user.is_active = False
         user.security_version += 1
         await self.db.flush()
@@ -567,6 +602,8 @@ class UserService:
             user.full_name = data.full_name
         if data.is_active is not None:
             if user.is_active and not data.is_active:
+                if await _is_last_active_tenant_admin(self.db, user):
+                    raise ValueError("Cannot deactivate the last active admin")
                 user.security_version += 1
             user.is_active = data.is_active
         if data.password is not None:
