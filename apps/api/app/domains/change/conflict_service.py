@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.change.models import ConflictStatus, DocumentConflict
-from app.domains.change.schemas import ConflictScanResponse
+from app.domains.change.schemas import ConflictScanResponse, DocumentConflictListResponse
 from app.domains.change.service import TraceabilityService
 
 
@@ -168,3 +168,27 @@ class ConflictGovernanceService:
             )
         )
         return result.scalar_one_or_none()
+
+    async def list_project_conflicts(
+        self,
+        *,
+        tenant_id: UUID,
+        project_id: UUID,
+        severity: str | None = None,
+        status: str | None = None,
+    ) -> DocumentConflictListResponse:
+        filters = [
+            DocumentConflict.tenant_id == tenant_id,
+            DocumentConflict.project_id == project_id,
+        ]
+        if severity:
+            filters.append(DocumentConflict.severity == severity)
+        if status:
+            filters.append(DocumentConflict.status == status)
+        result = await self.db.execute(
+            select(DocumentConflict)
+            .where(*filters)
+            .order_by(DocumentConflict.last_detected_at.desc())
+        )
+        items = list(result.scalars().all())
+        return DocumentConflictListResponse(items=items, total=len(items))

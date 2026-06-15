@@ -256,3 +256,27 @@ async def test_project_scan_reopens_closed_conflict_when_fingerprint_reappears(d
     assert second.reopened == 1
     assert second.items[0].status == ConflictStatus.ANALYSIS.value
     assert second.items[0].closed_at is None
+
+
+@pytest.mark.asyncio
+async def test_conflict_reads_are_tenant_isolated(db_session):
+    tenant, project, _, _ = await create_project_graph(db_session)
+    service = ConflictGovernanceService(db_session)
+    scan = await service.scan_project(tenant_id=tenant.id, project_id=project.id)
+
+    own_list = await service.list_project_conflicts(
+        tenant_id=tenant.id,
+        project_id=project.id,
+    )
+    other_list = await service.list_project_conflicts(
+        tenant_id=uuid4(),
+        project_id=project.id,
+    )
+    other_detail = await service.get_conflict(
+        tenant_id=uuid4(),
+        conflict_id=scan.items[0].id,
+    )
+
+    assert own_list.total == 1
+    assert other_list.total == 0
+    assert other_detail is None
