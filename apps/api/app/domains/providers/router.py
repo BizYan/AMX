@@ -594,7 +594,8 @@ async def test_provider(
             from app.integrations.gitnexus.adapter import GitNexusProvider
 
             gitnexus = GitNexusProvider(config=provider.config_json)
-            repo_url = data.params.get("repo_url", "https://github.com/test/test")
+            repo_url_param = data.params.get("repo_url")
+            repo_url = repo_url_param.strip() if isinstance(repo_url_param, str) else None
 
             if data.capability_type == "health":
                 response = await gitnexus.check_health()
@@ -609,6 +610,19 @@ async def test_provider(
                     capability_type=data.capability_type,
                     configured=True,
                     production_ready=True,
+                    sandbox_fallback=False,
+                )
+            elif data.capability_type in {"commits", "issues"} and not repo_url:
+                return ProviderTestResponse(
+                    success=False,
+                    message="GitNexus repository capability requires params.repo_url.",
+                    latency_ms=int((time.time() - start_time) * 1000),
+                    output={"required": ["repo_url"]},
+                    status="invalid_request",
+                    mode="live",
+                    capability_type=data.capability_type,
+                    configured=True,
+                    production_ready=False,
                     sandbox_fallback=False,
                 )
             elif data.capability_type == "commits":
