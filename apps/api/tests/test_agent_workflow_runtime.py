@@ -185,3 +185,59 @@ async def test_execute_workflow_api_enqueues_job(monkeypatch):
     assert res.run_id == run_id
     assert res.status == "pending"
     assert enqueue_calls == [run_id]
+
+
+@pytest.mark.asyncio
+async def test_create_agent_run_uses_active_version_from_workflow_id(monkeypatch):
+    workflow_id = uuid4()
+    version_id = uuid4()
+    project_id = uuid4()
+    run_id = uuid4()
+    tenant_id = uuid4()
+    user_id = uuid4()
+    calls = []
+
+    class MockWorkflowService:
+        def __init__(self, db):
+            pass
+
+        async def get_active_version(self, workflow_id, tenant_id):
+            calls.append(("active_version", workflow_id, tenant_id))
+            return SimpleNamespace(id=version_id, workflow_definition_id=workflow_id)
+
+        async def get_version(self, requested_version_id, tenant_id):
+            calls.append(("version", requested_version_id, tenant_id))
+            return SimpleNamespace(id=version_id, workflow_definition_id=workflow_id)
+
+    class MockAgentRunService:
+        def __init__(self, db):
+            pass
+
+        async def create_run(self, tenant_id, project_id, workflow_version_id, created_by, input_data=None):
+            calls.append(("create_run", tenant_id, project_id, workflow_version_id, created_by, input_data))
+            return SimpleNamespace(id=run_id, status="pending")
+
+    monkeypatch.setattr("app.domains.agent.router.WorkflowService", MockWorkflowService)
+    monkeypatch.setattr("app.domains.agent.router.AgentRunService", MockAgentRunService)
+
+    from app.domains.agent.router import create_run
+    from app.domains.agent.schemas import AgentRunCreate
+    from app.models.identity import User
+
+    response = await create_run(
+        data=AgentRunCreate(
+            workflow_id=workflow_id,
+            project_id=project_id,
+            input_data={"scope": "release"},
+        ),
+        db=None,
+        current_user=User(id=user_id, tenant_id=tenant_id),
+    )
+
+    assert response.run_id == run_id
+    assert response.status == "pending"
+    assert calls == [
+        ("active_version", workflow_id, tenant_id),
+        ("version", version_id, tenant_id),
+        ("create_run", tenant_id, project_id, version_id, user_id, {"scope": "release"}),
+    ]
