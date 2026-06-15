@@ -54,7 +54,10 @@ def test_document_conflict_model_matches_migration_constraint_and_indexes():
         if isinstance(constraint, UniqueConstraint)
     }
     index_names = {index.name for index in DocumentConflict.__table__.indexes}
+    all_index_names = [index.name for index in DocumentConflict.__table__.indexes]
 
+    assert DocumentConflict.__table__.c.tenant_id.nullable is False
+    assert len(all_index_names) == len(set(all_index_names))
     assert "uq_document_conflicts_tenant_project_fingerprint" in constraint_names
     assert {
         "ix_document_conflicts_tenant_id",

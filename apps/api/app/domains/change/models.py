@@ -434,35 +434,37 @@ class DocumentConflict(Base, UuidMixin, TimestampMixin, TenantMixin):
 
     __tablename__ = "document_conflicts"
 
+    tenant_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     project_id = Column(
         UUID(as_uuid=True),
         ForeignKey("projects.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )
     rule_key = Column(String(80), nullable=False)
     fingerprint = Column(String(64), nullable=False)
-    severity = Column(String(20), nullable=False, default=ConflictSeverity.MEDIUM.value, index=True)
-    status = Column(String(20), nullable=False, default=ConflictStatus.ANALYSIS.value, index=True)
+    severity = Column(String(20), nullable=False, default=ConflictSeverity.MEDIUM.value)
+    status = Column(String(20), nullable=False, default=ConflictStatus.ANALYSIS.value)
     primary_document_id = Column(
         UUID(as_uuid=True),
         ForeignKey("documents.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )
     primary_document_version = Column(Integer, nullable=False)
     related_document_id = Column(
         UUID(as_uuid=True),
         ForeignKey("documents.id", ondelete="SET NULL"),
         nullable=True,
-        index=True,
     )
     related_document_version = Column(Integer, nullable=True)
     summary = Column(Text, nullable=False)
     evidence_json = Column(JSONB, nullable=False, default=dict)
     first_detected_at = Column(DateTime(timezone=True), nullable=False)
     last_detected_at = Column(DateTime(timezone=True), nullable=False)
-    last_scan_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    last_scan_id = Column(UUID(as_uuid=True), nullable=False)
     absent_since = Column(DateTime(timezone=True), nullable=True)
     closed_at = Column(DateTime(timezone=True), nullable=True)
 
