@@ -2374,6 +2374,49 @@ export const MOCK_CHANGE_AUDIT_COMMAND_CENTER = {
   ],
 }
 
+export const MOCK_DOCUMENT_CONFLICTS = [
+  {
+    id: 'conflict-e2e-001',
+    tenant_id: 'tenant-e2e-001',
+    project_id: 'project-e2e-001',
+    rule_key: 'downstream_document_mismatch',
+    fingerprint: 'conflict-e2e-fingerprint-001',
+    severity: 'high',
+    status: 'unassigned',
+    primary_document_id: 'doc-e2e-002',
+    primary_document_version: 1,
+    related_document_id: 'doc-e2e-001',
+    related_document_version: 2,
+    summary: 'High-severity downstream document mismatch',
+    evidence_json: {
+      source: 'URS published risk controls changed.',
+      target: 'PRD still references the prior acceptance rule.',
+      affected_sections: ['release_gate', 'acceptance_criteria'],
+    },
+    first_detected_at: '2026-06-15T02:00:00Z',
+    last_detected_at: '2026-06-15T03:00:00Z',
+    last_scan_id: 'scan-e2e-001',
+    absent_since: null,
+    closed_at: null,
+    assignee_user_id: null,
+    assignment_source: null,
+    assigned_at: null,
+    due_at: '2026-06-16T03:00:00Z',
+    linked_change_request_id: null,
+    accepted_revision_json: null,
+    revision_accepted_at: null,
+    closure_scan_id: null,
+    closure_verified_at: null,
+    closure_evidence_json: null,
+    risk_accepted_by: null,
+    risk_accepted_at: null,
+    risk_acceptance_expires_at: null,
+    risk_acceptance_json: null,
+    created_at: '2026-06-15T02:00:00Z',
+    updated_at: '2026-06-15T03:00:00Z',
+  },
+]
+
 export const MOCK_CHANGE_BOARD_CHANGES = [
   {
     id: 'change-e2e-001',

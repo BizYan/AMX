@@ -37,4 +37,17 @@ test.describe('Document contradiction resolution center', () => {
     await page.getByTestId('contradiction-search').fill('缺少')
     await expect(page.getByTestId('contradiction-resolution-center')).toContainText(/缺少|当前筛选下没有冲突/)
   })
+
+  test('surfaces persisted governance conflicts and records backend decisions', async ({ page }) => {
+    await page.goto('/documents/contradictions', { waitUntil: 'domcontentloaded' })
+
+    await expect(page.getByTestId('persisted-conflict-governance')).toContainText('Persisted conflict governance')
+    await expect(page.getByTestId('persisted-conflict-governance')).toContainText('High-severity downstream document mismatch')
+    await expect(page.getByTestId('persisted-conflict-governance')).toContainText('unassigned')
+
+    await page.getByTestId('persisted-conflict-accept-risk-conflict-e2e-001').click()
+
+    await expect(page.getByTestId('persisted-conflict-governance')).toContainText('risk_accepted')
+    await expect(page.getByTestId('persisted-conflict-governance')).toContainText('Risk accepted until')
+  })
 })

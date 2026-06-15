@@ -20,6 +20,7 @@ export async function setupApiMocks(page: Page, options: SetupApiMockOptions = {
   let templates: any[] = clone(MOCK.MOCK_TEMPLATE)
   let templateVersions: any[] = clone(MOCK.MOCK_TEMPLATE_VERSIONS)
   let traceabilityImpactAnalysis = clone(MOCK.MOCK_TRACEABILITY_BOARD_IMPACT)
+  let documentConflicts: any[] = clone(MOCK.MOCK_DOCUMENT_CONFLICTS)
   let skillCatalog: any[] = clone(MOCK.MOCK_SKILL_CATALOG)
   let agentProfiles: any[] = clone(MOCK.MOCK_AGENT_PROFILES)
   let agentRuns: any[] = clone(MOCK.MOCK_AGENT_RUNS)
@@ -4975,6 +4976,79 @@ export async function setupApiMocks(page: Page, options: SetupApiMockOptions = {
         }),
       })
     }
+  })
+
+  await page.route(/\/api\/v1\/change\/conflicts\/projects\/[^/]+(?:\?.*)?$/, async (route) => {
+    const url = new URL(route.request().url())
+    const projectId = url.pathname.split('/').pop()
+    const severity = url.searchParams.get('severity')
+    const status = url.searchParams.get('status')
+    const items = documentConflicts.filter((item) =>
+      item.project_id === projectId &&
+      (!severity || item.severity === severity) &&
+      (!status || item.status === status)
+    )
+
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ items, total: items.length }),
+    })
+  })
+
+  await page.route(/\/api\/v1\/change\/conflicts\/projects\/[^/]+\/scan$/, async (route) => {
+    const projectId = route.request().url().match(/\/projects\/([^/]+)\/scan$/)?.[1] || MOCK.MOCK_PROJECT.id
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        scan_id: `scan-e2e-${Date.now()}`,
+        project_id: projectId,
+        detected: documentConflicts.filter((item) => item.project_id === projectId).length,
+        created: 0,
+        updated: 0,
+        resolved_candidates: 0,
+        items: documentConflicts.filter((item) => item.project_id === projectId),
+      }),
+    })
+  })
+
+  await page.route(/\/api\/v1\/change\/conflicts\/[^/]+\/(complete-analysis|accept-risk|accept-revision|close-after-rescan)$/, async (route) => {
+    const match = route.request().url().match(/\/conflicts\/([^/]+)\/([^/]+)$/)
+    const conflictId = match?.[1] || ''
+    const action = match?.[2] || ''
+    const payload = JSON.parse(route.request().postData() || '{}')
+    const updatedAt = new Date().toISOString()
+    const statusByAction: Record<string, string> = {
+      'complete-analysis': 'decision',
+      'accept-risk': 'risk_accepted',
+      'accept-revision': 'revision_accepted',
+      'close-after-rescan': 'closed',
+    }
+
+    documentConflicts = documentConflicts.map((item) => {
+      if (item.id !== conflictId) return item
+
+      return {
+        ...item,
+        status: statusByAction[action] || item.status,
+        updated_at: updatedAt,
+        risk_accepted_by: action === 'accept-risk' ? MOCK.MOCK_USER.id : item.risk_accepted_by,
+        risk_accepted_at: action === 'accept-risk' ? updatedAt : item.risk_accepted_at,
+        risk_acceptance_expires_at: action === 'accept-risk' ? payload.accepted_until : item.risk_acceptance_expires_at,
+        risk_acceptance_json: action === 'accept-risk' ? payload : item.risk_acceptance_json,
+        accepted_revision_json: action === 'accept-revision' ? payload : item.accepted_revision_json,
+        revision_accepted_at: action === 'accept-revision' ? updatedAt : item.revision_accepted_at,
+        closure_verified_at: action === 'close-after-rescan' ? updatedAt : item.closure_verified_at,
+        closed_at: action === 'close-after-rescan' ? updatedAt : item.closed_at,
+      }
+    })
+
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(documentConflicts.find((item) => item.id === conflictId) || documentConflicts[0]),
+    })
   })
 
   // 特定变更请求详情

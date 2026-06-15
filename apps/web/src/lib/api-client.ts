@@ -471,6 +471,21 @@ export const projectMembersApi = {
 export const changeApi = {
   getAuditCommandCenter: (params?: { projectId?: string }) =>
     apiClient.get<ChangeAuditCommandCenter>('/change/command-center', { project_id: params?.projectId }),
+  listDocumentConflicts: (projectId: string, params?: { severity?: string; status?: string }) =>
+    apiClient.get<DocumentConflictListResponse>(`/change/conflicts/projects/${projectId}`, {
+      severity: params?.severity,
+      status: params?.status,
+    }),
+  scanDocumentConflicts: (projectId: string) =>
+    apiClient.post<ConflictScanResponse>(`/change/conflicts/projects/${projectId}/scan`, {}),
+  completeDocumentConflictAnalysis: (id: string, data: ConflictAnalysisCompletionPayload) =>
+    apiClient.post<DocumentConflict>(`/change/conflicts/${id}/complete-analysis`, data),
+  acceptDocumentConflictRisk: (id: string, data: ConflictRiskAcceptancePayload) =>
+    apiClient.post<DocumentConflict>(`/change/conflicts/${id}/accept-risk`, data),
+  acceptDocumentConflictRevision: (id: string, data: ConflictRevisionAcceptancePayload) =>
+    apiClient.post<DocumentConflict>(`/change/conflicts/${id}/accept-revision`, data),
+  closeDocumentConflictAfterRescan: (id: string, data: ConflictClosurePayload) =>
+    apiClient.post<DocumentConflict>(`/change/conflicts/${id}/close-after-rescan`, data),
   list: (params?: { projectId?: string; status?: string; page?: number; pageSize?: number }) =>
     apiClient.get<{ items: ChangeRequest[]; total: number; page: number; page_size: number; has_more: boolean }>('/change', {
       project_id: params?.projectId,
@@ -3404,6 +3419,81 @@ export interface ChangeRequest {
   requested_by: string
   created_at: string
   updated_at: string
+}
+
+export interface DocumentConflict {
+  id: string
+  tenant_id?: string | null
+  project_id: string
+  rule_key: string
+  fingerprint: string
+  severity: 'high' | 'medium' | 'low' | string
+  status: string
+  primary_document_id: string
+  primary_document_version: number
+  related_document_id?: string | null
+  related_document_version?: number | null
+  summary: string
+  evidence_json: Record<string, any>
+  first_detected_at: string
+  last_detected_at: string
+  last_scan_id: string
+  absent_since?: string | null
+  closed_at?: string | null
+  assignee_user_id?: string | null
+  assignment_source?: string | null
+  assigned_at?: string | null
+  due_at?: string | null
+  linked_change_request_id?: string | null
+  accepted_revision_json?: Record<string, any> | null
+  revision_accepted_at?: string | null
+  closure_scan_id?: string | null
+  closure_verified_at?: string | null
+  closure_evidence_json?: Record<string, any> | null
+  risk_accepted_by?: string | null
+  risk_accepted_at?: string | null
+  risk_acceptance_expires_at?: string | null
+  risk_acceptance_json?: Record<string, any> | null
+  created_at: string
+  updated_at: string
+}
+
+export interface DocumentConflictListResponse {
+  items: DocumentConflict[]
+  total: number
+}
+
+export interface ConflictScanResponse {
+  scan_id: string
+  project_id: string
+  detected: number
+  created?: number
+  updated?: number
+  resolved_candidates?: number
+  items?: DocumentConflict[]
+}
+
+export interface ConflictAnalysisCompletionPayload {
+  reason: string
+  evidence?: Record<string, any>
+}
+
+export interface ConflictRiskAcceptancePayload {
+  reason: string
+  mitigation_plan: string
+  accepted_until: string
+  evidence?: Record<string, any>
+}
+
+export interface ConflictRevisionAcceptancePayload {
+  suggested_revision: string
+  reason: string
+  evidence?: Record<string, any>
+}
+
+export interface ConflictClosurePayload {
+  reason: string
+  evidence?: Record<string, any>
 }
 
 export interface ChangeAuditCommandCenterSummary {
