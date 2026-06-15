@@ -157,7 +157,7 @@ export default function ProjectMembersPage({ params }: ProjectMembersPageProps) 
                 type="email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
-                placeholder="user@example.com"
+                placeholder="输入成员邮箱"
               />
             </div>
             <Button
