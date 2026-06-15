@@ -75,7 +75,7 @@ def test_conflict_assignment_governance_migration_is_additive():
         encoding="utf-8"
     )
 
-    assert 'revision = "0023_conflict_assignment_governance"' in migration
+    assert 'revision = "0023_conflict_assignment"' in migration
     assert 'down_revision = "0022_document_conflicts"' in migration
     assert 'op.add_column(' in migration
     assert '"document_conflicts"' in migration

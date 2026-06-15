@@ -1,6 +1,6 @@
 """add conflict assignment governance
 
-Revision ID: 0023_conflict_assignment_governance
+Revision ID: 0023_conflict_assignment
 Revises: 0022_document_conflicts
 """
 
@@ -9,7 +9,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 
-revision = "0023_conflict_assignment_governance"
+revision = "0023_conflict_assignment"
 down_revision = "0022_document_conflicts"
 branch_labels = None
 depends_on = None

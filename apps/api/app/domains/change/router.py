@@ -38,6 +38,9 @@ from app.domains.change.schemas import (
     DocumentSyncProposalResponse,
     DocumentTraceabilityResponse,
     ConflictAnalysisResponse,
+    ConflictAnalysisCompletionRequest,
+    ConflictAssignmentRequest,
+    ConflictRejectionRequest,
     ConflictScanResponse,
     DocumentConflictListResponse,
     DocumentConflictResponse,
@@ -54,6 +57,7 @@ from app.domains.change.service import (
     ControlledBackwriteService,
     ChangeRequestCommentService,
 )
+from app.services.audit_service import AuditService
 
 
 router = APIRouter()
@@ -172,6 +176,102 @@ async def get_persisted_conflict(
     if not conflict:
         raise HTTPException(status_code=404, detail="Document conflict not found")
     return conflict
+
+
+@router.post("/conflicts/{conflict_id}/assign", response_model=DocumentConflictResponse)
+async def assign_persisted_conflict(
+    conflict_id: UUID,
+    data: ConflictAssignmentRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Assign or reassign a persisted document conflict."""
+    service = ConflictGovernanceService(db)
+    try:
+        conflict = await service.assign_conflict(
+            tenant_id=current_user.tenant_id,
+            conflict_id=conflict_id,
+            actor_id=current_user.id,
+            assignee_user_id=data.assignee_user_id,
+            reason=data.reason,
+        )
+        await AuditService(db).log_action(
+            tenant_id=current_user.tenant_id,
+            user_id=current_user.id,
+            action="document_conflict.assign",
+            resource_type="document_conflict",
+            resource_id=conflict.id,
+            metadata={"assignee_user_id": str(data.assignee_user_id)},
+        )
+        return conflict
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/conflicts/{conflict_id}/complete-analysis", response_model=DocumentConflictResponse)
+async def complete_persisted_conflict_analysis(
+    conflict_id: UUID,
+    data: ConflictAnalysisCompletionRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Move a persisted document conflict from analysis to decision."""
+    service = ConflictGovernanceService(db)
+    try:
+        conflict = await service.complete_analysis(
+            tenant_id=current_user.tenant_id,
+            conflict_id=conflict_id,
+            actor_id=current_user.id,
+            reason=data.reason,
+            evidence=data.evidence,
+        )
+        await AuditService(db).log_action(
+            tenant_id=current_user.tenant_id,
+            user_id=current_user.id,
+            action="document_conflict.complete_analysis",
+            resource_type="document_conflict",
+            resource_id=conflict.id,
+            metadata={"status": conflict.status},
+        )
+        return conflict
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/conflicts/{conflict_id}/reject", response_model=DocumentConflictResponse)
+async def reject_persisted_conflict(
+    conflict_id: UUID,
+    data: ConflictRejectionRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Reject an inapplicable or false persisted document conflict."""
+    service = ConflictGovernanceService(db)
+    try:
+        conflict = await service.reject_conflict(
+            tenant_id=current_user.tenant_id,
+            conflict_id=conflict_id,
+            actor_id=current_user.id,
+            reason=data.reason,
+            evidence=data.evidence,
+        )
+        await AuditService(db).log_action(
+            tenant_id=current_user.tenant_id,
+            user_id=current_user.id,
+            action="document_conflict.reject",
+            resource_type="document_conflict",
+            resource_id=conflict.id,
+            metadata={"status": conflict.status},
+        )
+        return conflict
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("", response_model=ChangeRequestListResponse)
