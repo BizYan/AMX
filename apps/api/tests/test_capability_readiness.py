@@ -158,6 +158,44 @@ async def test_gitnexus_provider_test_supports_health_capability():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("capability", "method_path"),
+    [
+        ("commits", "app.integrations.gitnexus.adapter.GitNexusProvider.fetch_commits"),
+        ("issues", "app.integrations.gitnexus.adapter.GitNexusProvider.fetch_issues"),
+    ],
+)
+async def test_gitnexus_provider_test_requires_repo_url_for_repository_capabilities(capability, method_path):
+    provider = make_provider(
+        name="GitNexus",
+        provider_type=ProviderType.GITNEXUS.value,
+        config={
+            "endpoint": "http://gitnexus-server:4747",
+            "service_key": "live-secret",
+            "health_path": "/api/health",
+        },
+    )
+    registry = SimpleNamespace(get_provider=AsyncMock(return_value=provider))
+    repository_call = AsyncMock()
+
+    with (
+        patch("app.domains.providers.router.get_registry", return_value=registry),
+        patch(method_path, new=repository_call),
+    ):
+        response = await call_test_provider(
+            provider_id=provider.id,
+            data=ProviderTestRequest(capability_type=capability),
+            db=AsyncMock(),
+            current_user=SimpleNamespace(tenant_id=provider.tenant_id),
+        )
+
+    assert response.success is False
+    assert response.status == "invalid_request"
+    assert response.production_ready is False
+    repository_call.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_readiness_blocks_when_core_assets_are_missing():
     sandbox_provider = make_provider(
         name="Mock Provider",
