@@ -467,6 +467,14 @@ class DocumentConflict(Base, UuidMixin, TimestampMixin, TenantMixin):
     last_scan_id = Column(UUID(as_uuid=True), nullable=False)
     absent_since = Column(DateTime(timezone=True), nullable=True)
     closed_at = Column(DateTime(timezone=True), nullable=True)
+    assignee_user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    assignment_source = Column(String(40), nullable=True)
+    assigned_at = Column(DateTime(timezone=True), nullable=True)
+    due_at = Column(DateTime(timezone=True), nullable=True)
 
     primary_document = relationship(
         "Document",
@@ -478,6 +486,14 @@ class DocumentConflict(Base, UuidMixin, TimestampMixin, TenantMixin):
         foreign_keys=[related_document_id],
         lazy="selectin",
     )
+    assignee = relationship("User", foreign_keys=[assignee_user_id], lazy="selectin")
+    decisions = relationship(
+        "DocumentConflictDecision",
+        back_populates="conflict",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+        order_by="DocumentConflictDecision.created_at",
+    )
 
     __table_args__ = (
         Index("ix_document_conflicts_tenant_id", "tenant_id"),
@@ -487,12 +503,56 @@ class DocumentConflict(Base, UuidMixin, TimestampMixin, TenantMixin):
         Index("ix_document_conflicts_last_scan_id", "last_scan_id"),
         Index("ix_document_conflicts_primary_document_id", "primary_document_id"),
         Index("ix_document_conflicts_related_document_id", "related_document_id"),
+        Index("ix_document_conflicts_assignee_user_id", "assignee_user_id"),
         UniqueConstraint(
             "tenant_id",
             "project_id",
             "fingerprint",
             name="uq_document_conflicts_tenant_project_fingerprint",
         ),
+    )
+
+
+class DocumentConflictDecision(Base, UuidMixin, TimestampMixin, TenantMixin):
+    """Append-only governance history for a persisted document conflict."""
+
+    __tablename__ = "document_conflict_decisions"
+
+    tenant_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    project_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    conflict_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("document_conflicts.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    actor_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    action = Column(String(60), nullable=False)
+    previous_status = Column(String(20), nullable=True)
+    resulting_status = Column(String(20), nullable=False)
+    reason = Column(Text, nullable=True)
+    evidence_json = Column(JSONB, nullable=False, default=dict)
+
+    conflict = relationship("DocumentConflict", back_populates="decisions", lazy="selectin")
+    actor = relationship("User", foreign_keys=[actor_id], lazy="selectin")
+
+    __table_args__ = (
+        Index("ix_document_conflict_decisions_tenant_id", "tenant_id"),
+        Index("ix_document_conflict_decisions_project_id", "project_id"),
+        Index("ix_document_conflict_decisions_conflict_id", "conflict_id"),
+        Index("ix_document_conflict_decisions_actor_id", "actor_id"),
+        Index("ix_document_conflict_decisions_action", "action"),
     )
 
 

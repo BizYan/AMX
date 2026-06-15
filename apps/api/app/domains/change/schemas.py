@@ -435,8 +435,52 @@ class DocumentConflictResponse(BaseModel):
     last_scan_id: UUID
     absent_since: datetime | None
     closed_at: datetime | None
+    assignee_user_id: UUID | None = None
+    assignment_source: str | None = None
+    assigned_at: datetime | None = None
+    due_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class DocumentConflictDecisionResponse(BaseModel):
+    """Append-only conflict governance decision response."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    tenant_id: UUID | None
+    project_id: UUID
+    conflict_id: UUID
+    actor_id: UUID
+    action: str
+    previous_status: str | None
+    resulting_status: str
+    reason: str | None
+    evidence_json: dict[str, Any]
+    created_at: datetime
+    updated_at: datetime
+
+
+class ConflictAssignmentRequest(BaseModel):
+    """Assign or reassign a persisted conflict."""
+
+    assignee_user_id: UUID
+    reason: str = Field(..., min_length=1)
+
+
+class ConflictAnalysisCompletionRequest(BaseModel):
+    """Move a conflict from analysis to decision."""
+
+    reason: str = Field(..., min_length=1)
+    evidence: dict[str, Any] = Field(default_factory=dict)
+
+
+class ConflictRejectionRequest(BaseModel):
+    """Reject an inapplicable or false conflict finding."""
+
+    reason: str = Field(..., min_length=1)
+    evidence: dict[str, Any] = Field(default_factory=dict)
 
 
 class DocumentConflictListResponse(BaseModel):
