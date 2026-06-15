@@ -184,6 +184,7 @@ jobs:
       - name: Prepare CI compose environment
         run: |
           cp infra/env.example .env
+          sed -i 's/^BOOTSTRAP_ADMIN_PASSWORD=.*/BOOTSTRAP_ADMIN_PASSWORD=ci-bootstrap-admin-password/' .env
           sed -i 's/^JWT_SECRET_KEY=.*/JWT_SECRET_KEY=ci-production-jwt-secret-at-least-32-bytes/' .env
 
       - name: Validate production runtime security preflight
