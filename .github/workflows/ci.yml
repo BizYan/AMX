@@ -26,6 +26,20 @@ jobs:
   api-tests:
     name: API tests
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: amx_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d amx_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     defaults:
       run:
         working-directory: apps/api
@@ -46,6 +60,34 @@ jobs:
 
       - name: Audit API dependencies
         run: uv run --extra dev pip-audit
+
+      - name: Verify PostgreSQL Alembic migrations
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/amx_ci
+        run: |
+          uv run python - <<'PY'
+          import asyncio
+
+          import asyncpg
+
+
+          async def main() -> None:
+              connection = await asyncpg.connect("postgresql://postgres:postgres@localhost:5432/amx_ci")
+              try:
+                  await connection.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";')
+                  await connection.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+                  await connection.execute("CREATE TABLE IF NOT EXISTS projects (id uuid PRIMARY KEY);")
+                  await connection.execute("CREATE TABLE IF NOT EXISTS documents (id uuid PRIMARY KEY);")
+              finally:
+                  await connection.close()
+
+
+          asyncio.run(main())
+          PY
+          uv run alembic stamp 0021_invitation_delivery
+          uv run alembic upgrade head
+          uv run alembic downgrade 0021_invitation_delivery
+          uv run alembic upgrade head
 
       - name: Run API tests
         env:

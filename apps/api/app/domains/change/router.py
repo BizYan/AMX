@@ -38,10 +38,14 @@ from app.domains.change.schemas import (
     DocumentSyncProposalResponse,
     DocumentTraceabilityResponse,
     ConflictAnalysisResponse,
+    ConflictScanResponse,
+    DocumentConflictListResponse,
+    DocumentConflictResponse,
     FullTraceabilityMatrixResponse,
     PaginationParams,
     SyncProposalDecision,
 )
+from app.domains.change.conflict_service import ConflictGovernanceService
 from app.domains.change.service import (
     ChangeAuditCommandCenterService,
     ChangeService,
@@ -122,6 +126,52 @@ async def check_change_request_access(
 # =============================================================================
 # Change Request Endpoints
 # =============================================================================
+
+
+@router.post("/conflicts/projects/{project_id}/scan", response_model=ConflictScanResponse)
+async def scan_project_conflicts(
+    project_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Run and persist deterministic conflict rules for one project."""
+    return await ConflictGovernanceService(db).scan_project(
+        tenant_id=current_user.tenant_id,
+        project_id=project_id,
+    )
+
+
+@router.get("/conflicts/projects/{project_id}", response_model=DocumentConflictListResponse)
+async def list_project_conflicts(
+    project_id: UUID,
+    severity: str | None = Query(None),
+    status: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List persisted document conflicts for one project."""
+    return await ConflictGovernanceService(db).list_project_conflicts(
+        tenant_id=current_user.tenant_id,
+        project_id=project_id,
+        severity=severity,
+        status=status,
+    )
+
+
+@router.get("/conflicts/{conflict_id}", response_model=DocumentConflictResponse)
+async def get_persisted_conflict(
+    conflict_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get one persisted document conflict."""
+    conflict = await ConflictGovernanceService(db).get_conflict(
+        tenant_id=current_user.tenant_id,
+        conflict_id=conflict_id,
+    )
+    if not conflict:
+        raise HTTPException(status_code=404, detail="Document conflict not found")
+    return conflict
 
 
 @router.get("", response_model=ChangeRequestListResponse)
