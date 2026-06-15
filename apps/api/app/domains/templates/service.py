@@ -67,6 +67,9 @@ class TemplateService:
         Returns:
             Created Template
         """
+        if created_by is None:
+            raise ValueError("created_by is required")
+
         template = Template(
             tenant_id=tenant_id,
             name=template_data.name,
@@ -74,7 +77,7 @@ class TemplateService:
             doc_type=template_data.doc_type,
             version_count=0,
             is_active="true",
-            created_by=created_by or UUID("00000000-0000-0000-0000-000000000000"),
+            created_by=created_by,
         )
         self.db.add(template)
         await self.db.flush()
@@ -248,6 +251,9 @@ class TemplateService:
         Returns:
             Created TemplateVersion if template found, None otherwise
         """
+        if created_by is None:
+            raise ValueError("created_by is required")
+
         template = await self.get_template(template_id, tenant_id)
         if not template:
             return None
@@ -281,7 +287,7 @@ class TemplateService:
             placeholder_schema=parsed_placeholders,
             page_types=parsed_page_types,
             is_active=version_is_active,
-            created_by=created_by or UUID("00000000-0000-0000-0000-000000000000"),
+            created_by=created_by,
         )
         self.db.add(version)
 
@@ -398,6 +404,9 @@ class TemplateService:
         Returns:
             Created TemplateVersion if template found, None otherwise
         """
+        if created_by is None:
+            raise ValueError("created_by is required")
+
         template = await self.get_template(template_id, tenant_id)
         if not template:
             return None
@@ -429,7 +438,7 @@ class TemplateService:
             placeholder_schema=[p.model_dump() for p in parsed.placeholders] if parsed.placeholders else None,
             page_types=[p.model_dump() for p in parsed.page_types] if parsed.page_types else None,
             is_active="true",
-            created_by=created_by or UUID("00000000-0000-0000-0000-000000000000"),
+            created_by=created_by,
         )
         self.db.add(version)
 

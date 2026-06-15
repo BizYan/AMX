@@ -419,6 +419,9 @@ class DocumentService:
         Returns:
             Created Document
         """
+        if created_by is None:
+            raise ValueError("created_by is required")
+
         document = Document(
             tenant_id=tenant_id,
             project_id=project_id,
@@ -427,7 +430,7 @@ class DocumentService:
             content=content,
             status=DocumentStatus.DRAFT.value,
             version=1,
-            created_by=created_by or UUID("00000000-0000-0000-0000-000000000000"),
+            created_by=created_by,
             metadata_json=metadata,
         )
         self.db.add(document)

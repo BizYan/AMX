@@ -97,6 +97,7 @@ async def test_upload_template_version_passes_tenant_context_to_parser():
 async def test_upload_template_version_deactivates_existing_versions_before_new_active_version():
     tenant_id = uuid4()
     template_id = uuid4()
+    created_by = uuid4()
     file_content = b"# Template\nProject: {{project_name}}"
 
     db = AsyncMock()
@@ -118,10 +119,12 @@ async def test_upload_template_version_deactivates_existing_versions_before_new_
         template_id=template_id,
         file_content=file_content,
         description="Initial version",
+        created_by=created_by,
     )
 
     assert version is not None
     assert version.is_active == "true"
+    assert version.created_by == created_by
     service._deactivate_template_versions.assert_awaited_once_with(template_id, tenant_id)
 
 
