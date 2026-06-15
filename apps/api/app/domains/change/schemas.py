@@ -407,6 +407,53 @@ class ConflictAnalysisResponse(BaseModel):
     conflicts: list[ConflictItem]
 
 
+class DocumentConflictResponse(BaseModel):
+    """Persisted conflict response."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    tenant_id: UUID | None
+    project_id: UUID
+    rule_key: str
+    fingerprint: str
+    severity: str
+    status: str
+    primary_document_id: UUID
+    primary_document_version: int
+    related_document_id: UUID | None
+    related_document_version: int | None
+    summary: str
+    evidence_json: dict[str, Any]
+    first_detected_at: datetime
+    last_detected_at: datetime
+    last_scan_id: UUID
+    absent_since: datetime | None
+    closed_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class DocumentConflictListResponse(BaseModel):
+    """Project conflict list response."""
+
+    items: list[DocumentConflictResponse]
+    total: int
+
+
+class ConflictScanResponse(BaseModel):
+    """Project conflict scan result."""
+
+    scan_id: UUID
+    project_id: UUID
+    detected: int
+    created: int
+    refreshed: int
+    reopened: int
+    marked_absent: int
+    items: list[DocumentConflictResponse]
+
+
 class FullTraceabilityMatrixResponse(BaseModel):
     """Full traceability matrix with hierarchical structure."""
 

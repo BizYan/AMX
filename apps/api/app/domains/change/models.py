@@ -51,6 +51,26 @@ class ChangeStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
+class ConflictSeverity(str, Enum):
+    """Persisted document conflict severity."""
+
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+
+
+class ConflictStatus(str, Enum):
+    """Persisted document conflict lifecycle status."""
+
+    UNASSIGNED = "unassigned"
+    ANALYSIS = "analysis"
+    DECISION = "decision"
+    REVISION_ACCEPTED = "revision_accepted"
+    REJECTED = "rejected"
+    RISK_ACCEPTED = "risk_accepted"
+    CLOSED = "closed"
+
+
 class PatchType(str, Enum):
     """Field patch type enumeration."""
 
@@ -406,6 +426,70 @@ class DocumentSyncProposal(Base, UuidMixin, TimestampMixin, TenantMixin):
         Index("ix_document_sync_proposals_source_document_id", "source_document_id"),
         Index("ix_document_sync_proposals_target_document_id", "target_document_id"),
         Index("ix_document_sync_proposals_status", "status"),
+    )
+
+
+class DocumentConflict(Base, UuidMixin, TimestampMixin, TenantMixin):
+    """Canonical persisted finding from an auditable document conflict rule."""
+
+    __tablename__ = "document_conflicts"
+
+    project_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    rule_key = Column(String(80), nullable=False)
+    fingerprint = Column(String(64), nullable=False)
+    severity = Column(String(20), nullable=False, default=ConflictSeverity.MEDIUM.value, index=True)
+    status = Column(String(20), nullable=False, default=ConflictStatus.ANALYSIS.value, index=True)
+    primary_document_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    primary_document_version = Column(Integer, nullable=False)
+    related_document_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("documents.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    related_document_version = Column(Integer, nullable=True)
+    summary = Column(Text, nullable=False)
+    evidence_json = Column(JSONB, nullable=False, default=dict)
+    first_detected_at = Column(DateTime(timezone=True), nullable=False)
+    last_detected_at = Column(DateTime(timezone=True), nullable=False)
+    last_scan_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    absent_since = Column(DateTime(timezone=True), nullable=True)
+    closed_at = Column(DateTime(timezone=True), nullable=True)
+
+    primary_document = relationship(
+        "Document",
+        foreign_keys=[primary_document_id],
+        lazy="selectin",
+    )
+    related_document = relationship(
+        "Document",
+        foreign_keys=[related_document_id],
+        lazy="selectin",
+    )
+
+    __table_args__ = (
+        Index("ix_document_conflicts_tenant_id", "tenant_id"),
+        Index("ix_document_conflicts_project_id", "project_id"),
+        Index("ix_document_conflicts_status", "status"),
+        Index("ix_document_conflicts_severity", "severity"),
+        Index("ix_document_conflicts_last_scan_id", "last_scan_id"),
+        Index(
+            "uq_document_conflicts_tenant_project_fingerprint",
+            "tenant_id",
+            "project_id",
+            "fingerprint",
+            unique=True,
+        ),
     )
 
 
