@@ -65,6 +65,26 @@ jobs:
         env:
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/amx_ci
         run: |
+          uv run python - <<'PY'
+          import asyncio
+
+          import asyncpg
+
+
+          async def main() -> None:
+              connection = await asyncpg.connect("postgresql://postgres:postgres@localhost:5432/amx_ci")
+              try:
+                  await connection.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";')
+                  await connection.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+                  await connection.execute("CREATE TABLE IF NOT EXISTS projects (id uuid PRIMARY KEY);")
+                  await connection.execute("CREATE TABLE IF NOT EXISTS documents (id uuid PRIMARY KEY);")
+              finally:
+                  await connection.close()
+
+
+          asyncio.run(main())
+          PY
+          uv run alembic stamp 0021_invitation_delivery
           uv run alembic upgrade head
           uv run alembic downgrade 0021_invitation_delivery
           uv run alembic upgrade head
