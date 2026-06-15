@@ -7,10 +7,13 @@ os.environ["ARQ_REDIS_URL"] = "redis://localhost:6379/1"
 os.environ["JWT_SECRET_KEY"] = "test-secret"
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from starlette.requests import Request
 
 import app.db.init_schema  # noqa: F401 - registers sqlite compilers for UUID/JSONB
+import app.domains.knowledge.models  # noqa: F401 - registers knowledge tables for integration FK targets
 import app.models.identity  # noqa: F401 - registers tenant/user tables for FK targets
 from app.db.base import Base
 from app.db.init_schema import deduplicate_indexes
@@ -55,6 +58,21 @@ class FakeAsyncClient:
     async def post(self, url: str, **kwargs):
         self.requests.append(("POST", url, kwargs))
         return FakeResponse(self.status_code, self.body)
+
+
+def make_json_request(payload: bytes) -> Request:
+    async def receive():
+        return {"type": "http.request", "body": payload, "more_body": False}
+
+    return Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/v1/integrations/webhooks/inbound",
+            "headers": [(b"content-type", b"application/json")],
+        },
+        receive,
+    )
 
 
 @pytest.fixture
@@ -139,6 +157,32 @@ async def test_connection_reports_authentication_failure_without_fake_success(db
     assert result["status"] == "authentication_failed"
     assert "HTTP 401" in result["message"]
     assert result["details"]["endpoint"] == "https://api.example.com/health"
+
+
+@pytest.mark.asyncio
+async def test_inbound_webhook_requires_configured_secret_in_production(db_session, monkeypatch):
+    from app.core.settings import settings
+    from app.domains.integrations.router import receive_inbound_webhook
+
+    monkeypatch.setattr(settings, "ENVIRONMENT", "production")
+
+    tenant_id = uuid4()
+    db_session.add(Tenant(id=tenant_id, name="Webhook Tenant", slug="webhook-tenant"))
+    integration = await IntegrationService(db_session).create_integration(
+        tenant_id=tenant_id,
+        provider_type="custom",
+        name="Unsigned Inbound",
+        config={"base_url": "https://hooks.vendor.test", "api_key": "live-secret"},
+    )
+
+    request = make_json_request(b'{"event_type":"updated","data":{"id":"AMX-1"}}')
+
+    with pytest.raises(HTTPException) as exc:
+        await receive_inbound_webhook(request=request, provider_id=integration.id, db=db_session)
+
+    assert exc.value.status_code == 401
+    assert "webhook_secret" in exc.value.detail
+    assert await db_session.scalar(select(IntegrationInboundEvent)) is None
 
 
 @pytest.mark.asyncio
