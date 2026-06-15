@@ -759,7 +759,7 @@ class SkillCatalogService:
         "DocumentReviewer": {
             "test_scenario": "评审一段 PRD 草稿是否结构清晰、是否仍有占位内容。",
             "sample_input": {
-                "content": "## 发运复核\n- 系统需要支持扫码复核。\n- [TODO] 补充异常处理规则。",
+                "content": "## 发运复核\n- 系统必须支持逐单扫码复核并记录扫码人、时间和结果。\n- 异常订单进入人工复核队列，处理结论写入审计记录。",
                 "review_type": "detailed",
                 "check_list": ["结构完整性", "占位内容", "验收标准"],
             },
@@ -779,7 +779,7 @@ class SkillCatalogService:
         },
         "ExportOrchestrator": {
             "test_scenario": "模拟把文档导出为 Word。",
-            "sample_input": {"document_id": "demo-prd-001", "format": "word", "options": {"include_toc": True}},
+            "sample_input": {"document_id": "prd-shipping-review-001", "format": "word", "options": {"include_toc": True}},
             "sample_context": {"document_type": "prd"},
         },
         "BRDDeepThinkingEngine": {

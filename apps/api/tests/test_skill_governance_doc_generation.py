@@ -1,5 +1,6 @@
 """Skill governance and interactive document generation engine tests."""
 
+import json
 import os
 from uuid import uuid4
 
@@ -130,6 +131,30 @@ async def test_seeded_skills_have_chinese_display_governance_and_lock_rules(db_s
 
     with pytest.raises(ValueError, match="locked"):
         await service.set_skill_status(by_name["BRDWritePipeline"].id, tenant_id, "disabled")
+
+
+@pytest.mark.asyncio
+async def test_builtin_skill_sample_inputs_do_not_ship_placeholder_markers(db_session):
+    tenant_id = uuid4()
+    user_id = uuid4()
+
+    service = SkillCatalogService(db_session)
+    skills, _ = await service.list_skills(
+        tenant_id=tenant_id,
+        created_by=user_id,
+        status="published",
+        limit=100,
+    )
+
+    forbidden_markers = ("[TODO]", "[PLACEHOLDER]", "demo-")
+    for skill in skills:
+        sample_input = (skill.metadata_json or {}).get("sample_input")
+        if not sample_input:
+            continue
+
+        serialized = json.dumps(sample_input, ensure_ascii=False)
+        for marker in forbidden_markers:
+            assert marker not in serialized, f"{skill.name} sample_input contains {marker}"
 
 
 @pytest.mark.asyncio
