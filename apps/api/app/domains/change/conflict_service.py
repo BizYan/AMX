@@ -296,6 +296,66 @@ class ConflictGovernanceService:
         await self.db.flush()
         return conflict
 
+    async def accept_risk(
+        self,
+        *,
+        tenant_id: UUID,
+        conflict_id: UUID,
+        actor_id: UUID,
+        reason: str,
+        mitigation_plan: str,
+        accepted_until: datetime,
+        evidence: dict[str, Any],
+    ) -> DocumentConflict:
+        if not reason.strip():
+            raise ValueError("Risk acceptance reason is required")
+        if not mitigation_plan.strip():
+            raise ValueError("Risk mitigation plan is required")
+        if accepted_until.tzinfo is None:
+            accepted_until = accepted_until.replace(tzinfo=timezone.utc)
+        if accepted_until <= datetime.now(timezone.utc):
+            raise ValueError("Risk acceptance must expire in the future")
+
+        conflict = await self.get_conflict_for_update(
+            tenant_id=tenant_id,
+            conflict_id=conflict_id,
+        )
+        await self.require_project_owner(
+            tenant_id=tenant_id,
+            project_id=conflict.project_id,
+            actor_id=actor_id,
+            message="Only project owner can accept conflict risk",
+        )
+        if conflict.status != ConflictStatus.DECISION.value:
+            raise ValueError("Conflict must be in decision status")
+
+        previous_status = conflict.status
+        now = datetime.now(timezone.utc)
+        conflict.status = ConflictStatus.RISK_ACCEPTED.value
+        conflict.risk_accepted_by = actor_id
+        conflict.risk_accepted_at = now
+        conflict.risk_acceptance_expires_at = accepted_until
+        conflict.risk_acceptance_json = {
+            "mitigation_plan": mitigation_plan,
+            "evidence": evidence,
+        }
+        decision_evidence = {
+            "accepted_until": accepted_until.isoformat(),
+            "mitigation_plan": mitigation_plan,
+            **evidence,
+        }
+        self.record_decision(
+            conflict=conflict,
+            actor_id=actor_id,
+            action="accept_risk",
+            previous_status=previous_status,
+            resulting_status=conflict.status,
+            reason=reason,
+            evidence=decision_evidence,
+        )
+        await self.db.flush()
+        return conflict
+
     async def accept_revision(
         self,
         *,

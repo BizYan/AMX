@@ -445,6 +445,10 @@ class DocumentConflictResponse(BaseModel):
     closure_scan_id: UUID | None = None
     closure_verified_at: datetime | None = None
     closure_evidence_json: dict[str, Any] | None = None
+    risk_accepted_by: UUID | None = None
+    risk_accepted_at: datetime | None = None
+    risk_acceptance_expires_at: datetime | None = None
+    risk_acceptance_json: dict[str, Any] | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -494,6 +498,15 @@ class ConflictRevisionAcceptanceRequest(BaseModel):
 
     suggested_revision: str = Field(..., min_length=1)
     reason: str = Field(..., min_length=1)
+    evidence: dict[str, Any] = Field(default_factory=dict)
+
+
+class ConflictRiskAcceptanceRequest(BaseModel):
+    """Accept a conflict risk with expiring mitigation evidence."""
+
+    reason: str = Field(..., min_length=1)
+    mitigation_plan: str = Field(..., min_length=1)
+    accepted_until: datetime
     evidence: dict[str, Any] = Field(default_factory=dict)
 
 

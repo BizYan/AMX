@@ -292,8 +292,45 @@ Verification limitation:
   migration harness, and is covered by source/model contract tests. GitHub CI
   must still prove runtime migration.
 
+Merge:
+
+- PR #50 merged to `main` at `4e640e6ca542b622c8c4b0fa27cd4987df09592f` on
+  2026-06-15.
+
+### PR 5: Expiring Conflict Risk Acceptance
+
+Implemented:
+
+- additive `0026_conflict_risk` migration with `risk_accepted_by`,
+  `risk_accepted_at`, `risk_acceptance_expires_at`, and
+  `risk_acceptance_json`;
+- conflict response fields for risk acceptance ownership, expiry, and evidence;
+- `accept_risk` governance service method;
+- project-owner-only `decision -> risk_accepted` transition;
+- required non-empty acceptance reason and mitigation plan;
+- required future expiry for risk acceptance;
+- durable conflict decision history with accepted-until and mitigation evidence;
+- authenticated `POST /change/conflicts/{conflict_id}/accept-risk` API;
+- audit event `document_conflict.accept_risk`;
+- invalid-transition and expired-risk protections with no risk-acceptance
+  history row.
+
+Verification:
+
+- focused backend suite:
+  `uv run --directory apps/api --extra dev python -m pytest tests/test_persisted_conflict_scan.py tests/test_alembic_migrations.py tests/test_api_router_contract.py -q`
+  returned `35 passed`;
+
+Verification limitation:
+
+- Disposable PostgreSQL migration cycle was not run locally because Docker CLI is
+  unavailable in this Windows environment. The migration is additive, avoids
+  extra foreign keys that are incompatible with the repository's partial CI
+  migration harness, and is covered by source/model contract tests. GitHub CI
+  must still prove runtime migration.
+
 ## Next Actions
 
-1. Push PR 4 and require CI migration evidence before merge.
-2. After PR 4 is merged, continue with high-risk conflict acceptance, user-facing
-   command center workflows, and deployment-readiness gates.
+1. Push PR 5 and require CI migration evidence before merge.
+2. After PR 5 is merged, continue with user-facing command center workflows and
+   deployment-readiness gates.
