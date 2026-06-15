@@ -6,12 +6,13 @@ Business logic for third-party integrations, webhooks, and outbox events.
 import asyncio
 import hashlib
 import hmac
+import inspect
 import json
 import logfire
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urljoin
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import httpx
 from sqlalchemy import select, func, and_
@@ -45,9 +46,29 @@ from app.domains.integrations.schemas import (
 )
 
 
-# Exponential backoff delays for webhook delivery
-WEBHOOK_DELAYS = [1, 5, 15]
+# Exponential backoff delays for queued webhook retry delivery.
+WEBHOOK_DELAYS = [5, 30, 120]
 MAX_DELIVERY_ATTEMPTS = 3
+
+
+async def enqueue_webhook_retry_job(delivery_id: UUID, *, defer_by: int) -> None:
+    """Enqueue one failed webhook delivery for background retry."""
+    from arq import create_pool
+    from app.workers.redis_config import arq_redis_settings
+
+    redis = await create_pool(arq_redis_settings())
+    try:
+        await redis.enqueue_job(
+            "retry_webhook_delivery",
+            str(delivery_id),
+            _defer_by=defer_by,
+        )
+    finally:
+        close = getattr(redis, "aclose", None) or getattr(redis, "close", None)
+        if close is not None:
+            close_result = close()
+            if inspect.isawaitable(close_result):
+                await close_result
 
 
 class IntegrationService:
@@ -1180,7 +1201,7 @@ class WebhookService:
         delivery = WebhookDeliveryEvent(
             tenant_id=subscription.tenant_id,
             webhook_subscription_id=subscription_id,
-            event_id=event_payload.get("event_id", str(UUID.uuid4())),
+            event_id=event_payload.get("event_id") or str(uuid4()),
             url=subscription.url,
             request_headers={"Content-Type": "application/json"},
             request_body=event_payload,
@@ -1262,9 +1283,19 @@ class WebhookService:
             payload: Event payload
             delivery: WebhookDeliveryEvent to track retry
         """
-        # This would be handled by ARQ worker in production
-        # For now, just increment attempt counter
-        delivery.attempts = min(delivery.attempts + 1, MAX_DELIVERY_ATTEMPTS)
+        delay = WEBHOOK_DELAYS[min(delivery.attempts - 1, len(WEBHOOK_DELAYS) - 1)]
+        try:
+            await enqueue_webhook_retry_job(delivery.id, defer_by=delay)
+        except Exception as exc:
+            logfire.error(
+                f"Failed to enqueue webhook retry: {delivery.id}",
+                error=str(exc),
+            )
+            delivery.error_message = (
+                f"{delivery.error_message}; retry scheduling failed: {exc}"
+                if delivery.error_message
+                else f"Retry scheduling failed: {exc}"
+            )
 
 
 class OutboxService:
