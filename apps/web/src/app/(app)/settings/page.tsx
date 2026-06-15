@@ -755,7 +755,7 @@ export default function SettingsPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="member-email">邮箱</Label>
-              <Input id="member-email" type="email" value={newUser.email} onChange={(event) => setNewUser((value) => ({ ...value, email: event.target.value }))} placeholder="user@example.com" />
+              <Input id="member-email" type="email" value={newUser.email} onChange={(event) => setNewUser((value) => ({ ...value, email: event.target.value }))} placeholder="输入成员邮箱" />
             </div>
             <div className="space-y-2">
               <Label>角色</Label>

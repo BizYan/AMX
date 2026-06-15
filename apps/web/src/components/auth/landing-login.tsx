@@ -149,7 +149,7 @@ export function LandingLogin({ returnTo = '/dashboard' }: { returnTo?: string })
                   <Input
                     id="email"
                     type="email"
-                    placeholder="you@company.com"
+                    placeholder="输入邮箱地址"
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}
                     required

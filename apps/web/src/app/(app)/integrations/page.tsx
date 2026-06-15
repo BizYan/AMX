@@ -661,7 +661,7 @@ export default function IntegrationsPage() {
                 data-testid="integration-create-base-url"
                 value={form.base_url}
                 onChange={(event) => setForm((value) => ({ ...value, base_url: event.target.value }))}
-                placeholder="https://example.com"
+                placeholder="输入外部系统地址"
               />
             </div>
             <div className="grid gap-2">
