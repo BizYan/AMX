@@ -14,6 +14,7 @@ from app.domains.change.models import ConflictStatus, DocumentConflict, Document
 from app.domains.change.schemas import ConflictScanResponse, DocumentConflictListResponse
 from app.domains.change.service import TraceabilityService
 from app.domains.documents.models import Document
+from app.models.identity import User
 from app.models.projects import Project
 
 
@@ -125,6 +126,167 @@ class ConflictGovernanceService:
         )
         self.db.add(decision)
         return decision
+
+    async def get_conflict_for_update(
+        self,
+        *,
+        tenant_id: UUID,
+        conflict_id: UUID,
+    ) -> DocumentConflict:
+        conflict = await self.get_conflict(tenant_id=tenant_id, conflict_id=conflict_id)
+        if not conflict:
+            raise ValueError("Document conflict not found")
+        return conflict
+
+    async def require_project_owner(
+        self,
+        *,
+        tenant_id: UUID,
+        project_id: UUID,
+        actor_id: UUID,
+        message: str,
+    ) -> None:
+        owner_id = await self.db.scalar(
+            select(Project.owner_id).where(
+                Project.id == project_id,
+                Project.tenant_id == tenant_id,
+            )
+        )
+        if owner_id != actor_id:
+            raise PermissionError(message)
+
+    async def require_conflict_assignee_or_owner(
+        self,
+        *,
+        conflict: DocumentConflict,
+        actor_id: UUID,
+    ) -> None:
+        if conflict.assignee_user_id == actor_id:
+            return
+        await self.require_project_owner(
+            tenant_id=conflict.tenant_id,
+            project_id=conflict.project_id,
+            actor_id=actor_id,
+            message="Only conflict assignee or project owner can complete analysis",
+        )
+
+    async def assign_conflict(
+        self,
+        *,
+        tenant_id: UUID,
+        conflict_id: UUID,
+        actor_id: UUID,
+        assignee_user_id: UUID,
+        reason: str,
+    ) -> DocumentConflict:
+        conflict = await self.get_conflict_for_update(
+            tenant_id=tenant_id,
+            conflict_id=conflict_id,
+        )
+        await self.require_project_owner(
+            tenant_id=tenant_id,
+            project_id=conflict.project_id,
+            actor_id=actor_id,
+            message="Only project owner can assign conflicts",
+        )
+        assignee = await self.db.scalar(
+            select(User.id).where(
+                User.id == assignee_user_id,
+                User.tenant_id == tenant_id,
+                User.deleted_at.is_(None),
+            )
+        )
+        if not assignee:
+            raise ValueError("Assignee not found")
+
+        now = datetime.now(timezone.utc)
+        previous_status = conflict.status
+        conflict.assignee_user_id = assignee_user_id
+        conflict.assignment_source = "manual"
+        conflict.assigned_at = now
+        if conflict.status == ConflictStatus.UNASSIGNED.value:
+            conflict.status = ConflictStatus.ANALYSIS.value
+
+        self.record_decision(
+            conflict=conflict,
+            actor_id=actor_id,
+            action="assign",
+            previous_status=previous_status,
+            resulting_status=conflict.status,
+            reason=reason,
+            evidence={"assignee_user_id": str(assignee_user_id), "assignment_source": "manual"},
+        )
+        await self.db.flush()
+        return conflict
+
+    async def complete_analysis(
+        self,
+        *,
+        tenant_id: UUID,
+        conflict_id: UUID,
+        actor_id: UUID,
+        reason: str,
+        evidence: dict[str, Any],
+    ) -> DocumentConflict:
+        conflict = await self.get_conflict_for_update(
+            tenant_id=tenant_id,
+            conflict_id=conflict_id,
+        )
+        await self.require_conflict_assignee_or_owner(conflict=conflict, actor_id=actor_id)
+        if conflict.status != ConflictStatus.ANALYSIS.value:
+            raise ValueError("Conflict must be in analysis status")
+
+        previous_status = conflict.status
+        conflict.status = ConflictStatus.DECISION.value
+        self.record_decision(
+            conflict=conflict,
+            actor_id=actor_id,
+            action="complete_analysis",
+            previous_status=previous_status,
+            resulting_status=conflict.status,
+            reason=reason,
+            evidence=evidence,
+        )
+        await self.db.flush()
+        return conflict
+
+    async def reject_conflict(
+        self,
+        *,
+        tenant_id: UUID,
+        conflict_id: UUID,
+        actor_id: UUID,
+        reason: str,
+        evidence: dict[str, Any],
+    ) -> DocumentConflict:
+        if not reason.strip():
+            raise ValueError("Rejection reason is required")
+        conflict = await self.get_conflict_for_update(
+            tenant_id=tenant_id,
+            conflict_id=conflict_id,
+        )
+        await self.require_project_owner(
+            tenant_id=tenant_id,
+            project_id=conflict.project_id,
+            actor_id=actor_id,
+            message="Only project owner can reject conflicts",
+        )
+        if conflict.status != ConflictStatus.DECISION.value:
+            raise ValueError("Conflict must be in decision status")
+
+        previous_status = conflict.status
+        conflict.status = ConflictStatus.REJECTED.value
+        self.record_decision(
+            conflict=conflict,
+            actor_id=actor_id,
+            action="reject",
+            previous_status=previous_status,
+            resulting_status=conflict.status,
+            reason=reason,
+            evidence=evidence,
+        )
+        await self.db.flush()
+        return conflict
 
     async def persist_new_conflict(
         self,

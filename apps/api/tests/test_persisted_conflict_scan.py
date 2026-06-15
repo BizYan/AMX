@@ -94,6 +94,17 @@ async def create_project_graph(db_session):
     return tenant, project, parent, child
 
 
+async def create_user(db_session, tenant_id):
+    user = User(
+        tenant_id=tenant_id,
+        email=f"{uuid4()}@example.com",
+        hashed_password="hashed",
+    )
+    db_session.add(user)
+    await db_session.flush()
+    return user
+
+
 @pytest.mark.asyncio
 async def test_document_conflict_model_persists_rule_evidence(db_session):
     tenant = Tenant(name="Test Tenant", slug=f"tenant-{uuid4()}")
@@ -388,3 +399,120 @@ async def test_duplicate_conflict_insert_returns_existing_record(db_session):
 
     assert created is False
     assert persisted.id == existing.id
+
+
+@pytest.mark.asyncio
+async def test_project_owner_can_reassign_conflict_and_records_history(db_session):
+    tenant, project, _, _ = await create_project_graph(db_session)
+    new_assignee = await create_user(db_session, tenant.id)
+    service = ConflictGovernanceService(db_session)
+    scan = await service.scan_project(tenant_id=tenant.id, project_id=project.id)
+
+    updated = await service.assign_conflict(
+        tenant_id=tenant.id,
+        conflict_id=scan.items[0].id,
+        actor_id=project.owner_id,
+        assignee_user_id=new_assignee.id,
+        reason="Assign to reviewer",
+    )
+
+    assert updated.assignee_user_id == new_assignee.id
+    assert updated.assignment_source == "manual"
+    assert updated.assigned_at is not None
+    decisions = (
+        await db_session.execute(
+            select(DocumentConflictDecision)
+            .where(DocumentConflictDecision.conflict_id == updated.id)
+            .order_by(DocumentConflictDecision.created_at)
+        )
+    ).scalars().all()
+    assert [decision.action for decision in decisions] == ["assign", "assign"]
+    assert decisions[-1].actor_id == project.owner_id
+    assert decisions[-1].reason == "Assign to reviewer"
+    assert decisions[-1].evidence_json["assignee_user_id"] == str(new_assignee.id)
+
+
+@pytest.mark.asyncio
+async def test_non_owner_cannot_reassign_conflict(db_session):
+    tenant, project, _, _ = await create_project_graph(db_session)
+    outsider = await create_user(db_session, tenant.id)
+    new_assignee = await create_user(db_session, tenant.id)
+    service = ConflictGovernanceService(db_session)
+    scan = await service.scan_project(tenant_id=tenant.id, project_id=project.id)
+
+    with pytest.raises(PermissionError, match="Only project owner can assign conflicts"):
+        await service.assign_conflict(
+            tenant_id=tenant.id,
+            conflict_id=scan.items[0].id,
+            actor_id=outsider.id,
+            assignee_user_id=new_assignee.id,
+            reason="Take over",
+        )
+
+
+@pytest.mark.asyncio
+async def test_assignee_can_complete_analysis_and_project_owner_can_reject(db_session):
+    tenant, project, _, child = await create_project_graph(db_session)
+    service = ConflictGovernanceService(db_session)
+    scan = await service.scan_project(tenant_id=tenant.id, project_id=project.id)
+
+    decision_ready = await service.complete_analysis(
+        tenant_id=tenant.id,
+        conflict_id=scan.items[0].id,
+        actor_id=child.created_by,
+        reason="Reviewed rule evidence",
+        evidence={"finding": "valid"},
+    )
+    assert decision_ready.status == ConflictStatus.DECISION.value
+
+    rejected = await service.reject_conflict(
+        tenant_id=tenant.id,
+        conflict_id=decision_ready.id,
+        actor_id=project.owner_id,
+        reason="False positive after review",
+        evidence={"resolution": "document scope excludes parent"},
+    )
+
+    assert rejected.status == ConflictStatus.REJECTED.value
+    decisions = (
+        await db_session.execute(
+            select(DocumentConflictDecision)
+            .where(DocumentConflictDecision.conflict_id == rejected.id)
+            .order_by(DocumentConflictDecision.created_at)
+        )
+    ).scalars().all()
+    assert [decision.action for decision in decisions] == [
+        "assign",
+        "complete_analysis",
+        "reject",
+    ]
+    assert decisions[-2].previous_status == ConflictStatus.ANALYSIS.value
+    assert decisions[-2].resulting_status == ConflictStatus.DECISION.value
+    assert decisions[-1].previous_status == ConflictStatus.DECISION.value
+    assert decisions[-1].resulting_status == ConflictStatus.REJECTED.value
+
+
+@pytest.mark.asyncio
+async def test_invalid_reject_transition_does_not_record_history(db_session):
+    tenant, project, _, _ = await create_project_graph(db_session)
+    service = ConflictGovernanceService(db_session)
+    scan = await service.scan_project(tenant_id=tenant.id, project_id=project.id)
+
+    with pytest.raises(ValueError, match="Conflict must be in decision status"):
+        await service.reject_conflict(
+            tenant_id=tenant.id,
+            conflict_id=scan.items[0].id,
+            actor_id=project.owner_id,
+            reason="Too early",
+            evidence={},
+        )
+
+    reject_decisions = (
+        await db_session.execute(
+            select(DocumentConflictDecision).where(
+                DocumentConflictDecision.conflict_id == scan.items[0].id,
+                DocumentConflictDecision.action == "reject",
+            )
+        )
+    ).scalars().all()
+    assert reject_decisions == []
