@@ -32,14 +32,6 @@ def upgrade() -> None:
         "document_conflicts",
         sa.Column("due_at", sa.DateTime(timezone=True), nullable=True),
     )
-    op.create_foreign_key(
-        "fk_document_conflicts_assignee_user_id_users",
-        "document_conflicts",
-        "users",
-        ["assignee_user_id"],
-        ["id"],
-        ondelete="SET NULL",
-    )
     op.create_index(
         "ix_document_conflicts_assignee_user_id",
         "document_conflicts",
@@ -60,10 +52,8 @@ def upgrade() -> None:
         sa.Column("evidence_json", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
-        sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["conflict_id"], ["document_conflicts.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["actor_id"], ["users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(
@@ -101,11 +91,6 @@ def downgrade() -> None:
     op.drop_index("ix_document_conflict_decisions_tenant_id", table_name="document_conflict_decisions")
     op.drop_table("document_conflict_decisions")
     op.drop_index("ix_document_conflicts_assignee_user_id", table_name="document_conflicts")
-    op.drop_constraint(
-        "fk_document_conflicts_assignee_user_id_users",
-        "document_conflicts",
-        type_="foreignkey",
-    )
     op.drop_column("document_conflicts", "due_at")
     op.drop_column("document_conflicts", "assigned_at")
     op.drop_column("document_conflicts", "assignment_source")
