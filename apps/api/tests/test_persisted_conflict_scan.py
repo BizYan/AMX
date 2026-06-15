@@ -280,3 +280,32 @@ async def test_conflict_reads_are_tenant_isolated(db_session):
     assert own_list.total == 1
     assert other_list.total == 0
     assert other_detail is None
+
+
+@pytest.mark.asyncio
+async def test_duplicate_conflict_insert_returns_existing_record(db_session):
+    tenant, project, _, child = await create_project_graph(db_session)
+    service = ConflictGovernanceService(db_session)
+    first = await service.scan_project(tenant_id=tenant.id, project_id=project.id)
+    existing = first.items[0]
+    now = datetime.now(timezone.utc)
+    duplicate = DocumentConflict(
+        tenant_id=tenant.id,
+        project_id=project.id,
+        rule_key=existing.rule_key,
+        fingerprint=existing.fingerprint,
+        severity=existing.severity,
+        status=existing.status,
+        primary_document_id=child.id,
+        primary_document_version=child.version,
+        summary=existing.summary,
+        evidence_json=existing.evidence_json,
+        first_detected_at=now,
+        last_detected_at=now,
+        last_scan_id=uuid4(),
+    )
+
+    persisted, created = await service.persist_new_conflict(duplicate)
+
+    assert created is False
+    assert persisted.id == existing.id

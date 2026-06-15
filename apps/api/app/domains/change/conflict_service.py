@@ -7,6 +7,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.change.models import ConflictStatus, DocumentConflict
@@ -59,6 +60,28 @@ class ConflictGovernanceService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    async def persist_new_conflict(
+        self,
+        conflict: DocumentConflict,
+    ) -> tuple[DocumentConflict, bool]:
+        """Insert a fingerprint once or return the concurrently created row."""
+        try:
+            async with self.db.begin_nested():
+                self.db.add(conflict)
+                await self.db.flush()
+            return conflict, True
+        except IntegrityError:
+            existing = await self.db.scalar(
+                select(DocumentConflict).where(
+                    DocumentConflict.tenant_id == conflict.tenant_id,
+                    DocumentConflict.project_id == conflict.project_id,
+                    DocumentConflict.fingerprint == conflict.fingerprint,
+                )
+            )
+            if existing:
+                return existing, False
+            raise
+
     async def scan_project(
         self,
         *,
@@ -100,7 +123,7 @@ class ConflictGovernanceService:
             seen.add(fingerprint)
             conflict = existing_by_fingerprint.get(fingerprint)
             if conflict is None:
-                conflict = DocumentConflict(
+                candidate = DocumentConflict(
                     tenant_id=tenant_id,
                     project_id=project_id,
                     rule_key=finding.rule_key or finding.conflict_type,
@@ -117,9 +140,12 @@ class ConflictGovernanceService:
                     last_detected_at=now,
                     last_scan_id=scan_id,
                 )
-                self.db.add(conflict)
+                conflict, was_created = await self.persist_new_conflict(candidate)
                 existing_by_fingerprint[fingerprint] = conflict
-                created += 1
+                if was_created:
+                    created += 1
+                else:
+                    refreshed += 1
             else:
                 refreshed += 1
                 if conflict.status == ConflictStatus.CLOSED.value:

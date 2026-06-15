@@ -49,15 +49,21 @@ def upgrade() -> None:
             name="uq_document_conflicts_tenant_project_fingerprint",
         ),
     )
+    op.create_index("ix_document_conflicts_tenant_id", "document_conflicts", ["tenant_id"])
     op.create_index("ix_document_conflicts_project_id", "document_conflicts", ["project_id"])
     op.create_index("ix_document_conflicts_status", "document_conflicts", ["status"])
     op.create_index("ix_document_conflicts_severity", "document_conflicts", ["severity"])
     op.create_index("ix_document_conflicts_last_scan_id", "document_conflicts", ["last_scan_id"])
+    op.create_index("ix_document_conflicts_primary_document_id", "document_conflicts", ["primary_document_id"])
+    op.create_index("ix_document_conflicts_related_document_id", "document_conflicts", ["related_document_id"])
 
 
 def downgrade() -> None:
+    op.drop_index("ix_document_conflicts_related_document_id", table_name="document_conflicts")
+    op.drop_index("ix_document_conflicts_primary_document_id", table_name="document_conflicts")
     op.drop_index("ix_document_conflicts_last_scan_id", table_name="document_conflicts")
     op.drop_index("ix_document_conflicts_severity", table_name="document_conflicts")
     op.drop_index("ix_document_conflicts_status", table_name="document_conflicts")
     op.drop_index("ix_document_conflicts_project_id", table_name="document_conflicts")
+    op.drop_index("ix_document_conflicts_tenant_id", table_name="document_conflicts")
     op.drop_table("document_conflicts")

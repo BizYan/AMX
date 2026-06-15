@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 
@@ -483,12 +483,13 @@ class DocumentConflict(Base, UuidMixin, TimestampMixin, TenantMixin):
         Index("ix_document_conflicts_status", "status"),
         Index("ix_document_conflicts_severity", "severity"),
         Index("ix_document_conflicts_last_scan_id", "last_scan_id"),
-        Index(
-            "uq_document_conflicts_tenant_project_fingerprint",
+        Index("ix_document_conflicts_primary_document_id", "primary_document_id"),
+        Index("ix_document_conflicts_related_document_id", "related_document_id"),
+        UniqueConstraint(
             "tenant_id",
             "project_id",
             "fingerprint",
-            unique=True,
+            name="uq_document_conflicts_tenant_project_fingerprint",
         ),
     )
 
