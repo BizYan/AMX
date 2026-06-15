@@ -26,6 +26,20 @@ jobs:
   api-tests:
     name: API tests
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: amx_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d amx_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     defaults:
       run:
         working-directory: apps/api
@@ -46,6 +60,14 @@ jobs:
 
       - name: Audit API dependencies
         run: uv run --extra dev pip-audit
+
+      - name: Verify PostgreSQL Alembic migrations
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/amx_ci
+        run: |
+          uv run alembic upgrade head
+          uv run alembic downgrade 0021_invitation_delivery
+          uv run alembic upgrade head
 
       - name: Run API tests
         env:
