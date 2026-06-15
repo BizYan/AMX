@@ -61,6 +61,20 @@ read_env_value() {
   ' "$ENV_FILE"
 }
 
+jwt_secret="$(read_env_value "JWT_SECRET_KEY")"
+jwt_secret="$(printf '%s' "$jwt_secret" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+jwt_secret_normalized="$(printf '%s' "$jwt_secret" | tr '[:upper:]' '[:lower:]')"
+case "$jwt_secret_normalized" in
+  ""|change-me|change-me-in-production|changeme|development-secret|dev-secret|jwt-secret|secret|test|test-secret|your-super-secret-jwt-key-change-in-production)
+    echo "Production JWT_SECRET_KEY must be a real non-placeholder secret" >&2
+    exit 1
+    ;;
+esac
+if [[ "${#jwt_secret}" -lt 32 ]]; then
+  echo "Production JWT_SECRET_KEY must be a real non-placeholder secret" >&2
+  exit 1
+fi
+
 for variable in \
   POSTGRES_BIND_ADDRESS \
   REDIS_BIND_ADDRESS \
