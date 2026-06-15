@@ -130,10 +130,10 @@ Rollback boundary:
 ## Active Work
 
 - Branch: `feature/traceability-conflict-governance`
-- Current phase: PR 1 implementation complete; final branch verification and PR preparation.
+- Current phase: PR 1 ready for human review and merge.
 - Design: `docs/superpowers/specs/2026-06-15-traceability-conflict-governance-design.md`
 - Implementation plan: `docs/superpowers/plans/2026-06-15-persisted-conflict-scan.md`
-- Open PRs for this program: none.
+- Open PRs for this program: PR #47, `feat: persist document conflict scans`.
 
 ### PR 1: Persisted Conflict Scan
 
@@ -151,6 +151,8 @@ Verification:
 - focused conflict, traceability, migration, and router tests: `28 passed`;
 - full API suite: `540 passed`;
 - `git diff --check`: passed;
+- GitHub CI: API tests, web typecheck/build, deterministic E2E, Docker Compose,
+  collaboration contract, and PR evidence checks passed for PR #47;
 - GitNexus change-record wrapper: Git changed-file evidence detected; dedicated
   worktree was not indexed, so symbol impact was unavailable and fallback evidence
   is required.
