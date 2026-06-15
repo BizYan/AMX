@@ -22,19 +22,21 @@ enforce delivery gates according to unresolved conflict risk.
 - Idempotent persisted conflict scan and read API.
 - Automatic primary document owner assignment, manual reassignment, governed
   analysis/rejection transitions, and append-only decision history.
+- Accepted revision creates a linked draft change request and records durable
+  conflict/change linkage.
 
 ### Partial
 
 - The contradiction-resolution page can display and locally classify conflicts,
   but is not yet backed by the persisted conflict governance API.
 - Existing change requests and sync proposals can execute downstream changes,
-  but accepting a conflict revision does not create a linked change-request draft.
+  and accepted conflict revisions now create draft change requests, but applied
+  change verification and controlled closure are not yet implemented.
 - Delivery readiness includes traceability signals, but does not enforce the
   approved high-risk conflict policy.
 
 ### Missing
 
-- Linked change-request draft creation from an accepted revision.
 - Conflict closure gated by applied change and successful traceability rescan.
 - High-risk conflict delivery blocking and audited risk acceptance.
 - Cross-entry visibility in project cockpit, collaboration, audit, and delivery
@@ -128,8 +130,8 @@ Rollback boundary:
 
 ## Active Work
 
-- Branch: `feature/conflict-assignment-governance`
-- Current phase: PR 2 implemented locally; ready for PR creation and CI.
+- Branch: `feature/conflict-change-request-linkage`
+- Current phase: PR 3 linkage implemented locally; ready for PR creation and CI.
 - Design: `docs/superpowers/specs/2026-06-15-traceability-conflict-governance-design.md`
 - Implementation plan: `docs/superpowers/plans/2026-06-15-conflict-assignment-governance.md`
 - Open PRs for this program: none at local evidence update time.
@@ -212,10 +214,51 @@ Verification limitation:
   tests passed locally; CI or a disposable PostgreSQL environment must still
   prove runtime migration before merge.
 
+Merge:
+
+- PR #48 merged to `main` at `3ab88256670f967ed7cbd4efdccbe36fc3bd545c` on
+  2026-06-15.
+
+### PR 3: Accepted Revision Change Draft Linkage
+
+Implemented:
+
+- additive `0024_conflict_change_linkage` migration with
+  `linked_change_request_id`, `accepted_revision_json`, and
+  `revision_accepted_at`;
+- conflict response fields for accepted revision linkage;
+- `accept_revision` governance service method;
+- project-owner-only `decision -> revision_accepted` transition;
+- atomic draft `ChangeRequest` creation from accepted revision evidence;
+- durable conflict decision history with linked change-request ID;
+- authenticated `POST /change/conflicts/{conflict_id}/accept-revision` API;
+- audit event `document_conflict.accept_revision`;
+- invalid-transition protection with no draft change request and no history row.
+
+Verification:
+
+- focused backend suite:
+  `uv run --directory apps/api --extra dev python -m pytest tests/test_persisted_conflict_scan.py tests/test_alembic_migrations.py tests/test_api_router_contract.py -v`
+  returned `26 passed`;
+- full API suite:
+  `uv run --directory apps/api --extra dev python -m pytest` returned
+  `552 passed, 15 warnings`;
+- `git diff --check origin/main...HEAD`: passed;
+- GitNexus change-record wrapper:
+  `C:\amx\reports\gitnexus-change-record-20260615-184030.md`;
+- GitNexus result: Git changed-file evidence detected for 8 files; symbol mapping
+  returned zero indexed symbols, so fallback changed-file evidence is required.
+
+Verification limitation:
+
+- Disposable PostgreSQL migration cycle was not run locally because Docker CLI is
+  unavailable in this Windows environment. The migration is additive, avoids
+  extra foreign keys that are incompatible with the repository's partial CI
+  migration harness, and is covered by source/model contract tests plus full API
+  tests. GitHub CI must still prove runtime migration.
+
 ## Next Actions
 
-1. Push PR 2 and require CI plus disposable PostgreSQL migration evidence before
-   merge.
-2. After PR 2 is ready or merged, plan PR 3 accepted-revision linkage to
-   change-request drafts, applied-change verification, rescan, and controlled
-   closure.
+1. Push PR 3 and require CI migration evidence before merge.
+2. After PR 3 is ready or merged, implement applied-change verification, rescan,
+   and controlled closure.
