@@ -8,9 +8,28 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
 
-from app.domains.change.service import ControlledBackwriteService
+from app.domains.change.service import ChangeService, ControlledBackwriteService
 from app.domains.change.models import FieldPatch, PatchStatus, PatchType
 from app.domains.documents.models import Document, DocumentVersion, DocumentBaseline
+
+
+class TestChangeRequestActorContract:
+    """Tests for change-request actor attribution requirements."""
+
+    @pytest.mark.asyncio
+    async def test_create_change_request_requires_requested_by(self):
+        service = ChangeService(AsyncMock())
+
+        with pytest.raises(ValueError, match="requested_by is required"):
+            await service.create_change_request(
+                tenant_id=UUID("00000000-0000-0000-0000-000000000001"),
+                project_id=UUID("12345678-1234-1234-1234-123456789012"),
+                source_doc_id=None,
+                target_doc_id=None,
+                change_type="dependency",
+                description="Traceable requester is required.",
+                requested_by=None,
+            )
 
 
 class TestCheckBaseVersionConflict:
@@ -106,6 +125,31 @@ class TestApplyFieldPatch:
         with pytest.raises(ValueError, match="Can only apply approved patches"):
             await service.apply_field_patch(
                 patch_id=UUID("12345678-1234-1234-1234-123456789012"),
+                tenant_id=UUID("00000000-0000-0000-0000-000000000001"),
+            )
+
+    @pytest.mark.asyncio
+    async def test_approved_patch_requires_reviewer_before_apply(self, service, mock_db):
+        """Test approved patches cannot apply without reviewer attribution."""
+        mock_patch = MagicMock()
+        mock_patch.id = UUID("12345678-1234-1234-1234-123456789012")
+        mock_patch.status = PatchStatus.APPROVED.value
+        mock_patch.reviewed_by = None
+
+        mock_document = MagicMock()
+        mock_document.id = UUID("87654321-4321-4321-4321-210987654321")
+        mock_document.version = 3
+        mock_document.content = "current content"
+
+        patch_result = MagicMock()
+        patch_result.scalar_one_or_none.return_value = mock_patch
+        document_result = MagicMock()
+        document_result.scalar_one_or_none.return_value = mock_document
+        mock_db.execute.side_effect = [patch_result, document_result]
+
+        with pytest.raises(ValueError, match="Approved patch reviewer is required"):
+            await service.apply_field_patch(
+                patch_id=mock_patch.id,
                 tenant_id=UUID("00000000-0000-0000-0000-000000000001"),
             )
 
