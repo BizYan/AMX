@@ -5,7 +5,6 @@ JWT token handling, password hashing, and token blacklist management.
 
 from datetime import datetime, timedelta, timezone
 from typing import Any
-from unittest.mock import Mock
 from uuid import UUID as PyUUID, uuid4
 
 import redis.asyncio as redis
@@ -177,10 +176,7 @@ async def is_token_blacklisted(jti: str, db: AsyncSession) -> bool:
         return False
 
     # Fall back to database check
-    if isinstance(JWTBlacklist, Mock):
-        result = await db.execute(None)
-    else:
-        result = await db.execute(
-            select(JWTBlacklist).where(JWTBlacklist.jti == db_jti)
-        )
+    result = await db.execute(
+        select(JWTBlacklist).where(JWTBlacklist.jti == db_jti)
+    )
     return result.scalar_one_or_none() is not None
