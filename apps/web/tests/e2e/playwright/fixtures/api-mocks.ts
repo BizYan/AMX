@@ -4998,18 +4998,63 @@ export async function setupApiMocks(page: Page, options: SetupApiMockOptions = {
 
   await page.route(/\/api\/v1\/change\/conflicts\/projects\/[^/]+\/scan$/, async (route) => {
     const projectId = route.request().url().match(/\/projects\/([^/]+)\/scan$/)?.[1] || MOCK.MOCK_PROJECT.id
+    if (!documentConflicts.some((item) => item.id === 'conflict-e2e-scan-002')) {
+      documentConflicts = [
+        ...documentConflicts,
+        {
+          ...MOCK.MOCK_DOCUMENT_CONFLICTS[0],
+          id: 'conflict-e2e-scan-002',
+          fingerprint: 'conflict-e2e-fingerprint-002',
+          project_id: projectId,
+          severity: 'medium',
+          summary: 'New scan-generated downstream mismatch',
+          evidence_json: {
+            source: 'Latest scan detected a downstream rule mismatch.',
+            target: 'Implementation plan has not acknowledged the changed acceptance window.',
+          },
+          last_scan_id: `scan-e2e-${Date.now()}`,
+          first_detected_at: new Date().toISOString(),
+          last_detected_at: new Date().toISOString(),
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+      ]
+    }
+    const items = documentConflicts.filter((item) => item.project_id === projectId)
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
         scan_id: `scan-e2e-${Date.now()}`,
         project_id: projectId,
-        detected: documentConflicts.filter((item) => item.project_id === projectId).length,
-        created: 0,
+        detected: items.length,
+        created: 1,
         updated: 0,
         resolved_candidates: 0,
-        items: documentConflicts.filter((item) => item.project_id === projectId),
+        items,
       }),
+    })
+  })
+
+  await page.route(/\/api\/v1\/change\/conflicts\/[^/]+\/assign$/, async (route) => {
+    const conflictId = route.request().url().match(/\/conflicts\/([^/]+)\/assign$/)?.[1] || ''
+    const payload = JSON.parse(route.request().postData() || '{}')
+    documentConflicts = documentConflicts.map((item) =>
+      item.id === conflictId
+        ? {
+            ...item,
+            assignee_user_id: payload.assignee_user_id,
+            assignment_source: 'manual',
+            assigned_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }
+        : item
+    )
+
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(documentConflicts.find((item) => item.id === conflictId) || documentConflicts[0]),
     })
   })
 
