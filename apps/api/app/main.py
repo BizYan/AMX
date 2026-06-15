@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.core.runtime_security import validate_runtime_security_settings
 from app.core.settings import settings
 from app.db.session import async_engine, AsyncSessionLocal
 from app.db.bootstrap import create_bootstrap_admin
@@ -22,6 +23,8 @@ async def lifespan(app: FastAPI):
 
     Handles startup and shutdown events.
     """
+    validate_runtime_security_settings()
+
     # Startup: Alembic covers core migrations; create missing model tables for
     # domains whose migrations have not been materialized yet.
     await create_missing_tables()

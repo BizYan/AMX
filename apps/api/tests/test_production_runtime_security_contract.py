@@ -39,6 +39,14 @@ def test_runtime_containers_receive_explicit_environment():
     assert deploy.index("export ENVIRONMENT") < deploy.index('docker compose -f "$COMPOSE_FILE" config')
 
 
+def test_api_startup_validates_runtime_security_before_side_effects():
+    main = read("apps/api/app/main.py")
+
+    assert "from app.core.runtime_security import validate_runtime_security_settings" in main
+    assert "validate_runtime_security_settings()" in main
+    assert main.index("validate_runtime_security_settings()") < main.index("await create_missing_tables()")
+
+
 def test_worker_image_uses_single_runtime_worker_source():
     dockerfile = read("apps/worker/Dockerfile")
 
@@ -76,6 +84,15 @@ def test_ci_exercises_production_runtime_security_preflight():
     assert "bash infra/deploy/validate-runtime-security.sh --environment production" in workflow
 
 
+def test_ci_replaces_placeholder_jwt_secret_before_production_preflight():
+    workflow = read(".github/workflows/ci.yml")
+
+    assert "JWT_SECRET_KEY=ci-production-jwt-secret-at-least-32-bytes" in workflow
+    assert workflow.index("JWT_SECRET_KEY=ci-production-jwt-secret-at-least-32-bytes") < workflow.index(
+        "bash infra/deploy/validate-runtime-security.sh --environment production"
+    )
+
+
 def test_runtime_security_validator_rejects_public_binds_and_permissive_env():
     validator = read("infra/deploy/validate-runtime-security.sh")
 
@@ -92,3 +109,11 @@ def test_runtime_security_validator_rejects_public_binds_and_permissive_env():
     assert "Running service port is not loopback-only" in validator
     assert 'docker compose -f "$COMPOSE_FILE" port "$service" "$container_port"' in validator
     assert '[[ "$ENVIRONMENT" != "production" ]]' in validator
+
+
+def test_runtime_security_validator_rejects_placeholder_jwt_secret():
+    validator = read("infra/deploy/validate-runtime-security.sh")
+
+    assert "JWT_SECRET_KEY" in validator
+    assert "your-super-secret-jwt-key-change-in-production" in validator
+    assert "Production JWT_SECRET_KEY must be a real non-placeholder secret" in validator
