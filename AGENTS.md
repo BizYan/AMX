@@ -112,6 +112,12 @@ Production release verification is a separate gate: deploy through GitHub Action
 
 Do not deploy every merge by default. Multiple stable PRs may be grouped into a release slice and validated together, unless the change is a production hotfix or the human owner requests immediate deployment.
 
+## Continuous Improvement Rules
+
+Use `docs/runbooks/continuous-improvement.md` and `docs/continuous-improvement/registry.json` when the same failure or user correction occurs twice, after a P0/P1 delivery incident, after a major release, or when the human owner requests a process review.
+
+Record only evidence-backed, recurring, severe, or materially expensive problems. Generate a candidate before changing authoritative rules or Skills, validate it against a real task or labelled fixture, and adopt it only after the validation passes. Do not run a full process audit after routine successful work.
+
 ## Branch And Commit Rules
 
 Branch names:
