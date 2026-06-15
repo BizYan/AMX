@@ -4,6 +4,7 @@ Business logic for change requests, field patches, traceability, and controlled 
 """
 
 import json
+import re
 from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
@@ -2392,8 +2393,7 @@ class ControlledBackwriteService:
     ) -> str:
         """Apply a field patch to content string.
 
-        This is a simplified implementation. In a real system, you might parse
-        structured content (JSON, Markdown, etc.) and apply patches more precisely.
+        Supports JSON documents, Markdown sections, and marker-based plain text.
 
         Args:
             content: Original content
@@ -2410,6 +2410,10 @@ class ControlledBackwriteService:
             return json.dumps(data, ensure_ascii=False)
         except (json.JSONDecodeError, TypeError):
             pass
+
+        markdown_result = self._apply_markdown_patch(content, field_path, new_value)
+        if markdown_result != content:
+            return markdown_result
 
         # For plain text, apply field marker-based replacement
         # Supports multiple placeholder patterns:
@@ -2445,6 +2449,79 @@ class ControlledBackwriteService:
             return result
 
         return content
+
+    def _apply_markdown_patch(
+        self,
+        content: str,
+        field_path: str,
+        new_value: str | None,
+    ) -> str:
+        """Apply section title/content patches to Markdown documents."""
+        match = re.fullmatch(r"sections\.(\d+)\.(title|content)", field_path)
+        if not match:
+            return content
+
+        section_index = int(match.group(1))
+        target_field = match.group(2)
+        if target_field == "title" and new_value is None:
+            return content
+
+        lines = content.splitlines(keepends=True)
+        if not lines:
+            return content
+
+        headings = []
+        for line_index, line in enumerate(lines):
+            heading = re.match(r"^(#{1,6})[ \t]+(.+?)[ \t]*(\r?\n)?$", line)
+            if heading:
+                headings.append(
+                    {
+                        "line_index": line_index,
+                        "level": len(heading.group(1)),
+                        "marker": heading.group(1),
+                    }
+                )
+
+        if not headings:
+            return content
+
+        section_headings = [heading for heading in headings if heading["level"] >= 2]
+        candidates = section_headings or headings
+        if section_index >= len(candidates):
+            return content
+
+        selected = candidates[section_index]
+        heading_line_index = selected["line_index"]
+        section_level = selected["level"]
+        section_end_index = len(lines)
+
+        for heading in headings:
+            if (
+                heading["line_index"] > heading_line_index
+                and heading["level"] <= section_level
+            ):
+                section_end_index = heading["line_index"]
+                break
+
+        newline = "\r\n" if "\r\n" in content else "\n"
+
+        if target_field == "title":
+            line = lines[heading_line_index]
+            line_ending = "\r\n" if line.endswith("\r\n") else "\n" if line.endswith("\n") else ""
+            lines[heading_line_index] = f"{selected['marker']} {new_value}{line_ending}"
+            return "".join(lines)
+
+        body_start_index = heading_line_index + 1
+        replacement = [newline]
+        if new_value:
+            replacement.extend(f"{line}{newline}" for line in str(new_value).splitlines())
+
+        original_body = lines[body_start_index:section_end_index]
+        if original_body and original_body[-1].strip() == "" and replacement:
+            replacement.append(original_body[-1])
+
+        lines[body_start_index:section_end_index] = replacement
+        return "".join(lines)
 
     def _build_field_markers(self, field_path: str) -> list[str]:
         """Build list of possible placeholder markers from field path.

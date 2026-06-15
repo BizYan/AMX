@@ -349,3 +349,28 @@ class TestApplyPatchToContent:
         result = service._apply_patch_to_content(content, "title", "New Title")
 
         assert result == content
+
+    def test_apply_replace_patch_to_markdown_section_content(self, service):
+        """Test applying a replace patch to a Markdown section body."""
+        content = "# Delivery Plan\n\n## Scope\nOld scope\n\n## Risks\nOld risks\n"
+        result = service._apply_patch_to_content(
+            content,
+            "sections.0.content",
+            "New scope\n- Confirmed owner",
+        )
+
+        assert "Old scope" not in result
+        assert "## Scope\n\nNew scope\n- Confirmed owner" in result
+        assert "## Risks\nOld risks" in result
+
+    def test_apply_replace_patch_to_markdown_section_title(self, service):
+        """Test applying a replace patch to a Markdown section heading."""
+        content = "# Delivery Plan\n\n## Scope\nCurrent scope\n\n## Risks\nOpen risks\n"
+        result = service._apply_patch_to_content(
+            content,
+            "sections.1.title",
+            "Accepted Risks",
+        )
+
+        assert "## Risks" not in result
+        assert "## Accepted Risks\nOpen risks" in result
