@@ -97,7 +97,7 @@
       "title": "Validate user-visible discoverability, not only implementation existence",
       "category": "product-acceptance",
       "priority": "P1",
-      "status": "candidate",
+      "status": "adopted",
       "recurrence": 2,
       "summary": "A capability can exist in code and still be effectively unavailable when the default route, tab, or interaction hides it.",
       "evidence": [
@@ -114,7 +114,11 @@
       "destinations": [
         "docs/runbooks/development-verification-standard.md"
       ],
-      "validation": null,
+      "validation": {
+        "result": "passed",
+        "reference": "https://github.com/BizYan/AMX/pull/44",
+        "summary": "The tenant member list existed but was hidden behind a non-default tab. A normal-entry-path Playwright assertion failed before the fix, passed after the default-view change, and the capability passed CI plus authenticated production smoke in deployment run 27500901328."
+      },
       "next_review": "2026-07-15"
     },
     {
@@ -144,4 +148,3 @@
     }
   ]
 }
-
