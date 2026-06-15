@@ -111,3 +111,26 @@ def test_conflict_assignment_governance_model_matches_migration_contract():
         "ix_document_conflict_decisions_actor_id",
         "ix_document_conflict_decisions_action",
     } <= decision_indexes
+
+
+def test_conflict_change_request_linkage_migration_is_additive():
+    migration = (VERSIONS_DIR / "0024_conflict_change_linkage.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'revision = "0024_conflict_change_linkage"' in migration
+    assert 'down_revision = "0023_conflict_assignment"' in migration
+    assert '"linked_change_request_id"' in migration
+    assert '"accepted_revision_json"' in migration
+    assert '"revision_accepted_at"' in migration
+    assert '"ix_document_conflicts_linked_change_request_id"' in migration
+
+
+def test_conflict_change_request_linkage_model_matches_migration_contract():
+    conflict_columns = DocumentConflict.__table__.c
+    index_names = {index.name for index in DocumentConflict.__table__.indexes}
+
+    assert "linked_change_request_id" in conflict_columns
+    assert "accepted_revision_json" in conflict_columns
+    assert "revision_accepted_at" in conflict_columns
+    assert "ix_document_conflicts_linked_change_request_id" in index_names
