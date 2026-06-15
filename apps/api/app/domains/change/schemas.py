@@ -291,6 +291,10 @@ class ChangeAuditCommandCenterSummary(BaseModel):
     open_impact_analyses: int
     critical_or_high_open_impacts: int
     pending_sync_proposals: int
+    open_document_conflicts: int = 0
+    high_open_document_conflicts: int = 0
+    expired_conflict_risk_acceptances: int = 0
+    revision_accepted_conflicts: int = 0
 
 
 class ChangeAuditReleaseGate(BaseModel):

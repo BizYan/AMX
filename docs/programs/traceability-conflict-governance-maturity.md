@@ -329,8 +329,39 @@ Verification limitation:
   migration harness, and is covered by source/model contract tests. GitHub CI
   must still prove runtime migration.
 
+Merge and release:
+
+- PR #51 merged to `main` at `c7177e0abe82b254f1ac44054fe518cb793271d2` on
+  2026-06-15.
+- Release `v0.7.0` was published and deployed to OCI production on 2026-06-15.
+
+### PR 6: Change Audit Command Center Conflict Gates
+
+Implemented:
+
+- extended `ChangeAuditCommandCenterSummary` with persisted conflict counts:
+  open conflicts, high open conflicts, expired risk acceptances, and
+  accepted-revision conflicts;
+- included `DocumentConflict` lifecycle state in `/change/command-center`;
+- release gate now blocks for high open persisted conflicts, expired conflict
+  risk acceptances, and accepted revisions that still need applied-change rescan
+  closure;
+- added actionable risk items and priority action routing operators to
+  `/documents/contradictions`.
+
+Verification:
+
+- focused RED test first failed because command center incorrectly passed with
+  persisted conflict risks;
+- focused backend suite:
+  `uv run --directory apps/api --extra dev python -m pytest tests/test_change_audit_command_center.py -q`
+  returned `3 passed`;
+- related backend suite:
+  `uv run --directory apps/api --extra dev python -m pytest tests/test_change_audit_command_center.py tests/test_persisted_conflict_scan.py tests/test_api_router_contract.py -q`
+  returned `26 passed`;
+
 ## Next Actions
 
-1. Push PR 5 and require CI migration evidence before merge.
-2. After PR 5 is merged, continue with user-facing command center workflows and
-   deployment-readiness gates.
+1. Push PR 6 and require CI evidence before merge.
+2. After PR 6 is merged, continue with frontend command center surfacing and
+   operator workflow polish.
