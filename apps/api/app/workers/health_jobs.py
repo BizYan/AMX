@@ -253,7 +253,9 @@ async def _check_graphify_health(provider: Provider, breaker) -> HealthStatus:
         HealthStatus based on the check result
     """
     config = provider.config_json or {}
-    endpoint = config.get("endpoint", "http://localhost:8000")
+    endpoint = _provider_endpoint(config)
+    if endpoint is None:
+        return HealthStatus.DOWN
     api_key = config.get("api_key")
 
     try:
@@ -289,7 +291,10 @@ async def _check_gitnexus_health(provider: Provider, breaker) -> HealthStatus:
     Returns:
         HealthStatus based on the check result
     """
-    runtime_config = load_gitnexus_runtime_config(provider.config_json or {})
+    try:
+        runtime_config = load_gitnexus_runtime_config(provider.config_json or {})
+    except ValueError:
+        return HealthStatus.DOWN
 
     try:
         headers = {}
@@ -312,3 +317,11 @@ async def _check_gitnexus_health(provider: Provider, breaker) -> HealthStatus:
         return HealthStatus.DEGRADED
     except httpx.RequestError:
         return HealthStatus.DOWN
+
+
+def _provider_endpoint(config: dict[str, Any]) -> str | None:
+    for key in ("endpoint", "base_url", "server_url", "api_url", "url"):
+        value = config.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip().rstrip("/")
+    return None

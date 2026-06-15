@@ -52,6 +52,14 @@ class TestGraphifyContract:
         assert isinstance(graphify_provider, GraphifyContract)
 
     @pytest.mark.asyncio
+    async def test_graphify_provider_requires_configured_endpoint_without_fixture(self):
+        """Graphify must not fall back to localhost when runtime config is missing."""
+        provider = GraphifyProvider(config={})
+
+        with pytest.raises(ProviderError, match="endpoint"):
+            await provider.extract_graph(document_id="doc", content="content", params={})
+
+    @pytest.mark.asyncio
     async def test_extract_graph_with_fixture(self, graphify_with_happy_fixture):
         """Test graph extraction with happy path fixture."""
         provider = graphify_with_happy_fixture
@@ -153,6 +161,11 @@ class TestGitNexusContract:
         assert provider.api_key == "live-service-key"
         assert provider.health_path == "/api/health"
         assert provider.timeout == 15
+
+    def test_gitnexus_provider_requires_configured_endpoint(self):
+        """GitNexus must not fall back to localhost when runtime config is missing."""
+        with pytest.raises(ValueError, match="endpoint"):
+            GitNexusProvider({})
 
     @pytest.mark.asyncio
     async def test_gitnexus_provider_health_check_uses_api_health_path(self):
