@@ -972,18 +972,25 @@ async def create_run(
     # Get workflow version
     workflow_version_id = data.workflow_version_id
     if not workflow_version_id:
-        # Use active version from the workflow
-        # For now, we need the workflow_id from somewhere
-        # This would typically come from the request or a linked entity
-        raise HTTPException(
-            status_code=400,
-            detail="workflow_version_id is required",
+        if not data.workflow_id:
+            raise HTTPException(
+                status_code=400,
+                detail="workflow_id or workflow_version_id is required",
+            )
+        active_version = await workflow_service.get_active_version(
+            workflow_id=data.workflow_id,
+            tenant_id=current_user.tenant_id,
         )
+        if not active_version:
+            raise HTTPException(status_code=400, detail="No active version found for workflow")
+        workflow_version_id = active_version.id
 
     # Verify version exists
     version = await workflow_service.get_version(workflow_version_id, current_user.tenant_id)
     if not version:
         raise HTTPException(status_code=404, detail="Workflow version not found")
+    if data.workflow_id and version.workflow_definition_id != data.workflow_id:
+        raise HTTPException(status_code=404, detail="Version does not belong to this workflow")
 
     # Create the run
     run = await service.create_run(

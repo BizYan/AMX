@@ -396,6 +396,10 @@ class AgentRunCreate(BaseModel):
         None,
         description="Workflow version ID (uses active version if not provided)",
     )
+    workflow_id: UUID | None = Field(
+        None,
+        description="Workflow definition ID used to resolve the active version when workflow_version_id is omitted",
+    )
     input_data: dict[str, Any] = Field(
         default_factory=dict,
         description="Input data for the workflow",
