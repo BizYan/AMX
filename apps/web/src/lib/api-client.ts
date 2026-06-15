@@ -478,6 +478,8 @@ export const changeApi = {
     }),
   scanDocumentConflicts: (projectId: string) =>
     apiClient.post<ConflictScanResponse>(`/change/conflicts/projects/${projectId}/scan`, {}),
+  assignDocumentConflict: (id: string, data: ConflictAssignmentPayload) =>
+    apiClient.post<DocumentConflict>(`/change/conflicts/${id}/assign`, data),
   completeDocumentConflictAnalysis: (id: string, data: ConflictAnalysisCompletionPayload) =>
     apiClient.post<DocumentConflict>(`/change/conflicts/${id}/complete-analysis`, data),
   acceptDocumentConflictRisk: (id: string, data: ConflictRiskAcceptancePayload) =>
@@ -3476,6 +3478,11 @@ export interface ConflictScanResponse {
 export interface ConflictAnalysisCompletionPayload {
   reason: string
   evidence?: Record<string, any>
+}
+
+export interface ConflictAssignmentPayload {
+  assignee_user_id: string
+  reason: string
 }
 
 export interface ConflictRiskAcceptancePayload {

@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Select, SelectOption } from '@/components/ui/select'
+import { useCurrentUser } from '@/lib/auth'
 import { changeApi, documentsApi, projectsApi, type Document, type DocumentConflict } from '@/lib/api-client'
 import {
   AlertCircle,
@@ -294,12 +295,14 @@ function getConflictTypeLabel(type: Contradiction['conflictType']) {
 export default function ContradictionsPage() {
   const { addToast } = useToast()
   const queryClient = useQueryClient()
+  const { data: currentUser } = useCurrentUser()
   const [projectId, setProjectId] = useState('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [severityFilter, setSeverityFilter] = useState('all')
   const [stateFilter, setStateFilter] = useState('all')
   const [selectedConflictId, setSelectedConflictId] = useState<string | null>(null)
   const [decisions, setDecisions] = useState<Record<string, DecisionRecord>>({})
+  const [persistedScanSummary, setPersistedScanSummary] = useState<string | null>(null)
 
   const { data: projectsData } = useQuery({
     queryKey: ['projects'],
@@ -379,6 +382,52 @@ export default function ContradictionsPage() {
     onError: (error) => {
       addToast({
         title: 'Persisted conflict update failed',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const persistedScanMutation = useMutation({
+    mutationFn: () => changeApi.scanDocumentConflicts(persistedProjectId as string),
+    onSuccess: (scan) => {
+      setPersistedScanSummary(`Scan detected ${scan.detected} persisted conflicts`)
+      queryClient.invalidateQueries({ queryKey: persistedConflictQueryKey })
+      addToast({
+        title: 'Persisted conflict scan completed',
+        description: `${scan.detected} conflicts detected.`,
+      })
+    },
+    onError: (error) => {
+      addToast({
+        title: 'Persisted conflict scan failed',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const persistedAssignmentMutation = useMutation({
+    mutationFn: (conflict: DocumentConflict) => {
+      if (!currentUser?.id) {
+        throw new Error('Current user is not loaded.')
+      }
+
+      return changeApi.assignDocumentConflict(conflict.id, {
+        assignee_user_id: currentUser.id,
+        reason: 'Operator claimed this conflict from the contradiction resolution center.',
+      })
+    },
+    onSuccess: (updatedConflict) => {
+      queryClient.invalidateQueries({ queryKey: persistedConflictQueryKey })
+      addToast({
+        title: 'Persisted conflict assigned',
+        description: `${updatedConflict.summary}: assigned to current operator.`,
+      })
+    },
+    onError: (error) => {
+      addToast({
+        title: 'Persisted conflict assignment failed',
         description: error instanceof Error ? error.message : 'Unknown error',
         variant: 'destructive',
       })
@@ -551,7 +600,17 @@ export default function ContradictionsPage() {
                 Backend-governed document conflicts that can block release until rejected, risk-accepted, revised, or closed.
               </CardDescription>
             </div>
-            <div className="flex flex-wrap gap-2 text-xs">
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <Button
+                size="sm"
+                variant="outline"
+                data-testid="persisted-conflict-scan"
+                disabled={!persistedProjectId || persistedScanMutation.isPending}
+                onClick={() => persistedScanMutation.mutate()}
+              >
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Scan persisted
+              </Button>
               <Badge variant="outline">total {persistedConflictSummary.total}</Badge>
               <Badge className={getSeverityClass('high')}>high {persistedConflictSummary.high}</Badge>
               <Badge className={getStateClass('open')}>open {persistedConflictSummary.open}</Badge>
@@ -559,6 +618,11 @@ export default function ContradictionsPage() {
           </div>
         </CardHeader>
         <CardContent>
+          {persistedScanSummary && (
+            <div className="mb-3 rounded-md border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-900 dark:border-indigo-900 dark:bg-indigo-950 dark:text-indigo-100">
+              {persistedScanSummary}
+            </div>
+          )}
           {!persistedProjectId ? (
             <p className="text-sm text-slate-500">Select a project to load persisted conflict governance.</p>
           ) : isPersistedConflictLoading ? (
@@ -586,8 +650,24 @@ export default function ContradictionsPage() {
                           {conflict.risk_acceptance_expires_at ? ` · Risk accepted until ${formatDateTime(conflict.risk_acceptance_expires_at)}` : ''}
                           {conflict.linked_change_request_id ? ` · Change ${conflict.linked_change_request_id}` : ''}
                         </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {conflict.assignee_user_id
+                            ? conflict.assignee_user_id === currentUser?.id
+                              ? 'Assigned to me'
+                              : `Assigned to ${conflict.assignee_user_id}`
+                            : 'Unassigned'}
+                        </p>
                       </div>
                       <div className="flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          data-testid={`persisted-conflict-claim-${conflict.id}`}
+                          disabled={!currentUser?.id || persistedAssignmentMutation.isPending}
+                          onClick={() => persistedAssignmentMutation.mutate(conflict)}
+                        >
+                          Claim
+                        </Button>
                         <Button
                           size="sm"
                           variant="outline"
