@@ -2417,6 +2417,23 @@ export const MOCK_DOCUMENT_CONFLICTS = [
   },
 ]
 
+export const MOCK_DOCUMENT_CONFLICT_DECISIONS = [
+  {
+    id: 'conflict-decision-e2e-001',
+    tenant_id: 'tenant-e2e-001',
+    project_id: 'project-e2e-001',
+    conflict_id: 'conflict-e2e-001',
+    actor_id: 'user-admin-001',
+    action: 'assign',
+    previous_status: 'unassigned',
+    resulting_status: 'analysis',
+    reason: 'Initial owner assignment from persisted governance.',
+    evidence_json: { source: 'mock_seed' },
+    created_at: '2026-06-15T02:05:00Z',
+    updated_at: '2026-06-15T02:05:00Z',
+  },
+]
+
 export const MOCK_CHANGE_BOARD_CHANGES = [
   {
     id: 'change-e2e-001',

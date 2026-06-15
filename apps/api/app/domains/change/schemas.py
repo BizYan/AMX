@@ -476,6 +476,13 @@ class DocumentConflictDecisionResponse(BaseModel):
     updated_at: datetime
 
 
+class DocumentConflictDecisionListResponse(BaseModel):
+    """List response for append-only conflict governance decisions."""
+
+    items: list[DocumentConflictDecisionResponse]
+    total: int
+
+
 class ConflictAssignmentRequest(BaseModel):
     """Assign or reassign a persisted conflict."""
 

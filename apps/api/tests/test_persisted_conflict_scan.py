@@ -1,7 +1,7 @@
 """Persistent document conflict scan tests."""
 
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///./test-persisted-conflict-scan.db"
@@ -370,6 +370,62 @@ async def test_conflict_reads_are_tenant_isolated(db_session):
     assert own_list.total == 1
     assert other_list.total == 0
     assert other_detail is None
+
+
+@pytest.mark.asyncio
+async def test_conflict_decision_history_lists_tenant_owned_decisions_in_order(db_session):
+    tenant, project, _, _ = await create_project_graph(db_session)
+    actor = await db_session.scalar(select(User).where(User.tenant_id == tenant.id))
+    assert actor is not None
+    service = ConflictGovernanceService(db_session)
+    scan = await service.scan_project(tenant_id=tenant.id, project_id=project.id)
+    conflict = scan.items[0]
+    now = datetime.now(timezone.utc)
+    db_session.add_all(
+        [
+            DocumentConflictDecision(
+                tenant_id=tenant.id,
+                project_id=project.id,
+                conflict_id=conflict.id,
+                actor_id=actor.id,
+                action="assign",
+                previous_status=ConflictStatus.UNASSIGNED.value,
+                resulting_status=ConflictStatus.ANALYSIS.value,
+                reason="Claimed for analysis",
+                evidence_json={"source": "test"},
+                created_at=now,
+                updated_at=now,
+            ),
+            DocumentConflictDecision(
+                tenant_id=tenant.id,
+                project_id=project.id,
+                conflict_id=conflict.id,
+                actor_id=actor.id,
+                action="complete_analysis",
+                previous_status=ConflictStatus.ANALYSIS.value,
+                resulting_status=ConflictStatus.DECISION.value,
+                reason="Ready for decision",
+                evidence_json={"source": "test"},
+                created_at=now + timedelta(seconds=1),
+                updated_at=now + timedelta(seconds=1),
+            ),
+        ]
+    )
+    await db_session.flush()
+
+    own_history = await service.list_conflict_decisions(
+        tenant_id=tenant.id,
+        conflict_id=conflict.id,
+    )
+    other_history = await service.list_conflict_decisions(
+        tenant_id=uuid4(),
+        conflict_id=conflict.id,
+    )
+
+    assert own_history.total == 3
+    assert [item.action for item in own_history.items][-2:] == ["assign", "complete_analysis"]
+    assert own_history.items[-1].reason == "Ready for decision"
+    assert other_history.total == 0
 
 
 @pytest.mark.asyncio

@@ -19,7 +19,11 @@ from app.domains.change.models import (
     DocumentConflict,
     DocumentConflictDecision,
 )
-from app.domains.change.schemas import ConflictScanResponse, DocumentConflictListResponse
+from app.domains.change.schemas import (
+    ConflictScanResponse,
+    DocumentConflictDecisionListResponse,
+    DocumentConflictListResponse,
+)
 from app.domains.change.service import ChangeService, TraceabilityService
 from app.domains.documents.models import Document
 from app.models.identity import User
@@ -696,6 +700,27 @@ class ConflictGovernanceService:
             )
         )
         return result.scalar_one_or_none()
+
+    async def list_conflict_decisions(
+        self,
+        *,
+        tenant_id: UUID,
+        conflict_id: UUID,
+    ) -> DocumentConflictDecisionListResponse:
+        conflict = await self.get_conflict(tenant_id=tenant_id, conflict_id=conflict_id)
+        if not conflict:
+            return DocumentConflictDecisionListResponse(items=[], total=0)
+
+        result = await self.db.execute(
+            select(DocumentConflictDecision)
+            .where(
+                DocumentConflictDecision.tenant_id == tenant_id,
+                DocumentConflictDecision.conflict_id == conflict_id,
+            )
+            .order_by(DocumentConflictDecision.created_at)
+        )
+        items = list(result.scalars().all())
+        return DocumentConflictDecisionListResponse(items=items, total=len(items))
 
     async def list_project_conflicts(
         self,

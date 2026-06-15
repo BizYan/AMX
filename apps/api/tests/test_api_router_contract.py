@@ -28,6 +28,7 @@ def test_persisted_conflict_routes_are_registered_under_v1_api():
     assert "/change/conflicts/projects/{project_id}/scan" in paths
     assert "/change/conflicts/projects/{project_id}" in paths
     assert "/change/conflicts/{conflict_id}" in paths
+    assert "/change/conflicts/{conflict_id}/decisions" in paths
     assert "/change/conflicts/{conflict_id}/assign" in paths
     assert "/change/conflicts/{conflict_id}/complete-analysis" in paths
     assert "/change/conflicts/{conflict_id}/reject" in paths
