@@ -1582,6 +1582,8 @@ class CapabilityActivationService:
         )
         log = result.scalars().first()
         if log:
+            log.ip_address = None
+            log.user_agent = log.user_agent or "core-production-activation"
             return log
         log = AuditLog(
             tenant_id=tenant_id,
@@ -1590,7 +1592,7 @@ class CapabilityActivationService:
             resource_type=resource_type,
             resource_id=resource_id,
             extra_data=metadata,
-            ip_address="127.0.0.1",
+            ip_address=None,
             user_agent="core-production-activation",
         )
         self.db.add(log)

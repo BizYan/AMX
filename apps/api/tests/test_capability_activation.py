@@ -365,7 +365,10 @@ async def test_activation_run_seeds_core_loop_evidence_in_database(db_session):
         ("交付管理员", "project", "budget", "read"),
         ("平台运维负责人", "agent_run", "provider_payload", "read"),
     } <= field_permission_matrix
-    assert len((await db_session.execute(select(AuditLog))).scalars().all()) >= 2
+    audit_logs = (await db_session.execute(select(AuditLog))).scalars().all()
+    assert len(audit_logs) >= 2
+    assert {log.ip_address for log in audit_logs} == {None}
+    assert {log.user_agent for log in audit_logs} == {"core-production-activation"}
     assert len((await db_session.execute(select(MetricEvent))).scalars().all()) == 2
     assert len((await db_session.execute(select(QuotaUsage))).scalars().all()) == 2
     assert (await db_session.execute(select(AlertRule))).scalars().first().is_active is True
