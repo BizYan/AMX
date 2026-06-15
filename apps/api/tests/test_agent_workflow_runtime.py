@@ -17,6 +17,7 @@ settings.ARQ_REDIS_URL = os.environ["ARQ_REDIS_URL"]
 
 import pytest
 
+import app.domains.knowledge.models  # noqa: F401 - register FK targets before worker queue imports
 from app.domains.agent.router import enqueue_workflow_run_job
 from app.domains.agent.service import WorkflowService
 
@@ -100,6 +101,23 @@ async def test_enqueue_workflow_run_job_uses_arq_pool_enqueue(monkeypatch):
     assert calls[0][0] == "pool"
     assert calls[1] == ("execute_workflow_run", (str(run_id),))
     assert calls[2] == ("closed", ())
+
+
+@pytest.mark.asyncio
+async def test_enqueue_workflow_run_job_requires_arq_redis_url(monkeypatch):
+    monkeypatch.setattr(settings, "ARQ_REDIS_URL", "")
+
+    with pytest.raises(RuntimeError, match="ARQ_REDIS_URL"):
+        await enqueue_workflow_run_job(uuid4())
+
+
+def test_worker_settings_requires_arq_redis_url(monkeypatch):
+    from app.workers.queue import get_worker_settings
+
+    monkeypatch.setattr(settings, "ARQ_REDIS_URL", "")
+
+    with pytest.raises(RuntimeError, match="ARQ_REDIS_URL"):
+        get_worker_settings()
 
 
 @pytest.mark.asyncio
