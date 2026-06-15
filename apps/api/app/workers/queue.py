@@ -5,14 +5,13 @@ timeout handling, and dead letter queue support.
 """
 
 import logfire
-from arq.connections import RedisSettings
 from arq.cron import cron
 
-from app.core.settings import settings
 from app.workers.alert_jobs import evaluate_alert_rules, evaluate_single_rule, send_alert_notification
 from app.workers.health_jobs import check_all_providers_health, check_provider_health
 from app.workers.jobs import execute_agent_task, execute_workflow_run, retry_failed_task
 from app.workers.outbox_jobs import process_outbox_event, retry_outbox_event_from_dlq
+from app.workers.redis_config import arq_redis_settings
 from app.workers.notification_jobs import escalate_overdue_notifications, process_pending_notification_deliveries
 from app.workers.webhook_jobs import deliver_webhook_job, publish_outbox_job, retry_webhook_delivery
 
@@ -51,10 +50,8 @@ class WorkerSettings:
         cron(process_pending_notification_deliveries, minute={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55}),
     ]
 
-    # Redis settings from environment
-    redis_settings: RedisSettings = RedisSettings.from_dsn(
-        settings.ARQ_REDIS_URL or "redis://localhost:6379/1"
-    )
+    def __init__(self) -> None:
+        self.redis_settings = arq_redis_settings()
 
     class Config:
         arbitrary_types_allowed = True

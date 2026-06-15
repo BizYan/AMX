@@ -38,7 +38,7 @@ class Settings(BaseSettings):
 
     # Redis
     REDIS_URL: str = Field(default="", description="Redis connection URL")
-    ARQ_REDIS_URL: str = Field(default="redis://localhost/1", description="Redis URL for ARQ worker queue")
+    ARQ_REDIS_URL: str = Field(default="", description="Redis URL for ARQ worker queue")
 
     # JWT
     JWT_SECRET_KEY: str = Field(default="", description="Secret key for JWT signing")

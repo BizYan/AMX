@@ -90,11 +90,9 @@ async def enqueue_workflow_run_job(run_id: UUID) -> None:
     ``enqueue_job`` on that pool.
     """
     from arq import create_pool
-    from arq.connections import RedisSettings
-    from app.core.settings import settings
+    from app.workers.redis_config import arq_redis_settings
 
-    redis_url = settings.ARQ_REDIS_URL or "redis://localhost:6379/1"
-    redis = await create_pool(RedisSettings.from_dsn(redis_url))
+    redis = await create_pool(arq_redis_settings())
 
     try:
         await redis.enqueue_job("execute_workflow_run", str(run_id))
