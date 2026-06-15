@@ -532,3 +532,25 @@ async def test_accept_traceability_suggestions_creates_version_pinned_references
     )
     assert second.created == 0
     assert second.skipped == 0
+
+
+@pytest.mark.asyncio
+async def test_accept_traceability_suggestions_does_not_emit_placeholder_ids_for_invalid_requested_id(db_session):
+    service = TraceabilityService(db_session)
+
+    result = await service.accept_reference_suggestions(
+        tenant_id=uuid4(),
+        project_id=uuid4(),
+        created_by=uuid4(),
+        suggestion_ids=["not-a-valid-suggestion-id"],
+    )
+
+    assert result.created == 0
+    assert result.skipped == 1
+    item = result.items[0]
+    assert item.status == "skipped"
+    assert item.reason == "invalid_suggestion_id"
+    assert item.source_document_id is None
+    assert item.target_document_id is None
+    assert item.reference_type == "unknown"
+    assert "00000000-0000-0000-0000-000000000000" not in item.model_dump_json()
