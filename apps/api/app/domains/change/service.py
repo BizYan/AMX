@@ -1217,14 +1217,14 @@ class TraceabilityService:
 
         items: list[TraceabilitySuggestionAcceptanceItem] = []
         for missing_id in sorted(requested_ids - available_ids):
-            source_id, target_id, reference_type = self._parse_suggestion_id(missing_id)
+            parsed_id = self._parse_suggestion_id(missing_id)
             items.append(TraceabilitySuggestionAcceptanceItem(
                 suggestion_id=missing_id,
-                source_document_id=source_id,
-                target_document_id=target_id,
-                reference_type=reference_type,
+                source_document_id=parsed_id[0] if parsed_id else None,
+                target_document_id=parsed_id[1] if parsed_id else None,
+                reference_type=parsed_id[2] if parsed_id else "unknown",
                 status="skipped",
-                reason="suggestion_not_available",
+                reason="suggestion_not_available" if parsed_id else "invalid_suggestion_id",
             ))
 
         for suggestion in selected_suggestions:
@@ -1297,16 +1297,14 @@ class TraceabilityService:
         return result.scalar_one_or_none()
 
     @staticmethod
-    def _parse_suggestion_id(suggestion_id: str) -> tuple[UUID, UUID, str]:
+    def _parse_suggestion_id(suggestion_id: str) -> tuple[UUID, UUID, str] | None:
         parts = suggestion_id.split(":")
         if len(parts) != 3:
-            placeholder = UUID("00000000-0000-0000-0000-000000000000")
-            return placeholder, placeholder, "unknown"
+            return None
         try:
             return UUID(parts[0]), UUID(parts[1]), parts[2]
         except ValueError:
-            placeholder = UUID("00000000-0000-0000-0000-000000000000")
-            return placeholder, placeholder, parts[2] or "unknown"
+            return None
 
     def _build_traceability_gaps(
         self,

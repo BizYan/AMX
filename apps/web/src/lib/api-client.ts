@@ -3640,8 +3640,8 @@ export interface TraceabilityCoverage {
 
 export interface TraceabilitySuggestionAcceptanceItem {
   suggestion_id: string
-  source_document_id: string
-  target_document_id: string
+  source_document_id?: string | null
+  target_document_id?: string | null
   reference_type: string
   status: 'created' | 'skipped' | string
   reference_id?: string | null

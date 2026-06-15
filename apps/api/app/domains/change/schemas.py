@@ -352,8 +352,8 @@ class TraceabilitySuggestionAcceptanceItem(BaseModel):
     """Result for one accepted or skipped reference suggestion."""
 
     suggestion_id: str
-    source_document_id: UUID
-    target_document_id: UUID
+    source_document_id: UUID | None = None
+    target_document_id: UUID | None = None
     reference_type: str
     status: str
     reference_id: UUID | None = None
