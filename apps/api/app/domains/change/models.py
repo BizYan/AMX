@@ -478,6 +478,9 @@ class DocumentConflict(Base, UuidMixin, TimestampMixin, TenantMixin):
     linked_change_request_id = Column(UUID(as_uuid=True), nullable=True)
     accepted_revision_json = Column(JSONB, nullable=True)
     revision_accepted_at = Column(DateTime(timezone=True), nullable=True)
+    closure_scan_id = Column(UUID(as_uuid=True), nullable=True)
+    closure_verified_at = Column(DateTime(timezone=True), nullable=True)
+    closure_evidence_json = Column(JSONB, nullable=True)
 
     primary_document = relationship(
         "Document",
@@ -508,6 +511,7 @@ class DocumentConflict(Base, UuidMixin, TimestampMixin, TenantMixin):
         Index("ix_document_conflicts_related_document_id", "related_document_id"),
         Index("ix_document_conflicts_assignee_user_id", "assignee_user_id"),
         Index("ix_document_conflicts_linked_change_request_id", "linked_change_request_id"),
+        Index("ix_document_conflicts_closure_scan_id", "closure_scan_id"),
         UniqueConstraint(
             "tenant_id",
             "project_id",

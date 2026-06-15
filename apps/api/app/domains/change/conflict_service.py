@@ -10,7 +10,15 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domains.change.models import ChangePriority, ChangeType, ConflictStatus, DocumentConflict, DocumentConflictDecision
+from app.domains.change.models import (
+    ChangePriority,
+    ChangeRequest,
+    ChangeStatus,
+    ChangeType,
+    ConflictStatus,
+    DocumentConflict,
+    DocumentConflictDecision,
+)
 from app.domains.change.schemas import ConflictScanResponse, DocumentConflictListResponse
 from app.domains.change.service import ChangeService, TraceabilityService
 from app.domains.documents.models import Document
@@ -389,6 +397,76 @@ class ConflictGovernanceService:
             )
             return exists
         return None
+
+    async def close_after_rescan(
+        self,
+        *,
+        tenant_id: UUID,
+        conflict_id: UUID,
+        actor_id: UUID,
+        reason: str,
+        evidence: dict[str, Any],
+    ) -> DocumentConflict:
+        if not reason.strip():
+            raise ValueError("Closure reason is required")
+
+        conflict = await self.get_conflict_for_update(
+            tenant_id=tenant_id,
+            conflict_id=conflict_id,
+        )
+        await self.require_project_owner(
+            tenant_id=tenant_id,
+            project_id=conflict.project_id,
+            actor_id=actor_id,
+            message="Only project owner can close conflicts",
+        )
+        if conflict.status != ConflictStatus.REVISION_ACCEPTED.value:
+            raise ValueError("Conflict must be in revision accepted status")
+        if not conflict.linked_change_request_id:
+            raise ValueError("Conflict must have a linked change request")
+
+        change_request = await self.db.scalar(
+            select(ChangeRequest).where(
+                ChangeRequest.id == conflict.linked_change_request_id,
+                ChangeRequest.tenant_id == tenant_id,
+                ChangeRequest.deleted_at.is_(None),
+            )
+        )
+        if not change_request or change_request.status != ChangeStatus.APPLIED.value:
+            raise ValueError("Linked change request must be applied")
+
+        scan = await self.scan_project(tenant_id=tenant_id, project_id=conflict.project_id)
+        refreshed = await self.get_conflict_for_update(
+            tenant_id=tenant_id,
+            conflict_id=conflict_id,
+        )
+        if refreshed.last_scan_id == scan.scan_id:
+            raise ValueError("Conflict still detected after rescan")
+        if refreshed.absent_since is None:
+            raise ValueError("Conflict closure rescan did not verify absence")
+
+        previous_status = refreshed.status
+        now = datetime.now(timezone.utc)
+        refreshed.status = ConflictStatus.CLOSED.value
+        refreshed.closed_at = now
+        refreshed.closure_scan_id = scan.scan_id
+        refreshed.closure_verified_at = now
+        refreshed.closure_evidence_json = {
+            "change_request_id": str(change_request.id),
+            "scan_id": str(scan.scan_id),
+            **evidence,
+        }
+        self.record_decision(
+            conflict=refreshed,
+            actor_id=actor_id,
+            action="close",
+            previous_status=previous_status,
+            resulting_status=refreshed.status,
+            reason=reason,
+            evidence=refreshed.closure_evidence_json,
+        )
+        await self.db.flush()
+        return refreshed
 
     async def persist_new_conflict(
         self,

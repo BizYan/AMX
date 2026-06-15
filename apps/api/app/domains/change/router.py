@@ -40,6 +40,7 @@ from app.domains.change.schemas import (
     ConflictAnalysisResponse,
     ConflictAnalysisCompletionRequest,
     ConflictAssignmentRequest,
+    ConflictClosureRequest,
     ConflictRejectionRequest,
     ConflictRevisionAcceptanceRequest,
     ConflictScanResponse,
@@ -302,6 +303,42 @@ async def accept_persisted_conflict_revision(
             metadata={
                 "status": conflict.status,
                 "change_request_id": str(conflict.linked_change_request_id),
+            },
+        )
+        return conflict
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/conflicts/{conflict_id}/close-after-rescan", response_model=DocumentConflictResponse)
+async def close_persisted_conflict_after_rescan(
+    conflict_id: UUID,
+    data: ConflictClosureRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Close an accepted conflict after the applied change is verified absent by rescan."""
+    service = ConflictGovernanceService(db)
+    try:
+        conflict = await service.close_after_rescan(
+            tenant_id=current_user.tenant_id,
+            conflict_id=conflict_id,
+            actor_id=current_user.id,
+            reason=data.reason,
+            evidence=data.evidence,
+        )
+        await AuditService(db).log_action(
+            tenant_id=current_user.tenant_id,
+            user_id=current_user.id,
+            action="document_conflict.close",
+            resource_type="document_conflict",
+            resource_id=conflict.id,
+            metadata={
+                "status": conflict.status,
+                "change_request_id": str(conflict.linked_change_request_id),
+                "scan_id": str(conflict.closure_scan_id),
             },
         )
         return conflict
