@@ -67,7 +67,7 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     """Schema for creating a user."""
 
-    password: str = Field(..., min_length=8, max_length=100)
+    password: str | None = Field(None, min_length=8, max_length=100)
     tenant_id: UUID | None = None
 
 
@@ -124,6 +124,12 @@ class UserResponse(UserBase):
     roles: list[RoleResponse] = Field(default_factory=list, validation_alias="role_responses")
     created_at: datetime
     updated_at: datetime
+
+
+class UserCreateResponse(UserResponse):
+    """Response for user creation, including one-time temporary password when generated."""
+
+    temporary_password: str | None = None
 
 
 class AssignRoleRequest(BaseModel):

@@ -53,6 +53,7 @@ from app.domains.identity.schemas import (
     TenantResponse,
     TenantUpdate,
     UserCreate,
+    UserCreateResponse,
     UserResponse,
     UserUpdate,
 )
@@ -64,6 +65,7 @@ from app.domains.identity.service import (
     TenantApiKeyService,
     TenantService,
     UserService,
+    generate_temporary_password,
 )
 from app.services.audit_service import AuditService
 from app.services.permission_evaluator import PermissionEvaluator, create_permission_evaluator
@@ -597,13 +599,13 @@ async def list_users(
     )
 
 
-@router.post("/users", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/users", response_model=UserCreateResponse, status_code=status.HTTP_201_CREATED)
 async def create_user(
     data: UserCreate,
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
     request: Request,
-) -> UserResponse:
+) -> UserCreateResponse:
     """Create a new user.
 
     Args:
@@ -649,6 +651,11 @@ async def create_user(
         )
     data.email = normalized_email
 
+    temporary_password = None
+    if data.password is None:
+        temporary_password = generate_temporary_password()
+        data.password = temporary_password
+
     service = UserService(db)
     new_user = await service.create_user(data)
 
@@ -662,7 +669,11 @@ async def create_user(
         request=request,
     )
 
-    return await _user_response_with_roles(db, new_user)
+    response = await _user_response_with_roles(db, new_user)
+    return UserCreateResponse(
+        **response.model_dump(),
+        temporary_password=temporary_password,
+    )
 
 
 @router.get("/users/{user_id}", response_model=UserResponse)

@@ -107,10 +107,6 @@ function roleHealth(role: Role) {
   return { label: '标准权限', variant: 'secondary' as const }
 }
 
-function createTemporaryPassword() {
-  return `Temp-${Math.random().toString(36).slice(2, 10)}-2026`
-}
-
 function StatCard({ title, value, detail }: { title: string; value: string | number; detail: string }) {
   return (
     <Card>
@@ -135,6 +131,7 @@ export default function SettingsPage() {
   const [apiKeyName, setApiKeyName] = useState('')
   const [apiKeyPermissions, setApiKeyPermissions] = useState(['read'])
   const [revealedApiKey, setRevealedApiKey] = useState<{ id: string; token: string } | null>(null)
+  const [createdUserCredential, setCreatedUserCredential] = useState<{ email: string; password: string } | null>(null)
   const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null)
   const [passwordForm, setPasswordForm] = useState({ current: '', next: '', confirm: '' })
 
@@ -216,16 +213,19 @@ export default function SettingsPage() {
       const created = await identityApi.createUser({
         email,
         full_name: fullName,
-        password: createTemporaryPassword(),
       })
+      if (!created.temporary_password) {
+        throw new Error('Temporary password was not returned by the server')
+      }
       if (selectedRole) {
         await identityApi.assignRole(selectedRole.id, created.id)
       }
       return created
     },
-    onSuccess: () => {
+    onSuccess: (created) => {
       queryClient.invalidateQueries({ queryKey: ['tenant-users'] })
       setShowUserDialog(false)
+      setCreatedUserCredential({ email: created.email, password: created.temporary_password! })
       setNewUser({ name: '', email: '', role: '' })
       addToast({ title: '成员已创建', description: selectedRole ? '已同步分配角色。' : '请在角色矩阵中补充授权。' })
     },
@@ -309,6 +309,12 @@ export default function SettingsPage() {
     await navigator.clipboard?.writeText(token)
     setCopiedKeyId(keyId)
     window.setTimeout(() => setCopiedKeyId(null), 1500)
+  }
+
+  const copyCreatedUserCredential = async () => {
+    if (!createdUserCredential) return
+    await navigator.clipboard?.writeText(`${createdUserCredential.email}\n${createdUserCredential.password}`)
+    addToast({ title: '临时密码已复制' })
   }
 
   const riskItems = [
@@ -464,6 +470,33 @@ export default function SettingsPage() {
         </TabsContent>
 
         <TabsContent value="members" className="space-y-4">
+          {createdUserCredential ? (
+            <Card className="border-blue-200 bg-blue-50/70 dark:border-blue-900 dark:bg-blue-950/20">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <KeyRound className="h-5 w-5 text-blue-600" />
+                  新成员临时登录信息
+                </CardTitle>
+                <CardDescription>
+                  该密码由服务端生成且只在本次创建后显示，请立即复制并要求成员首次登录后修改。
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-sm">
+                  <p className="font-medium text-slate-900 dark:text-white">{createdUserCredential.email}</p>
+                  <p className="mt-1 font-mono text-slate-700 dark:text-slate-200">{createdUserCredential.password}</p>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={copyCreatedUserCredential}>
+                    <Copy className="mr-2 h-4 w-4" />
+                    复制
+                  </Button>
+                  <Button variant="outline" onClick={() => setCreatedUserCredential(null)}>已保存</Button>
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
+
           <Card>
             <CardHeader>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
