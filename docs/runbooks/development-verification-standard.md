@@ -53,6 +53,20 @@ Use this level while coding:
 
 Do not run full backend tests, full deterministic E2E, or production build after every small edit.
 
+### User-Visible Discoverability Check
+
+For a new or repaired user-facing capability, do not verify only that the component, route, API, or data exists. Prove that the intended role can discover and use it from the normal entry path.
+
+The focused browser or Playwright check should cover the relevant items:
+
+- the expected navigation entry, default route, tab, or primary action is visible without undocumented steps;
+- the page shows the expected real or fixture-backed data, not only an empty shell;
+- the primary action is enabled and produces visible success or failure feedback;
+- role and permission behavior matches the intended user;
+- the capability remains reachable after refresh or normal navigation.
+
+Use only the assertions relevant to the change. Do not turn this checklist into full E2E for every frontend edit.
+
 ### Level 1: PR-Ready Branch Check
 
 Run before pushing or opening a PR:

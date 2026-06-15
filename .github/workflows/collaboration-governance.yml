@@ -137,3 +137,11 @@ jobs:
             echo "AGENTS.md must keep C:\\amx as the canonical workspace root." >&2
             exit 1
           }
+
+      - name: Validate continuous improvement registry
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s docs/runbooks/continuous-improvement.md
+          test -s docs/continuous-improvement/registry.json
+          python infra/scripts/check_continuous_improvement_registry.py

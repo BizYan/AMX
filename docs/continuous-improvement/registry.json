@@ -1,0 +1,150 @@
+{
+  "version": 1,
+  "updated_at": "2026-06-15",
+  "entries": [
+    {
+      "id": "IMP-001",
+      "title": "Separate merge, release, deployment, and production verification evidence",
+      "category": "release-integrity",
+      "priority": "P0",
+      "status": "adopted",
+      "recurrence": 3,
+      "summary": "Delivery state was previously at risk of being inferred from an earlier stage instead of verified at every boundary.",
+      "evidence": [
+        {
+          "kind": "runbook",
+          "reference": "docs/runbooks/release-management.md"
+        },
+        {
+          "kind": "workflow",
+          "reference": ".github/workflows/deploy-production.yml"
+        }
+      ],
+      "proposed_change": "Require separate fresh evidence for PR merge, GitHub Release, deployment workflow, OCI SHA, health, and critical smoke.",
+      "destinations": [
+        "docs/runbooks/release-management.md",
+        "infra/scripts/test-delivery-readiness.ps1"
+      ],
+      "validation": {
+        "result": "passed",
+        "reference": "https://github.com/BizYan/AMX/actions/runs/27500901328",
+        "summary": "The v0.6.2 deployment independently verified workflow success, OCI SHA, health, authenticated smoke, and GitNexus refresh."
+      },
+      "next_review": "2026-07-15"
+    },
+    {
+      "id": "IMP-002",
+      "title": "Degrade gracefully when GitNexus is noisy or low value",
+      "category": "tool-efficiency",
+      "priority": "P1",
+      "status": "adopted",
+      "recurrence": 3,
+      "summary": "Repeated GitNexus queries can consume time and tokens when FTS, worktree identity, or untracked-file mapping is degraded.",
+      "evidence": [
+        {
+          "kind": "runbook",
+          "reference": "docs/runbooks/gitnexus-change-record-wrapper.md"
+        },
+        {
+          "kind": "project-rule",
+          "reference": "AGENTS.md"
+        }
+      ],
+      "proposed_change": "Use GitNexus only when it reduces uncertainty, refresh once when needed, and record a fallback using Git diff, source reading, and tests.",
+      "destinations": [
+        "AGENTS.md",
+        "infra/scripts/invoke-gitnexus-change-record.ps1"
+      ],
+      "validation": {
+        "result": "passed",
+        "reference": "docs/runbooks/gitnexus-change-record-wrapper.md",
+        "summary": "The wrapper preserves Git changed-file evidence and explicitly marks low-value graph results."
+      },
+      "next_review": "2026-07-15"
+    },
+    {
+      "id": "IMP-003",
+      "title": "Use verification gates matched to the development boundary",
+      "category": "verification-economy",
+      "priority": "P1",
+      "status": "adopted",
+      "recurrence": 3,
+      "summary": "Running broad regression and E2E after every edit made verification cost exceed implementation value.",
+      "evidence": [
+        {
+          "kind": "runbook",
+          "reference": "docs/runbooks/development-verification-standard.md"
+        },
+        {
+          "kind": "project-rule",
+          "reference": "AGENTS.md"
+        }
+      ],
+      "proposed_change": "Use focused checks during development, broad CI at PR boundaries, and production verification only at release boundaries.",
+      "destinations": [
+        "docs/runbooks/development-verification-standard.md",
+        "AGENTS.md"
+      ],
+      "validation": {
+        "result": "passed",
+        "reference": "docs/runbooks/development-verification-standard.md",
+        "summary": "The standard defines distinct development, PR, integration, release, and production evidence."
+      },
+      "next_review": "2026-07-15"
+    },
+    {
+      "id": "IMP-004",
+      "title": "Validate user-visible discoverability, not only implementation existence",
+      "category": "product-acceptance",
+      "priority": "P1",
+      "status": "adopted",
+      "recurrence": 2,
+      "summary": "A capability can exist in code and still be effectively unavailable when the default route, tab, or interaction hides it.",
+      "evidence": [
+        {
+          "kind": "regression-test",
+          "reference": "apps/web/tests/e2e/playwright/team-permission-settings.spec.ts"
+        },
+        {
+          "kind": "pull-request",
+          "reference": "https://github.com/BizYan/AMX/pull/44"
+        }
+      ],
+      "proposed_change": "Add user-discoverability assertions to acceptance guidance for navigation, default views, visible feedback, and callable actions.",
+      "destinations": [
+        "docs/runbooks/development-verification-standard.md"
+      ],
+      "validation": {
+        "result": "passed",
+        "reference": "https://github.com/BizYan/AMX/pull/44",
+        "summary": "The tenant member list existed but was hidden behind a non-default tab. A normal-entry-path Playwright assertion failed before the fix, passed after the default-view change, and the capability passed CI plus authenticated production smoke in deployment run 27500901328."
+      },
+      "next_review": "2026-07-15"
+    },
+    {
+      "id": "IMP-005",
+      "title": "Do not confuse PowerShell console mojibake with source encoding corruption",
+      "category": "diagnostic-accuracy",
+      "priority": "P1",
+      "status": "adopted",
+      "recurrence": 2,
+      "summary": "Console rendering previously suggested corrupted Chinese source even though strict UTF-8 and browser output were correct.",
+      "evidence": [
+        {
+          "kind": "project-rule",
+          "reference": "AGENTS.md"
+        }
+      ],
+      "proposed_change": "Require strict UTF-8 source inspection and rendered browser evidence before changing encoding or user-visible copy.",
+      "destinations": [
+        "AGENTS.md"
+      ],
+      "validation": {
+        "result": "passed",
+        "reference": "AGENTS.md",
+        "summary": "The verification rule now explicitly separates console rendering from source and browser evidence."
+      },
+      "next_review": "2026-07-15"
+    }
+  ]
+}
