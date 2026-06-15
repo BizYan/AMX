@@ -23,6 +23,7 @@ class WorkerSettings:
     timeout handling, and result retention.
     """
 
+    redis_settings = arq_redis_settings()
     max_jobs: int = 10
     keep_result: int = 3600  # 1 hour
     retry_delay: int = 60  # 1 minute base delay for exponential backoff

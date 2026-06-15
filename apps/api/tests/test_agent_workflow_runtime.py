@@ -20,6 +20,7 @@ import pytest
 import app.domains.knowledge.models  # noqa: F401 - register FK targets before worker queue imports
 from app.domains.agent.router import enqueue_workflow_run_job
 from app.domains.agent.service import WorkflowService
+from app.workers.queue import WorkerSettings
 
 
 class _ScalarResult:
@@ -118,6 +119,12 @@ def test_worker_settings_requires_arq_redis_url(monkeypatch):
 
     with pytest.raises(RuntimeError, match="ARQ_REDIS_URL"):
         get_worker_settings()
+
+
+def test_worker_settings_exposes_arq_cli_class_redis_settings():
+    assert WorkerSettings.redis_settings.host == "localhost"
+    assert WorkerSettings.redis_settings.port == 6379
+    assert WorkerSettings.redis_settings.database == 1
 
 
 @pytest.mark.asyncio
