@@ -219,6 +219,23 @@ class TestBootstrapIdempotency:
             )
             assert user_role is not None
 
+    @pytest.mark.asyncio
+    async def test_bootstrap_rejects_placeholder_admin_password_in_production(self, db_session):
+        """Production bootstrap must not create an admin with an example password."""
+        from app.db.bootstrap import create_bootstrap_admin
+
+        with patch("app.db.bootstrap.settings") as mock_settings:
+            mock_settings.ENVIRONMENT = "production"
+            mock_settings.BOOTSTRAP_ADMIN_EMAIL = "admin@example.com"
+            mock_settings.BOOTSTRAP_ADMIN_PASSWORD = "change-me-in-production"
+            mock_settings.BOOTSTRAP_ADMIN_NAME = "Admin User"
+
+            with pytest.raises(RuntimeError, match="BOOTSTRAP_ADMIN_PASSWORD"):
+                await create_bootstrap_admin(db_session)
+
+            admin = await db_session.scalar(select(User).where(User.email == "admin@example.com"))
+            assert admin is None
+
 
 class TestBlacklistFunctions:
     """Tests for JWT blacklist functionality."""

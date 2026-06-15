@@ -11,6 +11,36 @@ from app.core.settings import settings
 from app.models.identity import Role, Tenant, User, UserRole
 
 
+UNSAFE_BOOTSTRAP_PASSWORDS = {
+    "",
+    "admin",
+    "admin123",
+    "change-me",
+    "change-me-in-production",
+    "changeme",
+    "consultant",
+    "consultant123",
+    "password",
+    "password123",
+    "test",
+    "test-password",
+    "test_password",
+}
+
+
+def _is_production_environment() -> bool:
+    return str(getattr(settings, "ENVIRONMENT", "development")).strip().lower() == "production"
+
+
+def _validate_bootstrap_admin_config() -> None:
+    if not _is_production_environment():
+        return
+
+    password = str(settings.BOOTSTRAP_ADMIN_PASSWORD or "").strip()
+    if password.lower() in UNSAFE_BOOTSTRAP_PASSWORDS:
+        raise RuntimeError("BOOTSTRAP_ADMIN_PASSWORD must be a real non-placeholder password in production")
+
+
 async def create_bootstrap_admin(db: AsyncSession) -> None:
     """Create the bootstrap admin user if not exists.
 
@@ -23,6 +53,8 @@ async def create_bootstrap_admin(db: AsyncSession) -> None:
     # Check if bootstrap admin email is configured
     if not settings.BOOTSTRAP_ADMIN_EMAIL:
         return
+
+    _validate_bootstrap_admin_config()
 
     # Check if admin user already exists.
     result = await db.execute(
