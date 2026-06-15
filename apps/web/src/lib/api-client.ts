@@ -544,7 +544,7 @@ export const identityApi = {
       skip: params?.page && params?.pageSize ? (params.page - 1) * params.pageSize : undefined,
       limit: params?.pageSize,
     }),
-  createUser: (data: UserCreatePayload) => apiClient.post<TenantUser>('/identity/users', data),
+  createUser: (data: UserCreatePayload) => apiClient.post<UserCreateResponse>('/identity/users', data),
   updateUser: (id: string, data: Partial<UserCreatePayload> & { is_active?: boolean }) =>
     apiClient.patch<TenantUser>(`/identity/users/${id}`, data),
   deleteUser: (id: string) => apiClient.delete(`/identity/users/${id}`),
@@ -3744,6 +3744,10 @@ export interface TenantUser {
   created_at: string
 }
 
+export interface UserCreateResponse extends TenantUser {
+  temporary_password?: string | null
+}
+
 export interface Role {
   id: string
   tenant_id?: string | null
@@ -3756,7 +3760,7 @@ export interface Role {
 
 export interface UserCreatePayload {
   email: string
-  password: string
+  password?: string
   full_name?: string
   tenant_id?: string
 }

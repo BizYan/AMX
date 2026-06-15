@@ -63,6 +63,11 @@ def _user_has_admin_role(user: User) -> bool:
     )
 
 
+def generate_temporary_password() -> str:
+    """Generate a one-time password for administrator-created tenant users."""
+    return secrets.token_urlsafe(18)
+
+
 async def _is_last_active_tenant_admin(db: AsyncSession, user: User) -> bool:
     if not user.tenant_id or not user.is_active:
         return False
@@ -483,6 +488,9 @@ class UserService:
         Returns:
             Created User
         """
+        if not data.password:
+            raise ValueError("password is required")
+
         user = User(
             email=data.email,
             hashed_password=hash_password(data.password),

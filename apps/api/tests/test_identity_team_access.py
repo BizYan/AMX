@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 import app.db.init_schema  # noqa: F401 - registers sqlite compilers for UUID/JSONB
 import app.models.identity  # noqa: F401 - registers tenant/user/role tables
 import app.models.projects  # noqa: F401 - resolves User.owned_projects relationship
+from app.core.security import verify_password
 from app.db.base import Base
 from app.db.init_schema import deduplicate_indexes
 from app.domains.identity.models import AuditLog, TenantApiKey
@@ -147,6 +148,57 @@ async def test_create_user_returns_conflict_when_email_already_exists(db_session
 
     assert error.value.status_code == 409
     assert error.value.detail == "该邮箱已存在，请使用其他邮箱或管理现有成员"
+
+
+@pytest.mark.asyncio
+async def test_create_user_without_password_returns_server_generated_temporary_password(db_session):
+    tenant_id = uuid4()
+    admin_id = uuid4()
+    role_id = uuid4()
+
+    db_session.add_all([
+        Tenant(id=tenant_id, name="Temporary Password Tenant", slug="temporary-password-tenant"),
+        User(
+            id=admin_id,
+            tenant_id=tenant_id,
+            email="admin@example.com",
+            full_name="Admin",
+            hashed_password="hashed",
+        ),
+        Role(
+            id=role_id,
+            tenant_id=tenant_id,
+            name="Team Manager",
+            permissions={"team": ["manage"]},
+        ),
+        UserRole(user_id=admin_id, role_id=role_id),
+    ])
+    await db_session.flush()
+    admin = await db_session.get(User, admin_id)
+
+    response = await create_user(
+        data=UserCreate(
+            email="new.member@example.com",
+            full_name="New Member",
+        ),
+        user=admin,
+        db=db_session,
+        request=StubRequest(),
+    )
+
+    temporary_password = response.temporary_password
+    assert isinstance(temporary_password, str)
+    assert len(temporary_password) >= 24
+    assert "2026" not in temporary_password
+
+    created_user = await db_session.scalar(select(User).where(User.email == "new.member@example.com"))
+    assert created_user is not None
+    assert created_user.hashed_password != temporary_password
+    assert verify_password(temporary_password, created_user.hashed_password)
+
+    users = await list_users(user=admin, db=db_session, skip=0, limit=50)
+    created_response = next(item for item in users.items if item.email == "new.member@example.com")
+    assert not hasattr(created_response, "temporary_password")
 
 
 @pytest.mark.asyncio

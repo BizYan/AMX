@@ -220,10 +220,6 @@ const fieldPermissionLabels: Record<string, string> = {
   none: '不可见',
 }
 
-function temporaryPassword() {
-  return `AMX-${Math.random().toString(36).slice(2, 10)}-2026`
-}
-
 function initials(name: string) {
   return name.trim().slice(0, 2).toUpperCase() || 'AM'
 }
@@ -600,16 +596,17 @@ export default function TeamAccessPage() {
   const createMemberMutation = useMutation({
     mutationFn: async () => {
       const email = memberForm.email.trim()
-      const password = temporaryPassword()
       const created = await identityApi.createUser({
         email,
         full_name: memberForm.fullName.trim() || email.split('@')[0],
-        password,
       })
+      if (!created.temporary_password) {
+        throw new Error('Temporary password was not returned by the server')
+      }
       if (memberForm.roleId) {
         await identityApi.assignRole(memberForm.roleId, created.id)
       }
-      return { created, password }
+      return { created, password: created.temporary_password }
     },
     onSuccess: ({ created, password }) => {
       refreshAll()
