@@ -157,3 +157,30 @@ def test_conflict_closure_rescan_model_matches_migration_contract():
     assert "closure_verified_at" in conflict_columns
     assert "closure_evidence_json" in conflict_columns
     assert "ix_document_conflicts_closure_scan_id" in index_names
+
+
+def test_conflict_risk_acceptance_migration_is_additive():
+    migration = (VERSIONS_DIR / "0026_conflict_risk_acceptance.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'revision = "0026_conflict_risk"' in migration
+    assert 'down_revision = "0025_conflict_closure"' in migration
+    assert '"risk_accepted_by"' in migration
+    assert '"risk_accepted_at"' in migration
+    assert '"risk_acceptance_expires_at"' in migration
+    assert '"risk_acceptance_json"' in migration
+    assert '"ix_document_conflicts_risk_accepted_by"' in migration
+    assert '"ix_document_conflicts_risk_acceptance_expires_at"' in migration
+
+
+def test_conflict_risk_acceptance_model_matches_migration_contract():
+    conflict_columns = DocumentConflict.__table__.c
+    index_names = {index.name for index in DocumentConflict.__table__.indexes}
+
+    assert "risk_accepted_by" in conflict_columns
+    assert "risk_accepted_at" in conflict_columns
+    assert "risk_acceptance_expires_at" in conflict_columns
+    assert "risk_acceptance_json" in conflict_columns
+    assert "ix_document_conflicts_risk_accepted_by" in index_names
+    assert "ix_document_conflicts_risk_acceptance_expires_at" in index_names

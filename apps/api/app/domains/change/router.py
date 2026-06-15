@@ -42,6 +42,7 @@ from app.domains.change.schemas import (
     ConflictAssignmentRequest,
     ConflictClosureRequest,
     ConflictRejectionRequest,
+    ConflictRiskAcceptanceRequest,
     ConflictRevisionAcceptanceRequest,
     ConflictScanResponse,
     DocumentConflictListResponse,
@@ -268,6 +269,45 @@ async def reject_persisted_conflict(
             resource_type="document_conflict",
             resource_id=conflict.id,
             metadata={"status": conflict.status},
+        )
+        return conflict
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/conflicts/{conflict_id}/accept-risk", response_model=DocumentConflictResponse)
+async def accept_persisted_conflict_risk(
+    conflict_id: UUID,
+    data: ConflictRiskAcceptanceRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Accept a persisted conflict risk with expiring mitigation evidence."""
+    service = ConflictGovernanceService(db)
+    try:
+        conflict = await service.accept_risk(
+            tenant_id=current_user.tenant_id,
+            conflict_id=conflict_id,
+            actor_id=current_user.id,
+            reason=data.reason,
+            mitigation_plan=data.mitigation_plan,
+            accepted_until=data.accepted_until,
+            evidence=data.evidence,
+        )
+        await AuditService(db).log_action(
+            tenant_id=current_user.tenant_id,
+            user_id=current_user.id,
+            action="document_conflict.accept_risk",
+            resource_type="document_conflict",
+            resource_id=conflict.id,
+            metadata={
+                "status": conflict.status,
+                "accepted_until": conflict.risk_acceptance_expires_at.isoformat()
+                if conflict.risk_acceptance_expires_at
+                else None,
+            },
         )
         return conflict
     except PermissionError as e:

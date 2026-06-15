@@ -518,6 +518,100 @@ async def test_invalid_reject_transition_does_not_record_history(db_session):
     assert reject_decisions == []
 
 
+async def prepare_decision_conflict(db_session):
+    tenant, project, parent, child = await create_project_graph(db_session)
+    service = ConflictGovernanceService(db_session)
+    scan = await service.scan_project(tenant_id=tenant.id, project_id=project.id)
+    ready = await service.complete_analysis(
+        tenant_id=tenant.id,
+        conflict_id=scan.items[0].id,
+        actor_id=child.created_by,
+        reason="Reviewed rule evidence",
+        evidence={"finding": "valid"},
+    )
+    return tenant, project, parent, child, ready, service
+
+
+@pytest.mark.asyncio
+async def test_project_owner_accepts_conflict_risk_with_expiring_mitigation(db_session):
+    tenant, project, _, _, ready, service = await prepare_decision_conflict(db_session)
+    expires_at = datetime(2026, 7, 15, tzinfo=timezone.utc)
+
+    accepted = await service.accept_risk(
+        tenant_id=tenant.id,
+        conflict_id=ready.id,
+        actor_id=project.owner_id,
+        reason="Known temporary traceability exception",
+        mitigation_plan="Review supplier traceability package before release.",
+        accepted_until=expires_at,
+        evidence={"risk_owner": "QA"},
+    )
+
+    assert accepted.status == ConflictStatus.RISK_ACCEPTED.value
+    assert accepted.risk_accepted_by == project.owner_id
+    assert accepted.risk_accepted_at is not None
+    assert accepted.risk_acceptance_expires_at == expires_at
+    assert accepted.risk_acceptance_json == {
+        "mitigation_plan": "Review supplier traceability package before release.",
+        "evidence": {"risk_owner": "QA"},
+    }
+    decisions = (
+        await db_session.execute(
+            select(DocumentConflictDecision)
+            .where(DocumentConflictDecision.conflict_id == accepted.id)
+            .order_by(DocumentConflictDecision.created_at)
+        )
+    ).scalars().all()
+    assert decisions[-1].action == "accept_risk"
+    assert decisions[-1].previous_status == ConflictStatus.DECISION.value
+    assert decisions[-1].resulting_status == ConflictStatus.RISK_ACCEPTED.value
+    assert decisions[-1].evidence_json["accepted_until"] == expires_at.isoformat()
+
+
+@pytest.mark.asyncio
+async def test_accept_risk_requires_decision_status_and_future_expiry(db_session):
+    tenant, project, _, _, ready, service = await prepare_decision_conflict(db_session)
+
+    with pytest.raises(ValueError, match="Risk acceptance must expire in the future"):
+        await service.accept_risk(
+            tenant_id=tenant.id,
+            conflict_id=ready.id,
+            actor_id=project.owner_id,
+            reason="Invalid expiry",
+            mitigation_plan="Review later",
+            accepted_until=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            evidence={},
+        )
+
+    rejected = await service.reject_conflict(
+        tenant_id=tenant.id,
+        conflict_id=ready.id,
+        actor_id=project.owner_id,
+        reason="False positive",
+        evidence={},
+    )
+    with pytest.raises(ValueError, match="Conflict must be in decision status"):
+        await service.accept_risk(
+            tenant_id=tenant.id,
+            conflict_id=rejected.id,
+            actor_id=project.owner_id,
+            reason="Too late",
+            mitigation_plan="Review later",
+            accepted_until=datetime(2026, 7, 15, tzinfo=timezone.utc),
+            evidence={},
+        )
+
+    accept_decisions = (
+        await db_session.execute(
+            select(DocumentConflictDecision).where(
+                DocumentConflictDecision.conflict_id == ready.id,
+                DocumentConflictDecision.action == "accept_risk",
+            )
+        )
+    ).scalars().all()
+    assert accept_decisions == []
+
+
 @pytest.mark.asyncio
 async def test_project_owner_accepts_revision_and_creates_linked_draft_change_request(db_session):
     tenant, project, parent, child = await create_project_graph(db_session)
