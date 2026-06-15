@@ -475,6 +475,9 @@ class DocumentConflict(Base, UuidMixin, TimestampMixin, TenantMixin):
     assignment_source = Column(String(40), nullable=True)
     assigned_at = Column(DateTime(timezone=True), nullable=True)
     due_at = Column(DateTime(timezone=True), nullable=True)
+    linked_change_request_id = Column(UUID(as_uuid=True), nullable=True)
+    accepted_revision_json = Column(JSONB, nullable=True)
+    revision_accepted_at = Column(DateTime(timezone=True), nullable=True)
 
     primary_document = relationship(
         "Document",
@@ -504,6 +507,7 @@ class DocumentConflict(Base, UuidMixin, TimestampMixin, TenantMixin):
         Index("ix_document_conflicts_primary_document_id", "primary_document_id"),
         Index("ix_document_conflicts_related_document_id", "related_document_id"),
         Index("ix_document_conflicts_assignee_user_id", "assignee_user_id"),
+        Index("ix_document_conflicts_linked_change_request_id", "linked_change_request_id"),
         UniqueConstraint(
             "tenant_id",
             "project_id",

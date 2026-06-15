@@ -10,9 +10,9 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domains.change.models import ConflictStatus, DocumentConflict, DocumentConflictDecision
+from app.domains.change.models import ChangePriority, ChangeType, ConflictStatus, DocumentConflict, DocumentConflictDecision
 from app.domains.change.schemas import ConflictScanResponse, DocumentConflictListResponse
-from app.domains.change.service import TraceabilityService
+from app.domains.change.service import ChangeService, TraceabilityService
 from app.domains.documents.models import Document
 from app.models.identity import User
 from app.models.projects import Project
@@ -287,6 +287,108 @@ class ConflictGovernanceService:
         )
         await self.db.flush()
         return conflict
+
+    async def accept_revision(
+        self,
+        *,
+        tenant_id: UUID,
+        conflict_id: UUID,
+        actor_id: UUID,
+        suggested_revision: str,
+        reason: str,
+        evidence: dict[str, Any],
+    ) -> DocumentConflict:
+        if not suggested_revision.strip():
+            raise ValueError("Suggested revision is required")
+        if not reason.strip():
+            raise ValueError("Acceptance reason is required")
+
+        conflict = await self.get_conflict_for_update(
+            tenant_id=tenant_id,
+            conflict_id=conflict_id,
+        )
+        await self.require_project_owner(
+            tenant_id=tenant_id,
+            project_id=conflict.project_id,
+            actor_id=actor_id,
+            message="Only project owner can accept conflict revisions",
+        )
+        if conflict.status != ConflictStatus.DECISION.value:
+            raise ValueError("Conflict must be in decision status")
+        if conflict.linked_change_request_id:
+            raise ValueError("Conflict already has a linked change request")
+
+        target_document_id = await self.resolve_change_target_document_id(conflict)
+        change_request = await ChangeService(self.db).create_change_request(
+            tenant_id=tenant_id,
+            project_id=conflict.project_id,
+            source_doc_id=conflict.primary_document_id,
+            target_doc_id=target_document_id,
+            change_type=ChangeType.CORRECTION.value,
+            description=suggested_revision,
+            requested_by=actor_id,
+            priority=ChangePriority.HIGH.value if conflict.severity == "high" else ChangePriority.MEDIUM.value,
+            rationale=(
+                f"Accepted revision for document conflict {conflict.id}: {reason}"
+            ),
+            impact_analysis=conflict.summary,
+            risk_assessment=json.dumps(
+                {
+                    "conflict_id": str(conflict.id),
+                    "rule_key": conflict.rule_key,
+                    "severity": conflict.severity,
+                    "evidence": evidence,
+                },
+                ensure_ascii=True,
+                sort_keys=True,
+            ),
+        )
+
+        previous_status = conflict.status
+        now = datetime.now(timezone.utc)
+        conflict.status = ConflictStatus.REVISION_ACCEPTED.value
+        conflict.linked_change_request_id = change_request.id
+        conflict.accepted_revision_json = {
+            "suggested_revision": suggested_revision,
+            "evidence": evidence,
+        }
+        conflict.revision_accepted_at = now
+        self.record_decision(
+            conflict=conflict,
+            actor_id=actor_id,
+            action="accept_revision",
+            previous_status=previous_status,
+            resulting_status=conflict.status,
+            reason=reason,
+            evidence={
+                "change_request_id": str(change_request.id),
+                "suggested_revision": suggested_revision,
+                **evidence,
+            },
+        )
+        await self.db.flush()
+        return conflict
+
+    async def resolve_change_target_document_id(self, conflict: DocumentConflict) -> UUID | None:
+        if conflict.related_document_id:
+            return conflict.related_document_id
+
+        candidate_parent_ids = conflict.evidence_json.get("candidate_parent_ids")
+        if isinstance(candidate_parent_ids, list) and candidate_parent_ids:
+            try:
+                candidate_id = UUID(str(candidate_parent_ids[0]))
+            except ValueError:
+                return None
+            exists = await self.db.scalar(
+                select(Document.id).where(
+                    Document.id == candidate_id,
+                    Document.tenant_id == conflict.tenant_id,
+                    Document.project_id == conflict.project_id,
+                    Document.deleted_at.is_(None),
+                )
+            )
+            return exists
+        return None
 
     async def persist_new_conflict(
         self,

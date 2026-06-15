@@ -41,6 +41,7 @@ from app.domains.change.schemas import (
     ConflictAnalysisCompletionRequest,
     ConflictAssignmentRequest,
     ConflictRejectionRequest,
+    ConflictRevisionAcceptanceRequest,
     ConflictScanResponse,
     DocumentConflictListResponse,
     DocumentConflictResponse,
@@ -266,6 +267,42 @@ async def reject_persisted_conflict(
             resource_type="document_conflict",
             resource_id=conflict.id,
             metadata={"status": conflict.status},
+        )
+        return conflict
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/conflicts/{conflict_id}/accept-revision", response_model=DocumentConflictResponse)
+async def accept_persisted_conflict_revision(
+    conflict_id: UUID,
+    data: ConflictRevisionAcceptanceRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Accept a conflict revision and create a linked change-request draft."""
+    service = ConflictGovernanceService(db)
+    try:
+        conflict = await service.accept_revision(
+            tenant_id=current_user.tenant_id,
+            conflict_id=conflict_id,
+            actor_id=current_user.id,
+            suggested_revision=data.suggested_revision,
+            reason=data.reason,
+            evidence=data.evidence,
+        )
+        await AuditService(db).log_action(
+            tenant_id=current_user.tenant_id,
+            user_id=current_user.id,
+            action="document_conflict.accept_revision",
+            resource_type="document_conflict",
+            resource_id=conflict.id,
+            metadata={
+                "status": conflict.status,
+                "change_request_id": str(conflict.linked_change_request_id),
+            },
         )
         return conflict
     except PermissionError as e:

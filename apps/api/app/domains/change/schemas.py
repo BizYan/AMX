@@ -439,6 +439,9 @@ class DocumentConflictResponse(BaseModel):
     assignment_source: str | None = None
     assigned_at: datetime | None = None
     due_at: datetime | None = None
+    linked_change_request_id: UUID | None = None
+    accepted_revision_json: dict[str, Any] | None = None
+    revision_accepted_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -479,6 +482,14 @@ class ConflictAnalysisCompletionRequest(BaseModel):
 class ConflictRejectionRequest(BaseModel):
     """Reject an inapplicable or false conflict finding."""
 
+    reason: str = Field(..., min_length=1)
+    evidence: dict[str, Any] = Field(default_factory=dict)
+
+
+class ConflictRevisionAcceptanceRequest(BaseModel):
+    """Accept a suggested revision and create a linked change-request draft."""
+
+    suggested_revision: str = Field(..., min_length=1)
     reason: str = Field(..., min_length=1)
     evidence: dict[str, Any] = Field(default_factory=dict)
 
