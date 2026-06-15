@@ -28,6 +28,9 @@ test.describe('Audit evidence center', () => {
     await expect(body).toContainText('为系统管理员分配管理员角色')
     await expect(body).toContainText('删除占位验收报告草稿')
     await expect(body).toContainText('生成项目交付包并保留导出证据')
+    await expect(page.getByTestId('change-audit-command-center')).toContainText('Document conflicts')
+    await expect(page.getByTestId('change-audit-command-center')).toContainText('Resolve document conflict governance queue')
+    await expect(page.getByTestId('change-audit-command-center')).toContainText('High-severity document conflicts are unresolved')
     await expect(page.locator('[data-testid="audit-entry"]')).toHaveCount(5)
     await expect(page.locator('[data-testid="audit-table"]')).toBeVisible()
 

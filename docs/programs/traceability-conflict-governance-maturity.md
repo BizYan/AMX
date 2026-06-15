@@ -360,8 +360,36 @@ Verification:
   `uv run --directory apps/api --extra dev python -m pytest tests/test_change_audit_command_center.py tests/test_persisted_conflict_scan.py tests/test_api_router_contract.py -q`
   returned `26 passed`;
 
+Merge:
+
+- PR #52 merged to `main` at `b6e7c2a54b8dc49e99fa17687fc46777e882e5f6` on
+  2026-06-15.
+
+### PR 7: Audit Page Conflict Gate Surfacing
+
+Implemented:
+
+- synchronized web `ChangeAuditCommandCenterSummary` type with backend conflict
+  gate fields;
+- added a document-conflict metric card to the `/audit` command center panel;
+- updated deterministic E2E mock data with conflict release-gate risks and
+  priority actions;
+- added E2E coverage that verifies the audit page shows document conflict
+  counts, conflict governance action, and high-severity conflict risk text.
+
+Verification:
+
+- RED E2E first failed because `/audit` did not show document conflict risk
+  evidence;
+- focused E2E:
+  `pnpm --dir apps/web exec playwright test tests/e2e/playwright/audit-evidence-center.spec.ts`
+  returned `1 passed`;
+- `pnpm --dir apps/web build` succeeded;
+- `pnpm --dir apps/web typecheck` succeeded after `next build` generated
+  `.next/types`;
+
 ## Next Actions
 
-1. Push PR 6 and require CI evidence before merge.
-2. After PR 6 is merged, continue with frontend command center surfacing and
-   operator workflow polish.
+1. Push PR 7 and require CI evidence before merge.
+2. After PR 7 is merged, continue with operator workflow polish for conflict
+   closure and risk renewal.
