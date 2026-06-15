@@ -89,6 +89,24 @@ if [[ -n "$bootstrap_admin_email" ]]; then
   esac
 fi
 
+postgres_password="$(read_env_value "POSTGRES_PASSWORD")"
+postgres_password="$(printf '%s' "$postgres_password" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+postgres_password_normalized="$(printf '%s' "$postgres_password" | tr '[:upper:]' '[:lower:]')"
+database_url="$(read_env_value "DATABASE_URL")"
+database_url_normalized="$(printf '%s' "$database_url" | tr '[:upper:]' '[:lower:]')"
+case "$postgres_password_normalized" in
+  ""|consultant123|postgres|postgres123|password|password123|test|test-password|test_password)
+    echo "Production database credentials must not use example passwords" >&2
+    exit 1
+    ;;
+esac
+case "$database_url_normalized" in
+  *consultant123*|*postgres:postgres*|*password123*|*test-password*|*test_password*)
+    echo "Production database credentials must not use example passwords" >&2
+    exit 1
+    ;;
+esac
+
 for variable in \
   POSTGRES_BIND_ADDRESS \
   REDIS_BIND_ADDRESS \

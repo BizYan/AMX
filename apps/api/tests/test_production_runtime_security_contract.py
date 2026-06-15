@@ -102,6 +102,16 @@ def test_ci_replaces_placeholder_bootstrap_admin_password_before_production_pref
     )
 
 
+def test_ci_replaces_placeholder_database_password_before_production_preflight():
+    workflow = read(".github/workflows/ci.yml")
+
+    assert "POSTGRES_PASSWORD=ci-postgres-password-at-least-32-bytes" in workflow
+    assert "ci-postgres-password-at-least-32-bytes@postgres:5432" in workflow
+    assert workflow.index("POSTGRES_PASSWORD=ci-postgres-password-at-least-32-bytes") < workflow.index(
+        "bash infra/deploy/validate-runtime-security.sh --environment production"
+    )
+
+
 def test_runtime_security_validator_rejects_public_binds_and_permissive_env():
     validator = read("infra/deploy/validate-runtime-security.sh")
 
@@ -135,3 +145,12 @@ def test_runtime_security_validator_rejects_placeholder_bootstrap_admin_password
     assert "BOOTSTRAP_ADMIN_PASSWORD" in validator
     assert "change-me-in-production" in validator
     assert "Production BOOTSTRAP_ADMIN_PASSWORD must be a real non-placeholder password" in validator
+
+
+def test_runtime_security_validator_rejects_default_database_passwords():
+    validator = read("infra/deploy/validate-runtime-security.sh")
+
+    assert "POSTGRES_PASSWORD" in validator
+    assert "DATABASE_URL" in validator
+    assert "consultant123" in validator
+    assert "Production database credentials must not use example passwords" in validator
