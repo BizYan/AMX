@@ -18,7 +18,7 @@ from app.db.base import Base
 from app.db.init_schema import deduplicate_indexes
 from app.domains.identity.schemas import LoginRequest, UserUpdate
 from app.domains.identity.service import AuthService, UserService
-from app.models.identity import Tenant, User
+from app.models.identity import Role, Tenant, User, UserRole
 
 
 @pytest.fixture
@@ -44,6 +44,20 @@ async def _seed(db_session):
         is_active=True,
     )
     db_session.add_all([tenant, user])
+    await db_session.flush()
+    return user
+
+
+async def _seed_admin(db_session):
+    user = await _seed(db_session)
+    role = Role(
+        id=uuid4(),
+        tenant_id=user.tenant_id,
+        name="Owner",
+        description="Tenant owner",
+        permissions={"*": True},
+    )
+    db_session.add_all([role, UserRole(user_id=user.id, role_id=role.id)])
     await db_session.flush()
     return user
 
@@ -99,6 +113,18 @@ async def test_deactivation_invalidates_tokens_and_blocks_login(db_session):
 
 
 @pytest.mark.asyncio
+async def test_last_active_admin_cannot_deactivate_own_account(db_session):
+    user = await _seed_admin(db_session)
+    service = AuthService(db_session)
+
+    with pytest.raises(ValueError, match="last active admin"):
+        await service.deactivate_account(user, "OldPassword-2026")
+
+    assert user.is_active is True
+    assert user.security_version == 1
+
+
+@pytest.mark.asyncio
 async def test_admin_deactivation_or_password_reset_revokes_sessions(db_session):
     user = await _seed(db_session)
     service = UserService(db_session)
@@ -109,3 +135,15 @@ async def test_admin_deactivation_or_password_reset_revokes_sessions(db_session)
     await service.update_user(user.id, UserUpdate(password="AdminReset-2026"), user.tenant_id)
     assert user.security_version == 3
     assert user.password_changed_at is not None
+
+
+@pytest.mark.asyncio
+async def test_admin_cannot_deactivate_last_active_admin(db_session):
+    user = await _seed_admin(db_session)
+    service = UserService(db_session)
+
+    with pytest.raises(ValueError, match="last active admin"):
+        await service.update_user(user.id, UserUpdate(is_active=False), user.tenant_id)
+
+    assert user.is_active is True
+    assert user.security_version == 1

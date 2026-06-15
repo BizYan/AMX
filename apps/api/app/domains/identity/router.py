@@ -730,7 +730,10 @@ async def update_user(
             detail="User not found",
         )
 
-    updated = await service.update_user(user_id, data, tenant_id=user.tenant_id)
+    try:
+        updated = await service.update_user(user_id, data, tenant_id=user.tenant_id)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
 
     # Audit log
     audit_service = AuditService(db)
