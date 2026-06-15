@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 import app.db.init_schema  # noqa: F401
+import app.domains.documents.models  # noqa: F401
 import app.models.identity  # noqa: F401
 from app.db.base import Base
 from app.db.init_schema import deduplicate_indexes
@@ -244,3 +245,53 @@ async def test_operations_queue_retries_webhook_and_outbox_failures(db_session, 
     assert retried_delivery.attempts == 4
     assert retried_outbox.status == "pending"
     assert retried_outbox.last_error is None
+
+
+@pytest.mark.asyncio
+async def test_failed_webhook_delivery_enqueues_arq_retry_without_fake_attempt(db_session, monkeypatch):
+    tenant_id, _user_id, _project_id, integration = await make_context(db_session)
+    subscription = await WebhookService(db_session).create_subscription(
+        tenant_id=tenant_id,
+        integration_id=integration.id,
+        url="https://hooks.example.com/amx",
+        events=["project.updated"],
+        secret="webhook-secret",
+    )
+    calls = []
+
+    class FakeRedis:
+        async def enqueue_job(self, name, *args, **kwargs):
+            calls.append(("enqueue", name, args, kwargs))
+
+        async def aclose(self):
+            calls.append(("closed",))
+
+    async def fake_create_pool(redis_settings):
+        calls.append(("pool", redis_settings))
+        return FakeRedis()
+
+    service = WebhookService(db_session)
+
+    async def failed_attempt(_subscription, _payload, delivery):
+        delivery.error_message = "target unavailable"
+        return False
+
+    monkeypatch.setattr("arq.create_pool", fake_create_pool)
+    monkeypatch.setattr(service, "_attempt_delivery", failed_attempt)
+
+    delivery = await service.deliver_webhook(
+        subscription.id,
+        {"event_id": "evt-retry", "event_type": "project.updated"},
+    )
+
+    assert delivery.delivered_at is None
+    assert delivery.error_message == "target unavailable"
+    assert delivery.attempts == 1
+    assert calls[0][0] == "pool"
+    assert calls[1] == (
+        "enqueue",
+        "retry_webhook_delivery",
+        (str(delivery.id),),
+        {"_defer_by": 5},
+    )
+    assert calls[2] == ("closed",)
