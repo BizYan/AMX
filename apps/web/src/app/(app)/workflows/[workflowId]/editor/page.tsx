@@ -185,7 +185,7 @@ const NODE_TYPE_LABELS: Record<WorkflowNodeType, string> = {
 }
 
 function createNode(template: NodeTemplate, index: number, previousNodeId?: string): WorkflowNode {
-  const nodeId = `${template.key}-${Date.now()}-${index + 1}`
+  const nodeId = `${template.key}-${crypto.randomUUID()}`
   return {
     id: nodeId,
     type: template.type,
