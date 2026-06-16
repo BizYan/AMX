@@ -316,7 +316,7 @@ class QuotaStatusResponse(BaseModel):
 
     used: int
     limit: int
-    resetAt: datetime
+    resetAt: datetime | None
 
 
 class QuotaCommandCenterGate(BaseModel):

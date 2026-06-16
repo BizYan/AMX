@@ -23,7 +23,7 @@ import {
 type QuotaData = {
   used: number
   limit: number
-  resetAt: string
+  resetAt: string | null
   period: string
 }
 
@@ -111,7 +111,7 @@ export default function QuotasPage() {
         quotaData: {
           used: Math.round(apiUsed),
           limit: apiLimit,
-          resetAt: apiQuota?.reset_at || new Date(Date.now() + 86400000 * 5).toISOString(),
+          resetAt: apiQuota?.reset_at ?? null,
           period: apiQuota?.period || 'month',
         } as QuotaData,
       }
@@ -159,7 +159,7 @@ export default function QuotasPage() {
     queryFn: () => opsApi.listCircuitBreakers(),
   })
 
-  const quotaData = quotasData?.quotaData || { used: 0, limit: 10000, resetAt: '', period: 'month' }
+  const quotaData = quotasData?.quotaData || { used: 0, limit: 10000, resetAt: null, period: 'month' }
   const usageStats = usageStatsData || { totalRequests: 0, successfulRequests: 0, failedRequests: 0, averageLatency: 0 }
   const rateLimits = rateLimitsData || []
   const providers = useMemo(() => providersResponse?.items || [], [providersResponse?.items])

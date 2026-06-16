@@ -483,11 +483,10 @@ async def get_quota_status(
         tenant_id = current_user.tenant_id
 
     if not tenant_id:
-        # Sandbox fallback
         return QuotaStatusResponse(
-            used=120,
+            used=0,
             limit=1000,
-            resetAt=datetime.now(timezone.utc) + timedelta(days=30)
+            resetAt=None,
         )
 
     quota_service = QuotaService(db)
@@ -496,11 +495,11 @@ async def get_quota_status(
     if api_quota:
         used_val = int(api_quota.used_amount)
         limit_val = int(api_quota.limit_amount)
-        reset_at_val = api_quota.reset_at or (datetime.now(timezone.utc) + timedelta(days=30))
+        reset_at_val = api_quota.reset_at
     else:
         used_val = 0
         limit_val = 1000
-        reset_at_val = datetime.now(timezone.utc) + timedelta(days=30)
+        reset_at_val = None
 
     return QuotaStatusResponse(
         used=used_val,
