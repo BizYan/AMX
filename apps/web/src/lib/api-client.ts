@@ -1459,7 +1459,7 @@ export interface ProjectLaunchPayload {
   blueprint_key: string
   name: string
   description?: string
-  slug: string
+  slug?: string
   member_ids: string[]
   document_types: string[]
   workflow_template_ids: string[]
