@@ -376,6 +376,57 @@ async def test_customer_acceptance_closes_and_reopens_formal_delivery(db_session
 
 
 @pytest.mark.asyncio
+async def test_acceptance_update_generates_stable_item_keys_for_follow_ups(db_session):
+    owner, _, launched = await _seed(db_session)
+    service = ProjectDeliveryPlanService(db_session)
+
+    response = await service.update_acceptance(
+        launched.project.id,
+        owner.tenant_id,
+        owner.id,
+        ProjectAcceptanceUpdate(
+            customer_name="Example Customer",
+            contact_name="Delivery Sponsor",
+            contact_email="sponsor@example.com",
+            decision="rejected",
+            notes="Customer requested two remediation tracks.",
+            items=[
+                {
+                    "key": "",
+                    "title": "Security Review",
+                    "status": "rejected",
+                    "evidence": "Missing signed security evidence",
+                },
+                {
+                    "key": "",
+                    "title": "Security Review",
+                    "status": "pending",
+                    "evidence": "Waiting for customer confirmation",
+                },
+            ],
+        ),
+    )
+
+    assert [item.key for item in response.items] == ["security-review", "security-review-2"]
+    follow_ups = (
+        await db_session.execute(
+            select(CollaborationWorkItem).where(
+                CollaborationWorkItem.source_key.in_(
+                    [
+                        f"acceptance:{launched.project.id}:security-review",
+                        f"acceptance:{launched.project.id}:security-review-2",
+                    ]
+                )
+            )
+        )
+    ).scalars().all()
+    assert {item.source_key.rsplit(":", 1)[-1] for item in follow_ups} == {
+        "security-review",
+        "security-review-2",
+    }
+
+
+@pytest.mark.asyncio
 async def test_customer_portal_link_is_hashed_revocable_and_submits_acceptance(db_session):
     owner, _, launched = await _seed(db_session)
     service = ProjectDeliveryPlanService(db_session)
