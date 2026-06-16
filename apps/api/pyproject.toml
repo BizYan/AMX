@@ -27,6 +27,7 @@ dependencies = [
     "logfire>=4.0.0",
     "aiosqlite>=0.22.1",
     "pyjwt[crypto]>=2.13.0",
+    "pypdf>=5.0.0",
 ]
 
 [project.optional-dependencies]

@@ -49,6 +49,10 @@ from app.services.search_provider import PostgresFTSProvider
 from app.services.graph_store_provider import PostgresGraphProvider
 
 
+class SourceTextExtractionError(ValueError):
+    """Raised when source file text cannot be extracted for knowledge ingestion."""
+
+
 class KnowledgeService:
     """Service for knowledge management operations.
 
@@ -1097,35 +1101,93 @@ class KnowledgeService:
                 import io
                 from docx import Document
                 doc = Document(io.BytesIO(content))
-                return '\n\n'.join([para.text for para in doc.paragraphs if para.text.strip()])
-            except ImportError:
-                return f"[DOCX content from {filename} - python-docx not available]"
-            except Exception:
-                return f"[Failed to parse DOCX: {filename}]"
+                extracted = '\n\n'.join([para.text for para in doc.paragraphs if para.text.strip()])
+                if not extracted.strip():
+                    raise SourceTextExtractionError(f"No extractable DOCX text: {filename}")
+                return extracted
+            except ImportError as exc:
+                raise SourceTextExtractionError("DOCX parser dependency is not available") from exc
+            except SourceTextExtractionError:
+                raise
+            except Exception as exc:
+                raise SourceTextExtractionError(f"Failed to parse DOCX: {filename}") from exc
 
         # Handle PPTX files
         if content_type == 'application/vnd.openxmlformats-officedocument.presentationml.presentation' or ext == 'pptx':
             try:
                 import io
                 from pptx import Presentation
-                from pptx.util import Inches, Pt
                 prs = Presentation(io.BytesIO(content))
                 text_content = []
                 for slide in prs.slides:
                     for shape in slide.shapes:
                         if hasattr(shape, 'text') and shape.text.strip():
                             text_content.append(shape.text)
-                return '\n\n'.join(text_content)
-            except ImportError:
-                return f"[PPTX content from {filename} - python-pptx not available]"
-            except Exception:
-                return f"[Failed to parse PPTX: {filename}]"
+                extracted = '\n\n'.join(text_content)
+                if not extracted.strip():
+                    raise SourceTextExtractionError(f"No extractable PPTX text: {filename}")
+                return extracted
+            except ImportError as exc:
+                raise SourceTextExtractionError("PPTX parser dependency is not available") from exc
+            except SourceTextExtractionError:
+                raise
+            except Exception as exc:
+                raise SourceTextExtractionError(f"Failed to parse PPTX: {filename}") from exc
 
-        # Fallback for unknown types
+        # Handle XLSX files
+        if content_type == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' or ext == 'xlsx':
+            try:
+                import io
+                from openpyxl import load_workbook
+
+                workbook = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+                rows: list[str] = []
+                for worksheet in workbook.worksheets:
+                    rows.append(f"# {worksheet.title}")
+                    for row in worksheet.iter_rows(values_only=True):
+                        values = [str(value).strip() for value in row if value is not None and str(value).strip()]
+                        if values:
+                            rows.append(" | ".join(values))
+                extracted = "\n".join(rows)
+                if not extracted.strip():
+                    raise SourceTextExtractionError(f"No extractable XLSX text: {filename}")
+                return extracted
+            except ImportError as exc:
+                raise SourceTextExtractionError("XLSX parser dependency is not available") from exc
+            except SourceTextExtractionError:
+                raise
+            except Exception as exc:
+                raise SourceTextExtractionError(f"Failed to parse XLSX: {filename}") from exc
+
+        if content_type == 'application/pdf' or ext == 'pdf':
+            try:
+                import io
+                from pypdf import PdfReader
+
+                reader = PdfReader(io.BytesIO(content))
+                extracted = "\n\n".join(
+                    page_text.strip()
+                    for page in reader.pages
+                    if (page_text := page.extract_text() or "").strip()
+                )
+                if not extracted.strip():
+                    raise SourceTextExtractionError(f"No extractable PDF text: {filename}")
+                return extracted
+            except ImportError as exc:
+                raise SourceTextExtractionError("PDF parser dependency is not available") from exc
+            except SourceTextExtractionError:
+                raise
+            except Exception as exc:
+                raise SourceTextExtractionError(f"Failed to parse PDF: {filename}") from exc
+
+        # Fallback for unknown text-compatible types
         try:
-            return content.decode('utf-8', errors='replace')
-        except Exception:
-            return f"[Binary content from {filename}]"
+            extracted = content.decode('utf-8')
+            if not extracted.strip():
+                raise SourceTextExtractionError(f"No extractable text: {filename}")
+            return extracted
+        except UnicodeDecodeError as exc:
+            raise SourceTextExtractionError(f"Unsupported binary source content: {filename}") from exc
 
     def _chunk_text(self, text: str, max_chunk_size: int = 4000) -> list[str]:
         """Split text into chunks of maximum size.
