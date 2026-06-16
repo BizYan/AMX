@@ -66,15 +66,6 @@ const WORKFLOW_LABELS: Record<string, string> = {
   'parallel-quality-review': '并行质量评审',
 }
 
-function createProjectSlug(name: string) {
-  const slug = name
-    .trim()
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, '-')
-    .replace(/^-+|-+$/g, '')
-  return `${slug || 'project'}-${Date.now().toString(36)}`.slice(0, 100)
-}
-
 function getProjectDate(project: Project, key: 'created' | 'updated') {
   return key === 'created'
     ? project.createdAt || project.created_at || new Date().toISOString()
@@ -97,7 +88,6 @@ export default function ProjectsPage() {
     blueprint_key: '',
     name: '',
     description: '',
-    slug: '',
     member_ids: [],
     document_types: [],
     workflow_template_ids: [],
@@ -132,7 +122,6 @@ export default function ProjectsPage() {
         blueprint_key: '',
         name: '',
         description: '',
-        slug: '',
         member_ids: [],
         document_types: [],
         workflow_template_ids: [],
@@ -195,7 +184,6 @@ export default function ProjectsPage() {
       ...launchData,
       name,
       description: launchData.description?.trim(),
-      slug: createProjectSlug(name),
     })
   }
 

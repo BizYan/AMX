@@ -89,7 +89,7 @@ class ProjectLaunchCreate(BaseModel):
     blueprint_key: str = Field(..., min_length=1, max_length=100)
     name: str = Field(..., min_length=1, max_length=255)
     description: str | None = Field(None, max_length=2000)
-    slug: str = Field(..., min_length=1, max_length=100)
+    slug: str | None = Field(None, min_length=1, max_length=100)
     member_ids: list[UUID] = Field(default_factory=list)
     document_types: list[str] | None = None
     workflow_template_ids: list[str] | None = None

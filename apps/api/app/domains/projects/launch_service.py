@@ -21,6 +21,8 @@ from app.models.identity import User
 from app.models.projects import Project, ProjectMember
 
 
+MAX_PROJECT_SLUG_LENGTH = 100
+
 DOCUMENT_LABELS = {
     "urs": "用户需求规格说明书",
     "brd": "业务需求文档",
@@ -30,6 +32,21 @@ DOCUMENT_LABELS = {
     "data_dictionary": "数据字典",
     "test_case": "测试用例",
 }
+
+
+def _slugify_project_name(name: str) -> str:
+    parts: list[str] = []
+    previous_dash = False
+    for character in name.strip().lower():
+        if character.isalnum():
+            parts.append(character)
+            previous_dash = False
+        elif not previous_dash:
+            parts.append("-")
+            previous_dash = True
+
+    slug = "".join(parts).strip("-") or "project"
+    return slug[:MAX_PROJECT_SLUG_LENGTH].strip("-") or "project"
 
 
 @dataclass
@@ -126,12 +143,16 @@ class ProjectLaunchService:
             document_types=document_types,
             workflow_template_ids=workflow_template_ids,
         )
+        slug = data.slug or await self._generate_unique_slug(
+            tenant_id=tenant_id,
+            name=data.name,
+        )
 
         project = await ProjectService(self.db).create_project(
             ProjectCreate(
                 name=data.name,
                 description=data.description,
-                slug=data.slug,
+                slug=slug,
                 status="active",
             ),
             tenant_id=tenant_id,
@@ -222,6 +243,17 @@ class ProjectLaunchService:
             )
             if valid_members != unique_member_ids:
                 raise ValueError("Project members must be active users in the current tenant")
+
+    async def _generate_unique_slug(self, *, tenant_id: UUID, name: str) -> str:
+        base = _slugify_project_name(name)
+        candidate = base
+        suffix = 2
+        while await ProjectService(self.db).get_project_by_slug(candidate, tenant_id):
+            suffix_text = f"-{suffix}"
+            prefix = base[: MAX_PROJECT_SLUG_LENGTH - len(suffix_text)].rstrip("-") or "project"
+            candidate = f"{prefix}{suffix_text}"
+            suffix += 1
+        return candidate
 
     async def _execute(
         self,

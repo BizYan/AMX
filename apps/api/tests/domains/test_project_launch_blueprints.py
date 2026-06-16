@@ -173,6 +173,34 @@ async def test_launch_creates_persistent_plan_members_documents_workflows_and_se
 
 
 @pytest.mark.asyncio
+async def test_launch_generates_unique_slug_when_client_omits_slug(db_session):
+    owner, *_ = await _seed_users(db_session)
+    service = ProjectLaunchService(db_session)
+    data = ProjectLaunchCreate(
+        blueprint_key="consulting-discovery",
+        name="Customer Portal Upgrade",
+        description="Launch without a client-generated slug.",
+        member_ids=[],
+        document_types=["brd"],
+        workflow_template_ids=["brd-document-generation"],
+    )
+
+    first = await service.launch(
+        tenant_id=owner.tenant_id,
+        created_by=owner.id,
+        data=data,
+    )
+    second = await service.launch(
+        tenant_id=owner.tenant_id,
+        created_by=owner.id,
+        data=data,
+    )
+
+    assert first.project.slug == "customer-portal-upgrade"
+    assert second.project.slug == "customer-portal-upgrade-2"
+
+
+@pytest.mark.asyncio
 async def test_launch_rejects_invalid_members_documents_and_workflows(db_session):
     owner, _, inactive, outsider = await _seed_users(db_session)
     service = ProjectLaunchService(db_session)
