@@ -47,8 +47,16 @@ test.describe('Document contradiction resolution center', () => {
     await expect(page.getByTestId('persisted-conflict-history-conflict-e2e-001')).toContainText('Conflict decision history')
     await expect(page.getByTestId('persisted-conflict-history-conflict-e2e-001')).toContainText('assign')
 
+    let acceptRiskPayload: Record<string, unknown> | undefined
+    await page.route(/\/api\/v1\/change\/conflicts\/[^/]+\/accept-risk$/, async (route) => {
+      acceptRiskPayload = JSON.parse(route.request().postData() || '{}')
+      await route.fallback()
+    })
+
     await page.getByTestId('persisted-conflict-accept-risk-conflict-e2e-001').click()
 
+    expect(acceptRiskPayload).toBeDefined()
+    expect(acceptRiskPayload).not.toHaveProperty('accepted_until')
     await expect(page.getByTestId('persisted-conflict-governance')).toContainText('risk_accepted')
     await expect(page.getByTestId('persisted-conflict-governance')).toContainText('Risk accepted until')
     await expect(page.getByTestId('persisted-conflict-history-conflict-e2e-001')).toContainText('accept_risk')

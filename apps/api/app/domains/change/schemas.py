@@ -517,7 +517,10 @@ class ConflictRiskAcceptanceRequest(BaseModel):
 
     reason: str = Field(..., min_length=1)
     mitigation_plan: str = Field(..., min_length=1)
-    accepted_until: datetime
+    accepted_until: datetime | None = Field(
+        default=None,
+        description="Optional explicit risk acceptance expiry. Defaults to 14 days from server acceptance time.",
+    )
     evidence: dict[str, Any] = Field(default_factory=dict)
 
 

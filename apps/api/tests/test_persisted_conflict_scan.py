@@ -625,6 +625,36 @@ async def test_project_owner_accepts_conflict_risk_with_expiring_mitigation(db_s
 
 
 @pytest.mark.asyncio
+async def test_accept_risk_defaults_expiry_server_side(db_session):
+    tenant, project, _, _, ready, service = await prepare_decision_conflict(db_session)
+
+    before = datetime.now(timezone.utc)
+    accepted = await service.accept_risk(
+        tenant_id=tenant.id,
+        conflict_id=ready.id,
+        actor_id=project.owner_id,
+        reason="Known temporary traceability exception",
+        mitigation_plan="Review supplier traceability package before release.",
+        accepted_until=None,
+        evidence={"risk_owner": "QA"},
+    )
+    after = datetime.now(timezone.utc)
+
+    assert accepted.status == ConflictStatus.RISK_ACCEPTED.value
+    assert accepted.risk_acceptance_expires_at is not None
+    assert before + timedelta(days=14) <= accepted.risk_acceptance_expires_at <= after + timedelta(days=14)
+    decisions = (
+        await db_session.execute(
+            select(DocumentConflictDecision)
+            .where(DocumentConflictDecision.conflict_id == accepted.id)
+            .order_by(DocumentConflictDecision.created_at)
+        )
+    ).scalars().all()
+    assert decisions[-1].action == "accept_risk"
+    assert decisions[-1].evidence_json["accepted_until"] == accepted.risk_acceptance_expires_at.isoformat()
+
+
+@pytest.mark.asyncio
 async def test_accept_risk_requires_decision_status_and_future_expiry(db_session):
     tenant, project, _, _, ready, service = await prepare_decision_conflict(db_session)
 

@@ -5117,6 +5117,7 @@ export async function setupApiMocks(page: Page, options: SetupApiMockOptions = {
     const action = match?.[2] || ''
     const payload = JSON.parse(route.request().postData() || '{}')
     const updatedAt = new Date().toISOString()
+    const defaultRiskAcceptanceExpiry = new Date(Date.parse(updatedAt) + 14 * 24 * 60 * 60 * 1000).toISOString()
     const previousConflict = documentConflicts.find((item) => item.id === conflictId)
     const statusByAction: Record<string, string> = {
       'complete-analysis': 'decision',
@@ -5140,7 +5141,7 @@ export async function setupApiMocks(page: Page, options: SetupApiMockOptions = {
         updated_at: updatedAt,
         risk_accepted_by: action === 'accept-risk' ? MOCK.MOCK_USER.id : item.risk_accepted_by,
         risk_accepted_at: action === 'accept-risk' ? updatedAt : item.risk_accepted_at,
-        risk_acceptance_expires_at: action === 'accept-risk' ? payload.accepted_until : item.risk_acceptance_expires_at,
+        risk_acceptance_expires_at: action === 'accept-risk' ? (payload.accepted_until ?? defaultRiskAcceptanceExpiry) : item.risk_acceptance_expires_at,
         risk_acceptance_json: action === 'accept-risk' ? payload : item.risk_acceptance_json,
         accepted_revision_json: action === 'accept-revision' ? payload : item.accepted_revision_json,
         revision_accepted_at: action === 'accept-revision' ? updatedAt : item.revision_accepted_at,

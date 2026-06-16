@@ -2,7 +2,7 @@
 
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -28,6 +28,8 @@ from app.domains.change.service import ChangeService, TraceabilityService
 from app.domains.documents.models import Document
 from app.models.identity import User
 from app.models.projects import Project
+
+RISK_ACCEPTANCE_DEFAULT_DURATION = timedelta(days=14)
 
 
 MUTABLE_EVIDENCE_KEYS = {
@@ -308,16 +310,19 @@ class ConflictGovernanceService:
         actor_id: UUID,
         reason: str,
         mitigation_plan: str,
-        accepted_until: datetime,
+        accepted_until: datetime | None,
         evidence: dict[str, Any],
     ) -> DocumentConflict:
         if not reason.strip():
             raise ValueError("Risk acceptance reason is required")
         if not mitigation_plan.strip():
             raise ValueError("Risk mitigation plan is required")
-        if accepted_until.tzinfo is None:
+        now = datetime.now(timezone.utc)
+        if accepted_until is None:
+            accepted_until = now + RISK_ACCEPTANCE_DEFAULT_DURATION
+        elif accepted_until.tzinfo is None:
             accepted_until = accepted_until.replace(tzinfo=timezone.utc)
-        if accepted_until <= datetime.now(timezone.utc):
+        if accepted_until <= now:
             raise ValueError("Risk acceptance must expire in the future")
 
         conflict = await self.get_conflict_for_update(
@@ -334,7 +339,6 @@ class ConflictGovernanceService:
             raise ValueError("Conflict must be in decision status")
 
         previous_status = conflict.status
-        now = datetime.now(timezone.utc)
         conflict.status = ConflictStatus.RISK_ACCEPTED.value
         conflict.risk_accepted_by = actor_id
         conflict.risk_accepted_at = now
