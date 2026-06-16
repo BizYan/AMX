@@ -2944,7 +2944,7 @@ export interface PlatformMetrics {
 export interface QuotaStatus {
   used: number
   limit: number
-  resetAt: string
+  resetAt: string | null
 }
 
 export interface AgentRun {
