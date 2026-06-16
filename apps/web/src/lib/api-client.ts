@@ -3515,7 +3515,7 @@ export interface ConflictAssignmentPayload {
 export interface ConflictRiskAcceptancePayload {
   reason: string
   mitigation_plan: string
-  accepted_until: string
+  accepted_until?: string
   evidence?: Record<string, any>
 }
 

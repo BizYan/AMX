@@ -394,11 +394,9 @@ export default function ContradictionsPage() {
       }
 
       if (action === 'accept_risk') {
-        const acceptedUntil = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
         return changeApi.acceptDocumentConflictRisk(conflict.id, {
           reason: 'Operator accepted this conflict risk with mitigation evidence.',
           mitigation_plan: 'Monitor linked delivery evidence and renew or close before expiry.',
-          accepted_until: acceptedUntil,
           evidence,
         })
       }
