@@ -216,10 +216,40 @@ class ProjectDeliveryPlanResponse(BaseModel):
     summary: ProjectDeliveryPlanSummary | None = None
 
 
+def _acceptance_item_key_base(title: str) -> str:
+    parts: list[str] = []
+    previous_dash = False
+    for character in title.strip().lower():
+        if character.isalnum():
+            parts.append(character)
+            previous_dash = False
+        elif not previous_dash:
+            parts.append("-")
+            previous_dash = True
+    return ("".join(parts).strip("-") or "acceptance-item")[:100].strip("-") or "acceptance-item"
+
+
+def _normalize_acceptance_item_keys(items: list["ProjectAcceptanceItem"]) -> list["ProjectAcceptanceItem"]:
+    seen: set[str] = set()
+    for index, item in enumerate(items, start=1):
+        base = (item.key or "").strip() or _acceptance_item_key_base(item.title)
+        base = base[:100].strip("-") or f"acceptance-item-{index}"
+        candidate = base
+        suffix = 2
+        while candidate in seen:
+            suffix_text = f"-{suffix}"
+            prefix = base[: 100 - len(suffix_text)].rstrip("-") or "acceptance-item"
+            candidate = f"{prefix}{suffix_text}"
+            suffix += 1
+        item.key = candidate
+        seen.add(candidate)
+    return items
+
+
 class ProjectAcceptanceItem(BaseModel):
     """One customer acceptance criterion and its evidence."""
 
-    key: str = Field(..., min_length=1, max_length=100)
+    key: str = Field(default="", max_length=100)
     title: str = Field(..., min_length=1, max_length=255)
     status: str = Field(default="pending", pattern="^(pending|accepted|rejected)$")
     evidence: str = Field(default="", max_length=4000)
@@ -237,6 +267,11 @@ class ProjectAcceptanceUpdate(BaseModel):
     )
     notes: str = Field(default="", max_length=8000)
     items: list[ProjectAcceptanceItem] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def normalize_acceptance_item_keys(self) -> "ProjectAcceptanceUpdate":
+        self.items = _normalize_acceptance_item_keys(self.items)
+        return self
 
 
 class ProjectAcceptanceGate(BaseModel):
@@ -311,6 +346,11 @@ class CustomerPortalAcceptanceSubmit(BaseModel):
     )
     notes: str = Field(default="", max_length=8000)
     items: list[ProjectAcceptanceItem] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def normalize_acceptance_item_keys(self) -> "CustomerPortalAcceptanceSubmit":
+        self.items = _normalize_acceptance_item_keys(self.items)
+        return self
 
 
 class CustomerPortalArtifact(BaseModel):

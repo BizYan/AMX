@@ -13,7 +13,7 @@ import { useToast } from '@/components/ui/toast'
 import { CustomerPortalLinkCreated, ProjectAcceptanceItem, ProjectAcceptanceUpdate, projectsApi } from '@/lib/api-client'
 
 const emptyItem = (): ProjectAcceptanceItem => ({
-  key: `acceptance-${Date.now()}`,
+  key: '',
   title: '',
   status: 'pending',
   evidence: '',
