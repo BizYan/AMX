@@ -1,4 +1,4 @@
-let fallbackSequence = 0
+let sequenceCounter = 0
 
 export function createClientId(prefix: string) {
   const normalizedPrefix = prefix.trim() || 'client'
@@ -6,6 +6,6 @@ export function createClientId(prefix: string) {
     return `${normalizedPrefix}-${crypto.randomUUID()}`
   }
 
-  fallbackSequence += 1
-  return `${normalizedPrefix}-${fallbackSequence}`
+  sequenceCounter += 1
+  return `${normalizedPrefix}-${sequenceCounter}`
 }

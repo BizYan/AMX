@@ -10,6 +10,10 @@ const clientIdConsumers = [
   'src/components/ui/toast.tsx',
 ]
 
+const deterministicExportConsumers = [
+  'src/app/(app)/knowledge/graph/page.tsx',
+]
+
 test('client-local UI identifiers use the shared UUID helper', () => {
   for (const relativePath of clientIdConsumers) {
     const source = readFileSync(join(repoRoot, 'apps/web', relativePath), 'utf8')
@@ -17,5 +21,13 @@ test('client-local UI identifiers use the shared UUID helper', () => {
     expect(source, `${relativePath} should import the shared helper`).toContain('createClientId')
     expect(source, `${relativePath} should not use clock-based IDs`).not.toContain('Date.now()')
     expect(source, `${relativePath} should not use random decimal IDs`).not.toContain('Math.random()')
+  }
+})
+
+test('client-side exports reuse recorded timestamps instead of ad hoc clock reads', () => {
+  for (const relativePath of deterministicExportConsumers) {
+    const source = readFileSync(join(repoRoot, 'apps/web', relativePath), 'utf8')
+
+    expect(source, `${relativePath} should not build download names with Date.now()`).not.toContain('Date.now()')
   }
 })
