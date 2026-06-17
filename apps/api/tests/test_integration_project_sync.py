@@ -82,6 +82,39 @@ async def make_context(db_session):
     return tenant_id, user_id, project_id, integration
 
 
+class FakeProjectSyncClient:
+    requests: list[tuple[str, str, dict]] = []
+
+    def __init__(self, *args, **kwargs):
+        self.args = args
+        self.kwargs = kwargs
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    async def get(self, url: str, **kwargs):
+        self.requests.append(("GET", url, kwargs))
+        return FakeProjectSyncResponse({"issues": [{"key": "AMX-ROOT", "summary": "Root payload"}]})
+
+    async def request(self, method: str, url: str, **kwargs):
+        self.requests.append((method, url, kwargs))
+        return FakeProjectSyncResponse({"issues": [{"key": "AMX-ROOT", "summary": "Root payload"}]})
+
+
+class FakeProjectSyncResponse:
+    def __init__(self, body: dict):
+        self._body = body
+
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        return self._body
+
+
 @pytest.mark.asyncio
 async def test_binding_preview_normalizes_external_items_without_persisting_assets(db_session, monkeypatch):
     tenant_id, user_id, project_id, integration = await make_context(db_session)
@@ -161,6 +194,41 @@ async def test_sync_is_idempotent_and_updates_changed_external_asset_with_proven
     assert summary.evidence.project_binding_count == 1
     assert summary.evidence.completed_project_sync_count == 3
     assert summary.evidence.synced_asset_count == 1
+
+
+@pytest.mark.asyncio
+async def test_project_binding_sync_requires_configured_source_path(db_session, monkeypatch):
+    tenant_id, user_id, project_id, _integration = await make_context(db_session)
+    integration = await IntegrationService(db_session).create_integration(
+        tenant_id=tenant_id,
+        provider_type="jira",
+        name="Health-only Jira",
+        config={
+            "base_url": "https://jira.example.com",
+            "api_key": "secret",
+        },
+    )
+    service = IntegrationProjectSyncService(db_session)
+    binding = await service.create_binding(
+        tenant_id=tenant_id,
+        integration_id=integration.id,
+        project_id=project_id,
+        name="Missing source",
+        scope={"item_path": "issues"},
+        field_mapping={"external_id": "key", "title": "summary", "content": "summary"},
+        created_by=user_id,
+    )
+    FakeProjectSyncClient.requests = []
+    monkeypatch.setattr("app.domains.integrations.project_sync_service.httpx.AsyncClient", FakeProjectSyncClient)
+
+    run = await service.sync_binding(binding.id, tenant_id, user_id)
+
+    assert run.status == "failed"
+    assert "sync_path or scope.path" in (run.error_message or "")
+    assert binding.last_sync_status == "failed"
+    assert FakeProjectSyncClient.requests == []
+    assert await db_session.scalar(select(KnowledgeEntry)) is None
+    assert await db_session.scalar(select(SourceFile)) is None
 
 
 @pytest.mark.asyncio

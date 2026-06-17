@@ -261,14 +261,19 @@ class IntegrationProjectSyncService:
         config = integration.config_json or {}
         scope = binding.scope_json or {}
         helper = IntegrationService(self.db)
+        sync_path = str(config.get("sync_path") or "").strip()
+        binding_path = str(scope.get("path") or "").strip()
+        if not sync_path and not binding_path:
+            raise ValueError("Integration project sync source path is not configured. Set sync_path or scope.path before preview/sync.")
+
         endpoint = helper._build_endpoint(
             config,
             path_key="sync_path",
-            fallback_path=str(scope.get("path") or "/"),
+            fallback_path=binding_path or "/",
         )
-        if scope.get("path"):
+        if binding_path:
             endpoint = helper._build_endpoint(
-                {**config, "binding_path": scope["path"]},
+                {**config, "binding_path": binding_path},
                 path_key="binding_path",
                 fallback_path="/",
             )
