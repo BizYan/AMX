@@ -224,6 +224,19 @@ test.describe('P2 document lifecycle workbench', () => {
     expect(source).toContain("'已自动保存 · 未提供时间'")
   })
 
+  test('status history items use transition identity instead of list index', () => {
+    const source = readFileSync(
+      join(repoRoot, 'apps/web/src/app/(app)/projects/[projectId]/documents/[docId]/page.tsx'),
+      'utf8'
+    )
+
+    expect(source).toContain('function statusTransitionKey')
+    expect(source).toContain('item.transition_id')
+    expect(source).toContain('data-testid={`status-history-item-${transitionKey}`}')
+    expect(source).not.toContain('data-testid={`status-history-item-${index}`}')
+    expect(source).not.toContain('key={`${item.changed_at}-${index}`}')
+  })
+
   test('shows document generation command flow before starting a session', async ({ page }) => {
     await gotoAppPage(page, '/projects/project-e2e-001/documents/generate')
 

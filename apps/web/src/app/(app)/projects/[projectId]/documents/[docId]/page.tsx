@@ -117,6 +117,18 @@ const STATUS_ACTION_LABELS: Record<string, string> = {
   archived: '归档文档',
 }
 
+function statusTransitionKey(item: DocumentStatusTransition) {
+  return item.transition_id
+    || [
+      item.changed_at,
+      item.from_status,
+      item.to_status,
+      item.action,
+      item.changed_by || '',
+      item.policy_revision,
+    ].join('::')
+}
+
 function getStatusCapabilityMessage(capability?: DocumentStatusCapability) {
   if (!capability) return '正在核验权限与流程条件'
   if (capability.allowed) return '权限与流程条件已满足'
@@ -977,10 +989,12 @@ export default function DocumentDetailPage({ params }: DocumentDetailPageProps) 
                   暂无状态变更记录
                 </div>
               ) : (
-                latestStatusHistory.map((item, index) => (
+                latestStatusHistory.map((item) => {
+                  const transitionKey = statusTransitionKey(item)
+                  return (
                   <div
-                    key={`${item.changed_at}-${index}`}
-                    data-testid={`status-history-item-${index}`}
+                    key={transitionKey}
+                    data-testid={`status-history-item-${transitionKey}`}
                     className="rounded-md border border-slate-200 p-3 text-sm dark:border-slate-700"
                   >
                     <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
@@ -996,7 +1010,8 @@ export default function DocumentDetailPage({ params }: DocumentDetailPageProps) 
                       操作：{item.action} · 未解决评论：{item.unresolved_comment_count}
                     </p>
                   </div>
-                ))
+                  )
+                })
               )}
             </div>
           </div>

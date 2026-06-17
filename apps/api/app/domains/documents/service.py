@@ -4,11 +4,12 @@ Business logic for document management, versioning, baselines, and quality asses
 """
 
 import asyncio
+import hashlib
 import json
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import select, func, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -726,7 +727,7 @@ class DocumentService:
 
         metadata = document.metadata_json or {}
         review_flow = metadata.get("review_flow") or {}
-        return list(review_flow.get("status_history") or [])
+        return self._status_history_with_transition_ids(review_flow.get("status_history") or [])
 
     async def count_unresolved_comments(
         self,
@@ -761,6 +762,7 @@ class DocumentService:
         history = list(review_flow.get("status_history") or [])
         history.append(
             {
+                "transition_id": str(uuid4()),
                 "from_status": from_status,
                 "to_status": to_status,
                 "action": status_update.action or "status_transition",
@@ -774,6 +776,17 @@ class DocumentService:
         review_flow["status_history"] = history
         metadata["review_flow"] = review_flow
         return metadata
+
+    def _status_history_with_transition_ids(self, history: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        enriched_history: list[dict[str, Any]] = []
+        for index, item in enumerate(history):
+            enriched_item = dict(item)
+            if not enriched_item.get("transition_id"):
+                payload = json.dumps(enriched_item, sort_keys=True, default=str, ensure_ascii=False)
+                digest = hashlib.sha256(f"{index}:{payload}".encode("utf-8")).hexdigest()[:16]
+                enriched_item["transition_id"] = f"legacy-{digest}"
+            enriched_history.append(enriched_item)
+        return enriched_history
 
     async def delete_document(
         self,

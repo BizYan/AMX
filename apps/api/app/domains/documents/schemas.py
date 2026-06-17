@@ -81,6 +81,7 @@ class DocumentStatusUpdate(BaseModel):
 class DocumentStatusTransitionResponse(BaseModel):
     """Schema for document status transition history."""
 
+    transition_id: str | None = None
     from_status: str
     to_status: str
     action: str
