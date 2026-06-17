@@ -253,7 +253,6 @@ export default function AgentOpsPage() {
         comment: data.action === 'reject' ? '人工驳回，停止本次编排运行。' : '人工处理通过，继续执行后续节点。',
         output_data: {
           source: 'agent_ops',
-          handled_at: new Date().toISOString(),
         },
       }),
     onSuccess: (_, variables) => {

@@ -1,5 +1,9 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { expect, Page, test } from '@playwright/test'
 import { setupApiMocks } from './fixtures/api-mocks'
+
+const repoRoot = join(__dirname, '..', '..', '..', '..', '..')
 
 async function gotoAppPage(page: Page, path: string) {
   await page.goto('/login', { waitUntil: 'domcontentloaded' })
@@ -155,6 +159,14 @@ test.describe('智能编排 / Agent 配置中心', () => {
     await page.getByTestId('agent-run-control-resume').click()
     await expect(page.locator('body')).toContainText('已恢复运行', { timeout: 8000 })
     await expect(dialog).toContainText('control_resume', { timeout: 8000 })
+  })
+
+  test('agent ops control actions do not synthesize handled timestamps', () => {
+    const source = readFileSync(join(repoRoot, 'apps/web/src/app/(app)/agent-ops/page.tsx'), 'utf8')
+    const service = readFileSync(join(repoRoot, 'apps/api/app/domains/agent/service.py'), 'utf8')
+
+    expect(source).not.toContain('handled_at: new Date().toISOString()')
+    expect(service).toContain('"resolved_at": now.isoformat()')
   })
 
   test('agent ops has a deterministic empty state when filters match nothing', async ({ page }) => {
