@@ -1,5 +1,9 @@
 import { expect, Page, test } from '@playwright/test'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { setupApiMocks } from './fixtures/api-mocks'
+
+const repoRoot = join(__dirname, '..', '..', '..', '..', '..')
 
 async function gotoAppPage(page: Page, path: string) {
   try {
@@ -62,5 +66,12 @@ test.describe('provider operations control center', () => {
     await expect(page.getByTestId('quota-rate-limit-risks')).toContainText('/api/agent')
     await expect(page.locator('body')).toContainText('Graphify')
     await expect(page.locator('body')).toContainText(/fallback/i)
+  })
+
+  test('quota risk fallback copy is provider-neutral', () => {
+    const source = readFileSync(join(repoRoot, 'apps/web/src/app/(app)/quotas/page.tsx'), 'utf8')
+
+    expect(source).toContain('沙箱 fallback 触发额外重试')
+    expect(source).not.toContain('Graphify 沙箱 fallback')
   })
 })
