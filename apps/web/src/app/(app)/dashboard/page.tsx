@@ -86,6 +86,15 @@ function statusLabel(status: string) {
   )
 }
 
+function systemDeliveryActionKey(action: SystemDeliveryAction) {
+  return [
+    action.project_id,
+    action.code,
+    action.href,
+    action.label,
+  ].join('::')
+}
+
 function severityLabel(severity: string) {
   return (
     {
@@ -726,7 +735,7 @@ export default function DashboardPage() {
                   当前没有高优先级阻塞。
                 </div>
               ) : (
-                criticalActions.map((action, index) => <ActionItem key={`${action.project_id}-${action.code}-${index}`} action={action} />)
+                criticalActions.map((action) => <ActionItem key={systemDeliveryActionKey(action)} action={action} />)
               )}
             </CardContent>
           </Card>
