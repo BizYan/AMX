@@ -350,39 +350,45 @@ class IntegrationService:
             }
 
         sync_path = config.get("sync_path")
+        if not sync_path:
+            return {
+                "success": False,
+                "status": "sync_unconfigured",
+                "message": "Integration sync endpoint is not configured. Set sync_path before triggering sync.",
+                "details": {
+                    "required_config": "sync_path",
+                    "connection": connection,
+                },
+            }
+
         sync_method = str(config.get("sync_method") or "GET").upper()
-        endpoint = self._build_endpoint(config, path_key="sync_path", fallback_path="/health")
+        endpoint = self._build_endpoint(config, path_key="sync_path", fallback_path="/")
         status_code: int | None = None
         external_response: Any = None
 
-        if sync_path:
-            try:
-                response = await self._call_provider(
-                    endpoint=endpoint,
-                    method=sync_method,
-                    config=config,
-                    json_payload=config.get("sync_payload") or {"integration_id": str(integration.id)},
-                )
-                status_code = int(response.status_code)
-                external_response = self._safe_response_body(response)
-                if status_code >= 400:
-                    return {
-                        "success": False,
-                        "status": "sync_failed",
-                        "message": f"Provider sync endpoint returned HTTP {status_code}",
-                        "details": {"endpoint": endpoint, "status_code": status_code},
-                    }
-            except Exception as exc:
+        try:
+            response = await self._call_provider(
+                endpoint=endpoint,
+                method=sync_method,
+                config=config,
+                json_payload=config.get("sync_payload") or {"integration_id": str(integration.id)},
+            )
+            status_code = int(response.status_code)
+            external_response = self._safe_response_body(response)
+            if status_code >= 400:
                 return {
                     "success": False,
                     "status": "sync_failed",
-                    "message": f"Provider sync failed: {exc}",
-                    "details": {"endpoint": endpoint},
+                    "message": f"Provider sync endpoint returned HTTP {status_code}",
+                    "details": {"endpoint": endpoint, "status_code": status_code},
                 }
-        else:
-            endpoint = connection.get("details", {}).get("endpoint", endpoint)
-            status_code = connection.get("details", {}).get("status_code")
-            external_response = connection.get("details", {}).get("response_preview")
+        except Exception as exc:
+            return {
+                "success": False,
+                "status": "sync_failed",
+                "message": f"Provider sync failed: {exc}",
+                "details": {"endpoint": endpoint},
+            }
 
         synced_at = datetime.now(timezone.utc)
         integration.last_sync_at = synced_at
@@ -394,7 +400,7 @@ class IntegrationService:
                 payload={
                     "provider_type": integration.provider_type,
                     "endpoint": endpoint,
-                    "method": sync_method if sync_path else "CONNECTIVITY_SNAPSHOT",
+                    "method": sync_method,
                     "status_code": status_code,
                     "external_response": external_response,
                     "connection": connection,
