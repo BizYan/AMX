@@ -134,6 +134,29 @@ function getSectionStatusLabel(status: string) {
   return SECTION_STATUS_LABELS[status] || status
 }
 
+function stableRecordKey(prefix: string, record: Record<string, any>, fields: string[]) {
+  const values = fields
+    .map((field) => record[field])
+    .filter((value) => value !== undefined && value !== null && String(value).trim().length > 0)
+    .map(String)
+  if (values.length > 0) return `${prefix}:${values.join(':')}`
+
+  const stablePayload = Object.keys(record)
+    .sort()
+    .map((key) => `${key}=${String(record[key])}`)
+    .join('|')
+  return `${prefix}:${stablePayload || 'empty'}`
+}
+
+function stableTextKey(prefix: string, values: unknown[]) {
+  return [
+    prefix,
+    ...values
+      .filter((value) => value !== undefined && value !== null && String(value).trim().length > 0)
+      .map(String),
+  ].join(':')
+}
+
 function getCurrentSection(session: DocumentGenerationSession | null): DocumentGenerationSection | undefined {
   if (!session) return undefined
   return session.sections.find((section) => section.section_key === session.current_section_key) || session.sections[0]
@@ -190,9 +213,9 @@ function getSessionSkillTrace(session: DocumentGenerationSession | null, lastTur
   const stashTrace = ((session?.stash_json || {}).skill_trace || []) as Record<string, any>[]
   const turnTrace = lastTurn?.skill_trace || []
   const seen = new Set<string>()
-  return [...stashTrace, ...turnTrace].filter((item, index) => {
+  return [...stashTrace, ...turnTrace].filter((item) => {
     const key = [
-      item.label || item.skill_label || item.name || item.skill_name || `skill-${index}`,
+      item.label || item.skill_label || item.name || item.skill_name || item.skill_id || item.id || 'skill',
       item.section_key || item.sectionKey || 'global',
       item.action || item.status || 'trace',
     ].join(':')
@@ -354,7 +377,7 @@ function getSectionEvidence(section: DocumentGenerationSection, writeLog: Record
         qualityScore !== undefined ? `质量评分：${qualityScore}` : '',
       ].filter(Boolean)
       return {
-        id: `${section.section_key}-${index}`,
+        id: stableTextKey('paragraph', [section.section_key, heading, paragraph]),
         title: heading || `段落 ${index + 1}`,
         detail: paragraph,
         evidence: evidenceParts,
@@ -616,15 +639,15 @@ export default function GenerateDocumentPage({ params }: GenerateDocumentPagePro
           message: question || section.content_requirement,
         })),
       )
-    const confirmations = sessionPendingConfirmations.map((item, index) => ({
-      id: `confirmation-${item.section_key || index}`,
+    const confirmations = sessionPendingConfirmations.map((item) => ({
+      id: stableRecordKey('confirmation', item, ['id', 'confirmation_id', 'section_key', 'sectionKey', 'question', 'message']),
       type: '待确认',
       title: item.section_title || item.section_key || '待确认项',
       sectionKey: item.section_key,
       message: getPendingConfirmationText(item),
     }))
-    const blockers = sessionQualityBlockers.map((blocker, index) => ({
-      id: `blocker-${index}`,
+    const blockers = Array.from(new Set(sessionQualityBlockers)).map((blocker) => ({
+      id: stableTextKey('blocker', [generationSession.current_section_key, blocker]),
       type: '门禁阻塞',
       title: '交付门禁',
       sectionKey: generationSession.current_section_key,
@@ -1254,7 +1277,7 @@ export default function GenerateDocumentPage({ params }: GenerateDocumentPagePro
             </div>
             <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
               {sectionBlueprint.map((section, index) => (
-                <div key={`${section.title}-${index}`} className="rounded-md bg-slate-50 p-3 dark:bg-slate-900">
+                <div key={stableTextKey('section-blueprint', [selectedDocType, section.title, section.gate])} className="rounded-md bg-slate-50 p-3 dark:bg-slate-900">
                   <div className="flex items-center gap-2">
                     <Badge variant="outline" className="text-xs">{index + 1}</Badge>
                     <p className="text-sm font-medium text-slate-900 dark:text-white">{section.title}</p>
@@ -1958,8 +1981,8 @@ export default function GenerateDocumentPage({ params }: GenerateDocumentPagePro
                         当前没有待确认项。
                       </div>
                     ) : (
-                      sessionPendingConfirmations.map((item, index) => (
-                        <div key={`${item.section_key || 'pending'}-${index}`} className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+                      sessionPendingConfirmations.map((item) => (
+                        <div key={stableRecordKey('pending-confirmation', item, ['id', 'confirmation_id', 'section_key', 'sectionKey', 'question', 'message'])} className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
                           <p className="font-medium">{item.section_title || item.section_key || '待确认项'}</p>
                           <p className="mt-1 text-xs">{getPendingConfirmationText(item)}</p>
                           <Button
@@ -2005,8 +2028,8 @@ export default function GenerateDocumentPage({ params }: GenerateDocumentPagePro
                       <CardDescription>本轮使用的中文业务能力</CardDescription>
                     </CardHeader>
                     <CardContent className="flex flex-wrap gap-2">
-                      {(lastTurn.skill_trace || []).map((item, index) => (
-                        <Badge key={`${item.label}-${index}`} variant="secondary">
+                      {(lastTurn.skill_trace || []).map((item) => (
+                        <Badge key={stableRecordKey('turn-skill-trace', item, ['id', 'skill_id', 'label', 'skill_label', 'section_key', 'action', 'status'])} variant="secondary">
                           {item.label}
                         </Badge>
                       ))}
