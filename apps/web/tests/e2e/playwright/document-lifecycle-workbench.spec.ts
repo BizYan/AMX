@@ -248,6 +248,21 @@ test.describe('P2 document lifecycle workbench', () => {
     expect(source).not.toContain('key={`${index}-${line}`}')
   })
 
+  test('document generation workbench avoids index-based list identity', () => {
+    const source = readFileSync(
+      join(repoRoot, 'apps/web/src/app/(app)/projects/[projectId]/documents/generate/page.tsx'),
+      'utf8'
+    )
+
+    expect(source).toContain('function stableRecordKey')
+    expect(source).toContain('function stableTextKey')
+    expect(source).not.toContain('key={`${section.title}-${index}`}')
+    expect(source).not.toContain('key={`${item.label}-${index}`}')
+    expect(source).not.toContain("id: `blocker-${index}`")
+    expect(source).not.toContain("id: `confirmation-${item.section_key || index}`")
+    expect(source).not.toContain("id: `${section.section_key}-${index}`")
+  })
+
   test('shows document generation command flow before starting a session', async ({ page }) => {
     await gotoAppPage(page, '/projects/project-e2e-001/documents/generate')
 
