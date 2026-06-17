@@ -224,6 +224,40 @@ async def test_sync_calls_remote_sync_endpoint_and_records_evidence_event(db_ses
 
 
 @pytest.mark.asyncio
+async def test_sync_requires_explicit_sync_path_instead_of_reusing_health_probe(db_session, monkeypatch):
+    FakeAsyncClient.requests = []
+    FakeAsyncClient.status_code = 200
+    FakeAsyncClient.body = {"healthy": True}
+    monkeypatch.setattr("app.domains.integrations.service.httpx.AsyncClient", FakeAsyncClient)
+
+    tenant_id = uuid4()
+    db_session.add(Tenant(id=tenant_id, name="Tenant", slug="tenant-sync-path-required"))
+    service = IntegrationService(db_session)
+    integration = await service.create_integration(
+        tenant_id=tenant_id,
+        provider_type="custom",
+        name="Health only",
+        config={
+            "base_url": "https://api.example.com",
+            "api_key": "sync-key",
+            "health_path": "/health",
+        },
+    )
+
+    result = await service.sync_integration(integration.id, tenant_id)
+
+    assert result["success"] is False
+    assert result["status"] == "sync_unconfigured"
+    assert result["details"]["required_config"] == "sync_path"
+    assert integration.last_sync_at is None
+    assert len(FakeAsyncClient.requests) == 1
+    method, url, _kwargs = FakeAsyncClient.requests[0]
+    assert method == "GET"
+    assert url == "https://api.example.com/health"
+    assert list((await db_session.execute(select(IntegrationInboundEvent))).scalars()) == []
+
+
+@pytest.mark.asyncio
 async def test_operations_summary_reports_integration_webhook_and_outbox_evidence(db_session):
     tenant_id = uuid4()
     user_id = uuid4()
