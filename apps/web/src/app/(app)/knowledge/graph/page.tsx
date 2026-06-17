@@ -495,8 +495,9 @@ export default function KnowledgeGraphPage() {
   })
 
   const exportGraph = () => {
+    const exportedAt = new Date().toISOString()
     const payload = {
-      exported_at: new Date().toISOString(),
+      exported_at: exportedAt,
       project_id: projectId || null,
       source_file_id: sourceFileId || null,
       summary: graph?.summary,
@@ -507,7 +508,7 @@ export default function KnowledgeGraphPage() {
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `knowledge-graph-${projectId || 'all'}-${Date.now()}.json`
+    link.download = `knowledge-graph-${projectId || 'all'}-${exportedAt.replace(/[:.]/g, '-')}.json`
     document.body.appendChild(link)
     link.click()
     link.remove()
