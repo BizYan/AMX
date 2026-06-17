@@ -290,7 +290,7 @@ export default function CollaborationPage() {
         </div>
         <div className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-600 dark:border-slate-700 dark:text-slate-300">
           <Clock3 className="h-4 w-4" />
-          数据更新时间 {formatTime(reviews[0]?.updated_at || new Date().toISOString())}
+          数据更新时间 {reviews[0]?.updated_at ? formatTime(reviews[0].updated_at) : '暂无评审更新时间'}
         </div>
       </div>
 
