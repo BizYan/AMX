@@ -134,7 +134,7 @@ async def test_seeded_skills_have_chinese_display_governance_and_lock_rules(db_s
 
 
 @pytest.mark.asyncio
-async def test_builtin_skill_sample_inputs_do_not_ship_placeholder_markers(db_session):
+async def test_builtin_skill_samples_do_not_ship_placeholder_or_fixed_demo_markers(db_session):
     tenant_id = uuid4()
     user_id = uuid4()
 
@@ -146,15 +146,31 @@ async def test_builtin_skill_sample_inputs_do_not_ship_placeholder_markers(db_se
         limit=100,
     )
 
-    forbidden_markers = ("[TODO]", "[PLACEHOLDER]", "demo-")
+    forbidden_markers = (
+        "[TODO]",
+        "[PLACEHOLDER]",
+        "demo-",
+        "WMS",
+        "仓储",
+        "仓库",
+        "出库",
+        "发运",
+        "扫码",
+        "波次",
+        "SKU",
+        "warehouse_management",
+        "logistics",
+        "prd-shipping-review-001",
+    )
     for skill in skills:
-        sample_input = (skill.metadata_json or {}).get("sample_input")
-        if not sample_input:
-            continue
-
-        serialized = json.dumps(sample_input, ensure_ascii=False)
+        sample_payload = {
+            "sample_input": (skill.metadata_json or {}).get("sample_input"),
+            "sample_context": (skill.metadata_json or {}).get("sample_context"),
+            "test_scenario": (skill.metadata_json or {}).get("test_scenario"),
+        }
+        serialized = json.dumps(sample_payload, ensure_ascii=False)
         for marker in forbidden_markers:
-            assert marker not in serialized, f"{skill.name} sample_input contains {marker}"
+            assert marker not in serialized, f"{skill.name} sample metadata contains {marker}"
 
 
 @pytest.mark.asyncio

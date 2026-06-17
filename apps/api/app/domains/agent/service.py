@@ -746,20 +746,20 @@ class SkillCatalogService:
         "MECEAnalyzer": {
             "test_scenario": "检查 PRD 功能模块拆分是否互斥且覆盖完整。",
             "sample_input": {
-                "content": "仓储系统升级包含入库、上架、库存、拣货、复核、发运和异常处理模块。",
-                "categories": ["入库管理", "库存管理", "出库履约", "异常处理"],
+                "content": "业务流程优化包含申请提交、资料校验、任务分派、质量复核和异常处理模块。",
+                "categories": ["申请提交", "资料校验", "任务分派", "异常处理"],
             },
-            "sample_context": {"document_type": "prd", "project_name": "仓储管理升级"},
+            "sample_context": {"document_type": "prd", "project_name": "业务流程优化"},
         },
         "IssueTreeAnalyzer": {
-            "test_scenario": "把错发率高的问题拆解为可分析的问题树。",
-            "sample_input": {"issue": "仓库出库错发率高", "depth": 3, "branch_type": "cause"},
-            "sample_context": {"industry": "logistics", "document_type": "brd"},
+            "test_scenario": "把处理超时的问题拆解为可分析的问题树。",
+            "sample_input": {"issue": "审批处理超时率高", "depth": 3, "branch_type": "cause"},
+            "sample_context": {"industry": "general_business", "document_type": "brd"},
         },
         "DocumentReviewer": {
             "test_scenario": "评审一段 PRD 草稿是否结构清晰、是否仍有占位内容。",
             "sample_input": {
-                "content": "## 发运复核\n- 系统必须支持逐单扫码复核并记录扫码人、时间和结果。\n- 异常订单进入人工复核队列，处理结论写入审计记录。",
+                "content": "## 质量复核\n- 系统必须支持逐项校验并记录处理人、时间和结果。\n- 异常任务进入人工复核队列，处理结论写入审计记录。",
                 "review_type": "detailed",
                 "check_list": ["结构完整性", "占位内容", "验收标准"],
             },
@@ -769,35 +769,35 @@ class SkillCatalogService:
             "test_scenario": "识别含糊需求并给出澄清问题。",
             "sample_input": {
                 "requirements": [
-                    "系统应该尽快完成波次分配。",
-                    "异常订单可能需要人工处理。",
-                    "发运复核必须记录扫码人和时间。",
+                    "系统应该尽快完成任务分派。",
+                    "异常任务可能需要人工处理。",
+                    "质量复核必须记录处理人和时间。",
                 ],
-                "context": "当前项目为 WMS 升级 BRD。",
+                "context": "当前项目为业务流程优化 BRD。",
             },
-            "sample_context": {"document_type": "brd", "project_name": "仓储管理升级"},
+            "sample_context": {"document_type": "brd", "project_name": "业务流程优化"},
         },
         "ExportOrchestrator": {
             "test_scenario": "模拟把文档导出为 Word。",
-            "sample_input": {"document_id": "prd-shipping-review-001", "format": "word", "options": {"include_toc": True}},
+            "sample_input": {"document_id": "prd-quality-review-001", "format": "word", "options": {"include_toc": True}},
             "sample_context": {"document_type": "prd"},
         },
         "BRDDeepThinkingEngine": {
             "test_scenario": "根据用户回答判断 BRD 当前章节是否足够，并生成下一问。",
             "sample_input": {
-                "user_message": "目前错发主要发生在波次拣货后，复核环节只抽检，缺少逐单扫码。",
+                "user_message": "目前处理超时主要发生在资料补全后，复核环节只抽检，缺少逐项校验。",
                 "current_section": "brd.business_flows",
-                "known_facts": ["系统覆盖收货、上架、拣货、复核、发运"],
+                "known_facts": ["系统覆盖申请提交、资料校验、任务分派、复核和归档"],
             },
-            "sample_context": {"document_type": "brd", "project_name": "仓储管理升级"},
+            "sample_context": {"document_type": "brd", "project_name": "业务流程优化"},
         },
         "BRDWritePipeline": {
             "test_scenario": "把已确认事实写成 BRD 业务流程章节草稿。",
             "sample_input": {
                 "section_key": "brd.business_flows",
                 "confirmed_facts": [
-                    "现有复核只抽检，无法覆盖全部出库单。",
-                    "目标是建立逐单扫码复核和异常拦截。",
+                    "现有复核只抽检，无法覆盖全部任务。",
+                    "目标是建立逐项校验和异常拦截。",
                 ],
                 "quality_rules": [{"rule": "必须包含现状、目标流程、异常处理"}],
             },
@@ -805,15 +805,15 @@ class SkillCatalogService:
         },
         "BRDResearchAssistant": {
             "test_scenario": "判断 BRD 是否需要补充行业调研主题。",
-            "sample_input": {"industry": "logistics", "unknown_terms": ["波次分配", "库位热度", "扫码复核"]},
+            "sample_input": {"industry": "general_business", "unknown_terms": ["任务分派", "质量复核", "异常拦截"]},
             "sample_context": {"document_type": "brd"},
         },
         "BRDPatternLibrary": {
-            "test_scenario": "为 WMS 升级项目推荐 BRD 章节写作模式。",
+            "test_scenario": "为业务流程优化项目推荐 BRD 章节写作模式。",
             "sample_input": {
-                "domain": "warehouse_management",
+                "domain": "business_process_optimization",
                 "section_key": "brd.requirement_modules",
-                "keywords": ["波次", "复核", "异常拦截"],
+                "keywords": ["任务分派", "复核", "异常拦截"],
             },
             "sample_context": {"document_type": "brd"},
         },
@@ -825,8 +825,8 @@ class SkillCatalogService:
         "PRDTraceabilityMapper": {
             "test_scenario": "把 BRD 痛点映射为 PRD 功能追踪行。",
             "sample_input": {
-                "brd_content": "痛点：复核只抽检导致错发。目标：逐单扫码复核并记录异常。",
-                "product_scope": "WMS 出库复核模块",
+                "brd_content": "痛点：复核只抽检导致处理遗漏。目标：逐项校验并记录异常。",
+                "product_scope": "质量复核模块",
             },
             "sample_context": {"document_type": "prd", "source_document_type": "brd"},
         },
@@ -834,9 +834,9 @@ class SkillCatalogService:
             "test_scenario": "根据追踪行生成 PRD 模块骨架。",
             "sample_input": {
                 "traceability_rows": [
-                    {"brd_item": "逐单扫码复核", "prd_module": "出库复核", "priority": "P0"}
+                    {"brd_item": "逐项校验", "prd_module": "质量复核", "priority": "P0"}
                 ],
-                "module_candidates": ["出库复核", "异常拦截", "操作审计"],
+                "module_candidates": ["质量复核", "异常拦截", "操作审计"],
             },
             "sample_context": {"document_type": "prd"},
         },
@@ -844,35 +844,35 @@ class SkillCatalogService:
             "test_scenario": "为 PRD 模板规划可复用章节结构。",
             "sample_input": {
                 "doc_type": "prd",
-                "business_domain": "warehouse_management",
+                "business_domain": "business_process_optimization",
                 "required_sections": ["功能范围", "业务规则", "验收标准"],
             },
-            "sample_context": {"template_name": "WMS PRD 标准模板"},
+            "sample_context": {"template_name": "PRD 标准模板"},
         },
         "ChangeImpactAnalyzer": {
             "test_scenario": "分析 BRD 变更对 PRD、测试用例和模板章节的影响。",
             "sample_input": {
-                "change_summary": "BRD 增加逐单扫码复核要求。",
-                "source_document": "WMS 升级 BRD",
-                "linked_artifacts": ["WMS PRD", "出库复核测试用例", "PRD 标准模板"],
+                "change_summary": "BRD 增加逐项校验要求。",
+                "source_document": "业务流程优化 BRD",
+                "linked_artifacts": ["流程优化 PRD", "质量复核测试用例", "PRD 标准模板"],
             },
             "sample_context": {"document_type": "brd", "change_type": "requirement_added"},
         },
         "KnowledgeGraphExtractor": {
             "test_scenario": "从文档片段抽取业务实体、流程和依赖关系。",
             "sample_input": {
-                "content": "拣货完成后，复核员逐单扫码校验订单、SKU 和数量，异常订单进入人工处理。",
-                "project_context": "WMS 升级",
+                "content": "任务提交后，复核员逐项校验资料完整性和处理结果，异常任务进入人工处理。",
+                "project_context": "业务流程优化",
             },
             "sample_context": {"document_type": "brd"},
         },
         "TestCaseDesigner": {
             "test_scenario": "根据 PRD 功能点生成验收测试用例草案。",
             "sample_input": {
-                "feature_name": "逐单扫码复核",
+                "feature_name": "逐项质量复核",
                 "acceptance_criteria": [
-                    "扫码订单号必须匹配当前出库单。",
-                    "SKU 或数量不一致时阻止发运并记录异常。",
+                    "复核项必须匹配当前任务。",
+                    "资料或处理结果不一致时阻止归档并记录异常。",
                 ],
             },
             "sample_context": {"document_type": "test_case", "source_document_type": "prd"},
