@@ -757,7 +757,7 @@ export default function ExportsPage() {
 
                   <div className="space-y-2">
                     {variableRows.map((row, index) => (
-                      <div key={row.id} className="grid gap-2 md:grid-cols-[1fr_1fr_auto]">
+                      <div key={row.id} data-testid={`export-variable-row-${row.id}`} className="grid gap-2 md:grid-cols-[1fr_1fr_auto]">
                         <Input
                           aria-label={`export-variable-key-${index + 1}`}
                           data-testid={`export-variable-key-${index + 1}`}
