@@ -12,6 +12,7 @@ import { Select, SelectOption } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/toast'
 import { apiClient, documentsApi, exportsApi, projectsApi, type Document, type ExportJob, type ExportReleaseEvidence, type Project } from '@/lib/api-client'
+import { createClientId } from '@/lib/client-id'
 import {
   hasTemplatePlaceholderBlocker,
   templatePlaceholderSummary,
@@ -522,7 +523,7 @@ export default function ExportsPage() {
   }
 
   const addVariableRow = () => {
-    setVariableRows((current) => [...current, { id: `variable-${Date.now()}`, key: '', value: '' }])
+    setVariableRows((current) => [...current, { id: createClientId('variable'), key: '', value: '' }])
   }
 
   const removeVariableRow = (id: string) => {

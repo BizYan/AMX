@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { use, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { sourceFilesApi, SourceFile, SourceIngestionJob } from '@/lib/api-client'
+import { createClientId } from '@/lib/client-id'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -157,7 +158,7 @@ export default function FilesPage({ params }: FilesPageProps) {
     if (selectedFiles.length === 0) return
 
     const newUploadingFiles = selectedFiles.map((file) => ({
-      id: `${file.name}-${Date.now()}-${Math.random()}`,
+      id: createClientId(`upload-${file.name}`),
       name: file.name,
       size: file.size,
       status: 'reading' as const,

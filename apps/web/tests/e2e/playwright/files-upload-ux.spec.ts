@@ -31,16 +31,16 @@ test.describe('AMX Project Files Upload UX & Dark Mode QA Spec', () => {
     await gotoAppPage(page, filesUrl)
 
     // 验证核心标题
-    await expect(page.locator('h1')).toContainText('项目资料')
+    await expect(page.locator('h1')).toContainText('资料摄取驾驶舱')
 
     // 验证拖拽大框和上传按钮正常呈现
-    const dragCard = page.locator('div:has-text("拖拽文件到这里")').first()
+    const dragCard = page.locator('div:has-text("拖放资料到这里")').first()
     await expect(dragCard).toBeVisible()
 
     const fileInput = page.locator('input[type="file"]').first()
     await expect(fileInput).not.toBeVisible() // 应该处于隐藏状态，防视觉干扰
 
-    const uploadButton = page.locator('button:has-text("选择本地文件")').first()
+    const uploadButton = page.locator('button:has-text("选择本地资料")').first()
     await expect(uploadButton).toBeVisible()
     await expect(uploadButton).toBeEnabled()
   })
@@ -99,7 +99,7 @@ test.describe('AMX Project Files Upload UX & Dark Mode QA Spec', () => {
 
     // 验证上传队列出现
     await expect(page.locator('text=上传队列')).toBeVisible()
-    await expect(page.getByRole('heading', { name: 'playwright-test.txt' })).toBeVisible()
+    await expect(page.getByText('playwright-test.txt')).toBeVisible()
 
     // 验证上传成功 Toast 提示 (中文反馈)
     const toast = page.locator('text=文件上传成功')
@@ -155,7 +155,7 @@ test.describe('AMX Project Files Upload UX & Dark Mode QA Spec', () => {
     await expect(headerTitle).toHaveClass(/text-slate-900|text-white/)
 
     // 确保核心操作卡片在暗黑模式下仍可交互
-    const browseBtn = page.locator('button:has-text("选择本地文件")').first()
+    const browseBtn = page.locator('button:has-text("选择本地资料")').first()
     await expect(browseBtn).toBeVisible()
     await expect(browseBtn).toBeEnabled()
   })
