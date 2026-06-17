@@ -1,6 +1,10 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { expect, Page, test } from '@playwright/test'
 
 import { setupApiMocks } from './fixtures/api-mocks'
+
+const repoRoot = join(__dirname, '..', '..', '..', '..', '..')
 
 async function gotoAppPage(page: Page, path: string) {
   await setupApiMocks(page)
@@ -31,4 +35,12 @@ test('workflow editor persists UUID node IDs instead of timestamp IDs', async ({
   expect(nodeId).toBeTruthy()
   expect(nodeId).not.toContain('1712345678901')
   expect(nodeId).toMatch(/^requirement_clarifier-[0-9a-f-]{36}$/)
+})
+
+test('workflow editor normalizes missing backend node ids without list index fallback', () => {
+  const source = readFileSync(join(repoRoot, 'apps/web/src/app/(app)/workflows/[workflowId]/editor/page.tsx'), 'utf8')
+
+  expect(source).toContain('function normalizeNodeFallbackId')
+  expect(source).toContain('normalizeNodeFallbackId(node, type, skill, label)')
+  expect(source).not.toContain('id: String(node.id || `node-${index + 1}`)')
 })
