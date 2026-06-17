@@ -1,5 +1,9 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { expect, Page, test } from '@playwright/test'
 import { setupApiMocks } from './fixtures/api-mocks'
+
+const repoRoot = join(__dirname, '..', '..', '..', '..', '..')
 
 async function gotoAppPage(page: Page, path: string) {
   await page.goto('/login', { waitUntil: 'domcontentloaded' })
@@ -80,5 +84,13 @@ test.describe('智能编排工作台与编辑器', () => {
     await page.getByRole('button', { name: '运行计划' }).click()
     await expect(page.locator('body')).toContainText('运行计划已生成', { timeout: 8000 })
     await expect(page.locator('body')).toContainText('门禁摘要')
+  })
+
+  test('workflow node previews avoid list-index identity', () => {
+    const source = readFileSync(join(repoRoot, 'apps/web/src/app/(app)/workflows/page.tsx'), 'utf8')
+
+    expect(source).toContain('function workflowNodeKey')
+    expect(source).toContain('key={workflowNodeKey(node)}')
+    expect(source).not.toContain('key={node.id || index}')
   })
 })
