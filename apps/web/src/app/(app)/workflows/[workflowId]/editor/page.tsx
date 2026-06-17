@@ -210,14 +210,31 @@ function normalizeNodeType(value: string | undefined): WorkflowNodeType {
   return 'skill'
 }
 
+function normalizeNodeFallbackId(node: any, type: WorkflowNodeType, skill: string, label: string) {
+  const rawKey = [
+    node.config?.template_key,
+    type,
+    skill,
+    node.tool,
+    node.config?.role,
+    node.config?.expression,
+    label,
+    node.position?.x,
+    node.position?.y,
+  ].filter((value) => value !== undefined && value !== null && String(value).trim().length > 0).join(':')
+  const slug = rawKey.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 96)
+  return `node-${slug || type}`
+}
+
 function normalizeNodes(rawNodes: any[] | undefined): WorkflowNode[] {
   return (rawNodes || []).map((node, index) => {
     const rawType = String(node.type || node.config?.node_type || 'skill')
     const type = normalizeNodeType(rawType)
     const template = NODE_TEMPLATES.find((item) => item.key === node.config?.template_key || item.type === type && item.skill === node.skill)
     const skill = node?.skill || node?.data?.skill || node?.config?.skill || template?.skill || ''
+    const label = String(node?.data?.label || node?.label || template?.label || type)
     return {
-      id: String(node.id || `node-${index + 1}`),
+      id: String(node.id || normalizeNodeFallbackId(node, type, skill, label)),
       type,
       skill: skill || undefined,
       tool: node.tool,
