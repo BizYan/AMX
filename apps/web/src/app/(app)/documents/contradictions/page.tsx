@@ -116,6 +116,17 @@ function getVersion(document: Document) {
   return Number(metadata.version || metadata.current_version || (document as Document & { version?: number }).version || 1)
 }
 
+function getDocumentEvidenceTimestamp(document: Document) {
+  return document.updated_at || document.created_at || ''
+}
+
+function getConflictEvidenceTimestamp(conflict: Contradiction) {
+  return [
+    getDocumentEvidenceTimestamp(conflict.source),
+    getDocumentEvidenceTimestamp(conflict.target),
+  ].sort().reverse()[0] || conflict.id
+}
+
 function getStatus(document: Document) {
   return String(document.status || document.metadata?.status || document.metadata_json?.status || 'draft').toLowerCase()
 }
@@ -526,7 +537,7 @@ export default function ContradictionsPage() {
       [conflict.id]: {
         status,
         note: noteByStatus[status],
-        decidedAt: new Date().toISOString(),
+        decidedAt: getConflictEvidenceTimestamp(conflict),
       },
     }))
     addToast({
