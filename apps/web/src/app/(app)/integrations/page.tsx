@@ -58,6 +58,23 @@ const providerLabels: Record<string, string> = {
   custom: '自定义',
 }
 
+const createConfigDefaults: Record<string, { health_path: string; sync_path: string; sync_method: string }> = {
+  jira: { health_path: '/rest/api/2/myself', sync_path: '/rest/api/2/search', sync_method: 'GET' },
+  confluence: { health_path: '/wiki/rest/api/user/current', sync_path: '/wiki/rest/api/content', sync_method: 'GET' },
+  zentao: { health_path: '/api.php/v1/users', sync_path: '/api.php/v1/stories', sync_method: 'GET' },
+  feishu: { health_path: '/open-apis/authen/v1/user_info', sync_path: '/open-apis/docx/v1/documents', sync_method: 'GET' },
+  custom: { health_path: '/health', sync_path: '/sync', sync_method: 'POST' },
+}
+
+function createConfigForProvider(providerType: string, baseUrl: string, apiKey: string) {
+  const defaults = createConfigDefaults[providerType] || createConfigDefaults.custom
+  return {
+    base_url: baseUrl,
+    api_key: apiKey,
+    ...defaults,
+  }
+}
+
 const evidenceLabels: Record<string, string> = {
   integration_count: '集成总数',
   enabled_integration_count: '已启用',
@@ -85,7 +102,7 @@ function providerLabel(providerType: string) {
 
 function isConfigured(integration: IntegrationProvider) {
   const config = integration.config_json || {}
-  return Boolean(config.base_url && config.api_key)
+  return Boolean(config.base_url && config.api_key && config.sync_path)
 }
 
 export default function IntegrationsPage() {
@@ -150,11 +167,7 @@ export default function IntegrationsPage() {
       name: form.name,
       provider_type: form.provider_type,
       is_enabled: true,
-      config_json: {
-        base_url: form.base_url,
-        api_key: form.api_key,
-        health_path: '/health',
-      },
+      config_json: createConfigForProvider(form.provider_type, form.base_url, form.api_key),
     }),
     onSuccess: async (integration) => {
       setActionResult(`集成已创建：${integration.name}`)
