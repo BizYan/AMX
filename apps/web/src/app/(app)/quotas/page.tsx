@@ -448,7 +448,7 @@ export default function QuotasPage() {
                     </Badge>
                   </div>
                   <p className="mt-2 text-slate-600 dark:text-slate-300">{provider.impact}</p>
-                  {provider.fallback && <p className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-300">Graphify 沙箱 fallback 触发额外重试</p>}
+                  {provider.fallback && <p className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-300">沙箱 fallback 触发额外重试</p>}
                 </div>
               ))
             )}
