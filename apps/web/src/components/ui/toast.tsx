@@ -1,6 +1,7 @@
 'use client'
 
 import { createContext, useContext, useState, ReactNode } from 'react'
+import { createClientId } from '@/lib/client-id'
 import { cn } from '@/lib/utils'
 
 interface Toast {
@@ -34,7 +35,7 @@ export function ToastProvider({ children }: ToastProviderProps) {
   const [toasts, setToasts] = useState<Toast[]>([])
 
   const addToast = (toast: Omit<Toast, 'id'>) => {
-    const id = Math.random().toString(36).slice(2)
+    const id = createClientId('toast')
     setToasts((prev) => [...prev, { ...toast, id }])
 
     // Auto remove after 5 seconds
