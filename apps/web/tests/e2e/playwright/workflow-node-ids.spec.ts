@@ -44,3 +44,10 @@ test('workflow editor normalizes missing backend node ids without list index fal
   expect(source).toContain('normalizeNodeFallbackId(node, type, skill, label)')
   expect(source).not.toContain('id: String(node.id || `node-${index + 1}`)')
 })
+
+test('workflow editor normalizes missing node labels without list index fallback', () => {
+  const source = readFileSync(join(repoRoot, 'apps/web/src/app/(app)/workflows/[workflowId]/editor/page.tsx'), 'utf8')
+
+  expect(source).toContain('template?.label || NODE_TYPE_LABELS[type] || type')
+  expect(source).not.toContain('template?.label || `节点 ${index + 1}`')
+})
