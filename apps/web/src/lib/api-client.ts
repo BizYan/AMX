@@ -225,14 +225,17 @@ export const projectsApi = {
 }
 
 function normalizeProject(project: any): Project {
+  const createdAt = project.createdAt ?? project.created_at ?? null
+  const updatedAt = project.updatedAt ?? project.updated_at ?? createdAt
+
   return {
     ...project,
     documentCount: project.documentCount ?? project.document_count ?? 0,
     document_count: project.document_count ?? project.documentCount ?? 0,
-    createdAt: project.createdAt ?? project.created_at ?? new Date().toISOString(),
-    created_at: project.created_at ?? project.createdAt ?? new Date().toISOString(),
-    updatedAt: project.updatedAt ?? project.updated_at ?? project.created_at ?? project.createdAt ?? new Date().toISOString(),
-    updated_at: project.updated_at ?? project.updatedAt ?? project.created_at ?? project.createdAt ?? new Date().toISOString(),
+    createdAt,
+    created_at: createdAt,
+    updatedAt,
+    updated_at: updatedAt,
   }
 }
 
@@ -375,7 +378,7 @@ function normalizeSourceFileStatus(status: string | undefined): SourceFile['stat
 }
 
 function normalizeSourceFile(file: SourceFileApiPayload): SourceFile {
-  const createdAt = file.created_at ?? file.createdAt ?? new Date().toISOString()
+  const createdAt = file.created_at ?? file.createdAt ?? null
   const filename = file.filename ?? file.name ?? file.original_filename ?? file.originalFilename ?? 'unnamed'
   const projectId = file.projectId ?? file.project_id ?? ''
 
@@ -1255,11 +1258,11 @@ export interface Project {
   slug?: string
   status?: string
   documentCount: number
-  createdAt: string
-  updatedAt: string
+  createdAt: string | null
+  updatedAt: string | null
   document_count?: number
-  created_at?: string
-  updated_at?: string
+  created_at?: string | null
+  updated_at?: string | null
 }
 
 export interface SystemDeliveryProjectDigest {
@@ -1909,8 +1912,8 @@ export interface Document {
   content: string
   metadata: Record<string, any>
   metadata_json?: Record<string, any>
-  createdAt: string
-  created_at?: string
+  createdAt: string | null
+  created_at?: string | null
   updatedAt: string
   updated_at?: string
 }
@@ -4114,8 +4117,8 @@ export interface SourceFile {
   extractedKnowledgeCount?: number
   requiredAction?: string
   errorMessage?: string | null
-  createdAt: string
-  created_at?: string
+  createdAt: string | null
+  created_at?: string | null
 }
 
 export interface SourceIngestionJob {
