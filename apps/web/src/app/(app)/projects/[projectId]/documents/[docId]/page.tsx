@@ -347,7 +347,7 @@ export default function DocumentDetailPage({ params }: DocumentDetailPageProps) 
     },
     onSuccess: (snapshot, draft) => {
       lastAutoSavedSignatureRef.current = draft.signature
-      setLastAutoSavedAt(snapshot.createdAt || new Date().toISOString())
+      setLastAutoSavedAt(snapshot.createdAt || null)
       setAutoSaveStatus('saved')
       queryClient.invalidateQueries({ queryKey: ['document-snapshots', docId] })
       if (closeAfterAutosaveRef.current) {
@@ -1472,7 +1472,9 @@ export default function DocumentDetailPage({ params }: DocumentDetailPageProps) 
                       ? '自动保存失败，请重试'
                       : lastAutoSavedAt
                         ? `已自动保存 · ${formatDistanceToNow(lastAutoSavedAt)}`
-                        : '尚无自动保存草稿'}
+                        : autoSaveStatus === 'saved'
+                          ? '已自动保存 · 未提供时间'
+                          : '尚无自动保存草稿'}
                 </span>
               </div>
               <Button
