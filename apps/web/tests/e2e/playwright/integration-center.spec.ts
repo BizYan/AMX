@@ -43,6 +43,7 @@ test.describe('integration operations center', () => {
     await page.getByTestId('integration-sync-integration-e2e-zentao').click()
     await expect(page.getByTestId('integration-action-result')).toContainText('同步完成')
 
+    await page.getByRole('tab', { name: '项目同步' }).click()
     await page.getByTestId('integration-select-integration-e2e-zentao').click()
     await expect(page.getByTestId('integration-binding-panel')).toContainText('WMS 项目需求同步')
     await page.getByTestId('integration-preview-binding-e2e-001').click()
@@ -59,6 +60,14 @@ test.describe('integration operations center', () => {
 
   test('can create a configured integration without leaving the page', async ({ page }) => {
     await gotoAppPage(page, '/integrations')
+    let createdConfig: Record<string, unknown> | null = null
+    await page.route(/\/api\/v1\/integrations(?:\?.*)?$/, async (route) => {
+      if (route.request().method() === 'POST') {
+        const payload = JSON.parse(route.request().postData() || '{}')
+        createdConfig = payload.config_json || null
+      }
+      await route.fallback()
+    })
 
     await page.getByTestId('integration-open-create').click()
     await page.getByTestId('integration-create-name').fill('Jira 研发事项')
@@ -69,5 +78,12 @@ test.describe('integration operations center', () => {
 
     await expect(page.locator('body')).toContainText('Jira 研发事项')
     await expect(page.getByTestId('integration-action-result')).toContainText('集成已创建')
+    expect(createdConfig).toMatchObject({
+      base_url: 'https://jira.example.com',
+      api_key: 'jira-token',
+      health_path: '/rest/api/2/myself',
+      sync_path: '/rest/api/2/search',
+      sync_method: 'GET',
+    })
   })
 })
