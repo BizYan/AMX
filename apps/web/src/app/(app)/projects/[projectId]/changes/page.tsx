@@ -22,7 +22,7 @@ type BoardChange = Omit<ChangeRequest, 'status' | 'priority'> & {
   priority: 'critical' | 'high' | 'medium' | 'low'
   impact_level?: 'critical' | 'high' | 'medium' | 'low'
   affected_documents?: Array<{ id: string; title: string; type: string; reason: string }>
-  disposition_records?: Array<{ at: string; actor: string; action: string; note: string }>
+  disposition_records?: Array<{ id?: string; at: string; actor: string; action: string; note: string }>
   human_confirmation_node?: string
   sync_proposal?: string
 }
@@ -52,6 +52,10 @@ function badgeVariant(level: string): 'default' | 'secondary' | 'destructive' | 
 
 function titleOf(change: BoardChange) {
   return change.title || (change as any).name || change.description?.split('\n')[0] || '未命名变更'
+}
+
+function dispositionRecordKey(record: NonNullable<BoardChange['disposition_records']>[number]) {
+  return record.id || [record.at, record.actor, record.action, record.note].join('::')
 }
 
 export default function ChangesPage({ params }: ChangesPageProps) {
@@ -102,7 +106,8 @@ export default function ChangesPage({ params }: ChangesPageProps) {
     mutationFn: ({ id }: { id: string }) => changeApi.apply(id),
     onSuccess: (updated) => {
       const record = {
-        at: new Date().toISOString(),
+        id: `applied-${updated.id}`,
+        at: updated.applied_at || updated.updated_at,
         actor: '当前用户',
         action: '已标记处置',
         note: '前端处置台记录人工确认与同步动作反馈。',
@@ -251,8 +256,8 @@ export default function ChangesPage({ params }: ChangesPageProps) {
                   <div className="space-y-2">
                     {(selectedChange.disposition_records || []).length === 0 ? (
                       <div className="rounded-md border border-dashed border-slate-300 p-4 text-sm text-slate-500">暂无处置记录</div>
-                    ) : selectedChange.disposition_records?.map((record, index) => (
-                      <div key={`${record.at}-${index}`} className="rounded-md border border-slate-200 p-3 text-sm dark:border-slate-700">
+                    ) : selectedChange.disposition_records?.map((record) => (
+                      <div key={dispositionRecordKey(record)} className="rounded-md border border-slate-200 p-3 text-sm dark:border-slate-700">
                         <div className="font-medium">{record.action}</div>
                         <div className="text-xs text-slate-500">{record.actor} · {record.note}</div>
                       </div>
