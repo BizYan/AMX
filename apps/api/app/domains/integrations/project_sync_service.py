@@ -329,11 +329,19 @@ class IntegrationProjectSyncService:
             content = self._field(raw, mapping.get("content"), ["content", "description", "body", "text"])
             external_url = self._field(raw, mapping.get("external_url"), ["external_url", "url", "self"])
             updated_at = self._field(raw, mapping.get("updated_at"), ["updated_at", "updated", "modifiedDate"])
-            external_id = str(external_id or f"item-{index + 1}").strip()
             title = str(title or external_id).strip()
             if isinstance(content, (dict, list)):
                 content = json.dumps(content, ensure_ascii=False, sort_keys=True)
             content = str(content or title).strip()
+            if external_id:
+                external_id = str(external_id).strip()
+            else:
+                external_id = self._generated_external_id(
+                    title=title,
+                    content=content,
+                    external_url=external_url,
+                    raw=raw,
+                )
             normalized.append(
                 IntegrationNormalizedItem(
                     external_id=external_id,
@@ -349,6 +357,24 @@ class IntegrationProjectSyncService:
                 )
             )
         return normalized
+
+    def _generated_external_id(
+        self,
+        *,
+        title: str,
+        content: str,
+        external_url: Any,
+        raw: dict[str, Any],
+    ) -> str:
+        fingerprint = {
+            "title": title,
+            "content": content,
+            "external_url": external_url,
+            "raw": raw,
+        }
+        serialized = json.dumps(fingerprint, ensure_ascii=False, sort_keys=True, default=str)
+        digest = hashlib.sha256(serialized.encode("utf-8")).hexdigest()[:16]
+        return f"generated-{digest}"
 
     def _extract_items(self, payload: Any, item_path: str) -> list[Any]:
         if item_path:

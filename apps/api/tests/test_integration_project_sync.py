@@ -148,6 +148,38 @@ async def test_binding_preview_normalizes_external_items_without_persisting_asse
 
 
 @pytest.mark.asyncio
+async def test_binding_preview_uses_stable_generated_external_ids_for_unkeyed_items(db_session, monkeypatch):
+    tenant_id, user_id, project_id, integration = await make_context(db_session)
+    service = IntegrationProjectSyncService(db_session)
+    binding = await service.create_binding(
+        tenant_id=tenant_id,
+        integration_id=integration.id,
+        project_id=project_id,
+        name="Unkeyed external requirements",
+        scope={"item_path": "issues"},
+        field_mapping={"title": "summary", "content": "description"},
+        created_by=user_id,
+    )
+    first_item = {"summary": "Stable requirement", "description": "Preserve identity without provider id."}
+    second_item = {"summary": "Other requirement", "description": "A separate item."}
+    payload = {"issues": [first_item, second_item]}
+    monkeypatch.setattr(service, "_fetch_payload", lambda *_args, **_kwargs: payload)
+
+    first_preview = await service.preview_binding(binding.id, tenant_id)
+    payload["issues"] = [second_item, first_item]
+    second_preview = await service.preview_binding(binding.id, tenant_id)
+
+    first_ids = {item.title: item.external_id for item in first_preview.items}
+    second_ids = {item.title: item.external_id for item in second_preview.items}
+    assert first_ids == second_ids
+    assert first_ids["Stable requirement"].startswith("generated-")
+    assert "item-1" not in first_ids.values()
+    assert "item-2" not in first_ids.values()
+    assert await db_session.scalar(select(KnowledgeEntry)) is None
+    assert await db_session.scalar(select(SourceFile)) is None
+
+
+@pytest.mark.asyncio
 async def test_sync_is_idempotent_and_updates_changed_external_asset_with_provenance(db_session, monkeypatch):
     tenant_id, user_id, project_id, integration = await make_context(db_session)
     service = IntegrationProjectSyncService(db_session)
