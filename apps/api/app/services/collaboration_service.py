@@ -5,7 +5,7 @@ Business logic for pessimistic locking, document snapshots, and comments.
 
 from datetime import datetime, timedelta, timezone
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import select, and_, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -497,6 +497,7 @@ class CollaborationService:
             history = list(review_flow.get("status_history") or [])
             history.append(
                 {
+                    "transition_id": str(uuid4()),
                     "from_status": old_status,
                     "to_status": new_status,
                     "action": f"collaboration.{action}",

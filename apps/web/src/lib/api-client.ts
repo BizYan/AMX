@@ -2878,6 +2878,7 @@ function normalizeDocumentSnapshot(item: any): DocumentSnapshot {
 }
 
 export interface DocumentStatusTransition {
+  transition_id?: string | null
   from_status: string
   to_status: string
   action: string

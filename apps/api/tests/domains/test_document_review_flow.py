@@ -94,6 +94,43 @@ async def test_publish_requires_approved_status_and_resolved_comments():
     assert history[-1]["reason"] == "Release candidate"
     assert history[-1]["changed_by"] == str(user_id)
     assert history[-1]["unresolved_comment_count"] == 0
+    assert history[-1]["transition_id"]
+
+
+@pytest.mark.asyncio
+async def test_status_history_backfills_stable_transition_ids_for_legacy_entries():
+    document_id = UUID("12345678-1234-1234-1234-123456789012")
+    tenant_id = UUID("00000000-0000-0000-0000-000000000001")
+    document = SimpleNamespace(
+        id=document_id,
+        tenant_id=tenant_id,
+        metadata_json={
+            "review_flow": {
+                "status_history": [
+                    {
+                        "from_status": "draft",
+                        "to_status": "review",
+                        "action": "status_transition",
+                        "reason": "Ready for review",
+                        "changed_by": "11111111-1111-1111-1111-111111111111",
+                        "changed_at": "2026-06-17T00:00:00+00:00",
+                        "unresolved_comment_count": 0,
+                        "policy_revision": 1,
+                    }
+                ]
+            }
+        },
+    )
+
+    service = DocumentService(AsyncMock())
+    service.get_document = AsyncMock(return_value=document)
+
+    first = await service.list_status_history(document_id, tenant_id)
+    second = await service.list_status_history(document_id, tenant_id)
+
+    assert first[0]["transition_id"].startswith("legacy-")
+    assert second[0]["transition_id"] == first[0]["transition_id"]
+    assert "transition_id" not in document.metadata_json["review_flow"]["status_history"][0]
 
 
 @pytest.mark.asyncio
