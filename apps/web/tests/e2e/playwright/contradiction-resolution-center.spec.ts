@@ -1,5 +1,9 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { expect, Page, test } from '@playwright/test'
 import { setupApiMocks } from './fixtures/api-mocks'
+
+const repoRoot = join(__dirname, '..', '..', '..', '..', '..')
 
 async function prepareAuthenticatedPage(page: Page) {
   await setupApiMocks(page)
@@ -73,5 +77,13 @@ test.describe('Document contradiction resolution center', () => {
     await page.getByTestId('persisted-conflict-claim-conflict-e2e-001').click()
 
     await expect(page.getByTestId('persisted-conflict-governance')).toContainText('Assigned to me')
+  })
+
+  test('local contradiction decisions use conflict evidence time', () => {
+    const source = readFileSync(join(repoRoot, 'apps/web/src/app/(app)/documents/contradictions/page.tsx'), 'utf8')
+
+    expect(source).toContain('function getConflictEvidenceTimestamp')
+    expect(source).toContain('decidedAt: getConflictEvidenceTimestamp(conflict)')
+    expect(source).not.toContain('decidedAt: new Date().toISOString()')
   })
 })
