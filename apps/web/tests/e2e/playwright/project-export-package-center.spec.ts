@@ -1,5 +1,9 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { expect, Page, test } from '@playwright/test'
 import { setupApiMocks } from './fixtures/api-mocks'
+
+const repoRoot = join(__dirname, '..', '..', '..', '..', '..')
 
 async function gotoAppPage(page: Page, path: string) {
   await page.goto('/login', { waitUntil: 'domcontentloaded' })
@@ -94,5 +98,12 @@ test.describe('Project export package center', () => {
     await expect(page.getByTestId('export-history')).toContainText('customer-review.md')
     await expect(page.getByTestId('export-history')).toContainText('customer-review.pptx')
     await expect(page.getByTestId('export-history')).toContainText('模板变量缺少客户签收日期')
+  })
+
+  test('export variable rows expose stable row identity', () => {
+    const source = readFileSync(join(repoRoot, 'apps/web/src/app/(app)/exports/page.tsx'), 'utf8')
+
+    expect(source).toContain('data-testid={`export-variable-row-${row.id}`}')
+    expect(source).toContain('key={row.id}')
   })
 })
