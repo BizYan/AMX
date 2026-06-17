@@ -100,6 +100,18 @@ function getNodeSkill(node: any): string | null {
   return skill ? String(skill) : null
 }
 
+function workflowNodeKey(node: any) {
+  return String(
+    node?.id
+    || node?.node_id
+    || node?.data?.id
+    || node?.data?.label
+    || node?.label
+    || node?.type
+    || 'unnamed-node'
+  )
+}
+
 function countEdges(nodes: any[]) {
   return nodes.reduce((total, node) => total + (Array.isArray(node.depends_on) ? node.depends_on.length : 0), 0)
 }
@@ -798,8 +810,8 @@ export default function WorkflowsPage() {
                           还没有节点，请进入编辑器添加。
                         </div>
                       ) : (
-                        selectedWorkflow.nodes.map((node: any, index: number) => (
-                          <div key={node.id || index} className="rounded-md border border-slate-200 p-3 text-sm dark:border-slate-700">
+                        selectedWorkflow.nodes.map((node: any) => (
+                          <div key={workflowNodeKey(node)} className="rounded-md border border-slate-200 p-3 text-sm dark:border-slate-700">
                             <div className="flex items-center justify-between gap-3">
                               <div className="min-w-0">
                                 <p className="truncate font-medium text-slate-900 dark:text-white">{getNodeLabel(node)}</p>
