@@ -237,6 +237,17 @@ test.describe('P2 document lifecycle workbench', () => {
     expect(source).not.toContain('key={`${item.changed_at}-${index}`}')
   })
 
+  test('document content preview lines use stable keys', () => {
+    const source = readFileSync(
+      join(repoRoot, 'apps/web/src/app/(app)/projects/[projectId]/documents/[docId]/page.tsx'),
+      'utf8'
+    )
+
+    expect(source).toContain('function getDocumentContentPreviewLines')
+    expect(source).toContain('getDocumentContentPreviewLines(document.content).map(({ line, anchor, key })')
+    expect(source).not.toContain('key={`${index}-${line}`}')
+  })
+
   test('shows document generation command flow before starting a session', async ({ page }) => {
     await gotoAppPage(page, '/projects/project-e2e-001/documents/generate')
 

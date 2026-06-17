@@ -100,6 +100,22 @@ function getDocumentCommentAnchors(content: string) {
     }))
 }
 
+function getDocumentContentPreviewLines(content: string) {
+  const occurrences = new Map<string, number>()
+  return content.split('\n').map((line) => {
+    const anchor = normalizeCommentAnchor(line)
+    const keyBase = anchor || 'blank-line'
+    const occurrence = (occurrences.get(keyBase) || 0) + 1
+    occurrences.set(keyBase, occurrence)
+
+    return {
+      line,
+      anchor,
+      key: occurrence === 1 ? keyBase : `${keyBase}::${occurrence}`,
+    }
+  })
+}
+
 function getStatusReason(status: string) {
   const reasons: Record<string, string> = {
     draft: 'Return to draft for revision',
@@ -1037,12 +1053,11 @@ export default function DocumentDetailPage({ params }: DocumentDetailPageProps) 
               <div className="prose dark:prose-invert max-w-none">
                 {document.content ? (
                   <div data-testid="document-content-preview" className="text-slate-700 dark:text-slate-300">
-                    {document.content.split('\n').map((line, index) => {
-                      const anchor = normalizeCommentAnchor(line)
+                    {getDocumentContentPreviewLines(document.content).map(({ line, anchor, key }) => {
                       const isLocated = Boolean(anchor && locatedCommentAnchor === anchor)
                       return (
                         <div
-                          key={`${index}-${line}`}
+                          key={key}
                           data-comment-anchor={anchor || undefined}
                           className={isLocated
                             ? 'rounded border-l-4 border-indigo-500 bg-indigo-50 px-3 py-1 text-indigo-950 dark:bg-indigo-950/40 dark:text-indigo-100'
