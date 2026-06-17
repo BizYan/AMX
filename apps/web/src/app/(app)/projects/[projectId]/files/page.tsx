@@ -397,7 +397,7 @@ export default function FilesPage({ params }: FilesPageProps) {
                     <div className="min-w-0">
                       <CardTitle className="truncate text-base">{file.name}</CardTitle>
                       <CardDescription>
-                        {formatFileSize(file.size)} · {new Date(file.createdAt).toLocaleString('zh-CN')}
+                        {formatFileSize(file.size)} · {file.createdAt ? new Date(file.createdAt).toLocaleString('zh-CN') : '未提供时间'}
                       </CardDescription>
                     </div>
                     <Badge className={status.tone}>{status.label}</Badge>

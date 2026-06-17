@@ -77,6 +77,11 @@ function riskLabel(level: RiskLevel) {
   }[level]
 }
 
+function formatDocumentAge(document: Document) {
+  const timestamp = document.updatedAt || document.updated_at || document.createdAt
+  return timestamp ? formatDistanceToNow(timestamp) : '未提供时间'
+}
+
 function riskBadgeClass(level: RiskLevel) {
   if (level === 'blocked') return 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200'
   if (level === 'attention') return 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200'
@@ -312,7 +317,7 @@ export default function DocumentsPage() {
                           )}
                           <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-500">
                             <span>所属项目：{document.projectId || document.project_id || '未知'}</span>
-                            <span>更新：{formatDistanceToNow(document.updatedAt || document.updated_at || document.createdAt)}</span>
+                            <span>更新：{formatDocumentAge(document)}</span>
                           </div>
                         </div>
                         <div className="flex shrink-0 flex-wrap gap-2">

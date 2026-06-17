@@ -68,8 +68,12 @@ const WORKFLOW_LABELS: Record<string, string> = {
 
 function getProjectDate(project: Project, key: 'created' | 'updated') {
   return key === 'created'
-    ? project.createdAt || project.created_at || new Date().toISOString()
-    : project.updatedAt || project.updated_at || project.createdAt || project.created_at || new Date().toISOString()
+    ? project.createdAt || project.created_at || null
+    : project.updatedAt || project.updated_at || project.createdAt || project.created_at || null
+}
+
+function formatProjectAge(value: string | null) {
+  return value ? formatDistanceToNow(value) : '未提供时间'
 }
 
 function getProjectDocumentCount(project: Project) {
@@ -269,7 +273,7 @@ export default function ProjectsPage() {
                         </Link>
                       </CardTitle>
                       <CardDescription className="mt-1 text-xs">
-                        更新于 {formatDistanceToNow(getProjectDate(project, 'updated'))}
+                        更新于 {formatProjectAge(getProjectDate(project, 'updated'))}
                       </CardDescription>
                       {project.status === 'archived' && <Badge className="mt-2" variant="secondary">已归档</Badge>}
                     </div>
@@ -328,7 +332,7 @@ export default function ProjectsPage() {
                   <Badge variant="secondary">{getProjectDocumentCount(project)} 个文档</Badge>
                   <div className="flex items-center gap-1 text-xs text-slate-500">
                     <Clock className="h-3 w-3" />
-                    {formatDistanceToNow(getProjectDate(project, 'created'))}
+                    {formatProjectAge(getProjectDate(project, 'created'))}
                   </div>
                 </div>
               </CardContent>
