@@ -1,5 +1,9 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { expect, Page, test } from '@playwright/test'
 import { setupApiMocks } from './fixtures/api-mocks'
+
+const repoRoot = join(__dirname, '..', '..', '..', '..', '..')
 
 async function gotoAppPage(page: Page, path: string) {
   try {
@@ -94,5 +98,12 @@ test.describe('P3 Template version lifecycle center', () => {
     await expect(evidence).toContainText('{{客户名称}} x2')
     await expect(evidence).toContainText('重复占位符：客户名称')
     await expect(dialog.getByRole('button', { name: '创建模板' })).toBeEnabled()
+  })
+
+  test('template validation messages use stable keys', () => {
+    const source = readFileSync(join(repoRoot, 'apps/web/src/app/(app)/templates/page.tsx'), 'utf8')
+
+    expect(source).not.toContain('key={`${message}-${index}`}')
+    expect(source).toContain('templateValidationMessageKey(kind, message)')
   })
 })
