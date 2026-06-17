@@ -1,6 +1,10 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { expect, Page, test } from '@playwright/test'
 import { setupApiMocks } from './fixtures/api-mocks'
 import * as MOCK from './fixtures/mock-data'
+
+const repoRoot = join(__dirname, '..', '..', '..', '..', '..')
 
 async function gotoAppPage(page: Page, path: string) {
   await page.goto('/login', { waitUntil: 'domcontentloaded' })
@@ -207,6 +211,17 @@ test.describe('P2 document lifecycle workbench', () => {
     await expect(page.locator('body')).toContainText('生成文档失败', { timeout: 8000 })
     await expect(page.locator('body')).not.toContainText('文档已生成')
     expect(documentCreateRequests).toBe(0)
+  })
+
+  test('autosave status preserves backend snapshot timestamps', () => {
+    const source = readFileSync(
+      join(repoRoot, 'apps/web/src/app/(app)/projects/[projectId]/documents/[docId]/page.tsx'),
+      'utf8'
+    )
+
+    expect(source).not.toContain('setLastAutoSavedAt(snapshot.createdAt || new Date().toISOString())')
+    expect(source).toContain('setLastAutoSavedAt(snapshot.createdAt || null)')
+    expect(source).toContain("'已自动保存 · 未提供时间'")
   })
 
   test('shows document generation command flow before starting a session', async ({ page }) => {
