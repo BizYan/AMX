@@ -5193,6 +5193,8 @@ export async function setupApiMocks(page: Page, options: SetupApiMockOptions = {
       body: JSON.stringify({
         ...(MOCK.MOCK_CHANGE_BOARD_CHANGES.find((change) => change.id === route.request().url().match(/\/change\/([^/]+)\//)?.[1]) || MOCK.MOCK_CHANGE_BOARD_CHANGES[0]),
         status,
+        applied_at: status === 'applied' ? '2026-06-17T10:30:00Z' : null,
+        updated_at: '2026-06-17T10:30:00Z',
       }),
     })
   })

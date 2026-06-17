@@ -3430,6 +3430,7 @@ export interface ChangeRequest {
   status: 'draft' | 'open' | 'approved' | 'rejected' | 'applied' | 'cancelled'
   priority: 'critical' | 'low' | 'medium' | 'high'
   requested_by: string
+  applied_at?: string | null
   created_at: string
   updated_at: string
 }

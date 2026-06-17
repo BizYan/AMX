@@ -1,5 +1,9 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { expect, Page, test } from '@playwright/test'
 import { setupApiMocks } from './fixtures/api-mocks'
+
+const repoRoot = join(__dirname, '..', '..', '..', '..', '..')
 
 async function gotoAppPage(page: Page, path: string) {
   await page.addInitScript(() => {
@@ -64,5 +68,17 @@ test.describe('project traceability and change disposition board', () => {
     await page.getByTestId('change-mark-resolved-change-e2e-002').click()
     await expect(page.getByTestId('change-feedback')).toContainText('已标记处置')
     await expect(page.getByTestId('change-recent-records')).toContainText('已标记处置')
+  })
+
+  test('change disposition uses server timestamps and stable record keys', () => {
+    const source = readFileSync(
+      join(repoRoot, 'apps/web/src/app/(app)/projects/[projectId]/changes/page.tsx'),
+      'utf8'
+    )
+
+    expect(source).toContain('at: updated.applied_at || updated.updated_at')
+    expect(source).toContain('function dispositionRecordKey')
+    expect(source).not.toContain('at: new Date().toISOString()')
+    expect(source).not.toContain('key={`${record.at}-${index}`}')
   })
 })
