@@ -88,6 +88,17 @@ function evidenceNumber(evidence: Record<string, any> | undefined, keys: string[
   return fallback
 }
 
+function templateValidationMessageKey(kind: 'error' | 'warning', message: string) {
+  return `${kind}:${message}`
+}
+
+function templateValidationMessages(parsedPlaceholders: ParsedTemplate) {
+  return [
+    ...Array.from(new Set(parsedPlaceholders.errors)).map((message) => ({ kind: 'error' as const, message })),
+    ...Array.from(new Set(parsedPlaceholders.warnings)).map((message) => ({ kind: 'warning' as const, message })),
+  ]
+}
+
 export default function TemplatesPage() {
   const queryClient = useQueryClient()
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -733,8 +744,8 @@ export default function TemplatesPage() {
                       </p>
                     )}
 
-                    {[...parsedPlaceholders.errors, ...parsedPlaceholders.warnings].map((message, index) => (
-                      <p key={`${message}-${index}`} className="mt-2 text-xs">
+                    {templateValidationMessages(parsedPlaceholders).map(({ kind, message }) => (
+                      <p key={templateValidationMessageKey(kind, message)} className="mt-2 text-xs">
                         {message}
                       </p>
                     ))}
