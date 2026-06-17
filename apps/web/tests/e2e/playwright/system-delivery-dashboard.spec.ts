@@ -1,7 +1,11 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
 
 import { setupApiMocks } from './fixtures/api-mocks'
 import { MOCK_PROJECT } from './fixtures/mock-data'
+
+const repoRoot = join(__dirname, '..', '..', '..', '..', '..')
 
 test.describe('System delivery command center', () => {
   test.beforeEach(async ({ page }) => {
@@ -51,5 +55,13 @@ test.describe('System delivery command center', () => {
     await expect(main.getByRole('link', { name: /交付包可导出/ }).first()).toHaveAttribute('href', '/exports')
     await expect(main.getByRole('link', { name: /团队与权限/ }).first()).toHaveAttribute('href', '/team')
     await expect(main.getByRole('link', { name: /运维监控与审计/ }).first()).toHaveAttribute('href', '/system-health')
+  })
+
+  test('critical actions use stable identity instead of list index', () => {
+    const source = readFileSync(join(repoRoot, 'apps/web/src/app/(app)/dashboard/page.tsx'), 'utf8')
+
+    expect(source).toContain('function systemDeliveryActionKey')
+    expect(source).toContain('key={systemDeliveryActionKey(action)}')
+    expect(source).not.toContain('key={`${action.project_id}-${action.code}-${index}`}')
   })
 })
