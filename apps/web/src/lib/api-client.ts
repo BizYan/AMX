@@ -2937,7 +2937,7 @@ export interface HealthStatus {
 }
 
 export interface PlatformMetrics {
-  timestamp: string
+  timestamp: string | null
   total_tenants: number
   active_users_24h: number
   total_api_calls_24h: number

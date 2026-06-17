@@ -215,7 +215,7 @@ export default function HealthDashboardPage() {
   })) as ProviderHealth[]
   const circuitBreakers = circuitBreakersData?.breakers || []
   const metrics: PlatformMetrics = platformMetricsData ?? {
-    timestamp: new Date().toISOString(),
+    timestamp: null,
     total_tenants: 0,
     active_users_24h: 0,
     total_api_calls_24h: 0,

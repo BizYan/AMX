@@ -1,5 +1,9 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { expect, Page, test } from '@playwright/test'
 import { setupApiMocks } from './fixtures/api-mocks'
+
+const repoRoot = join(__dirname, '..', '..', '..', '..', '..')
 
 async function gotoAppPage(page: Page, path: string) {
   try {
@@ -82,5 +86,14 @@ test.describe('core capability operations center', () => {
     await page.getByRole('button', { name: /运行校准检查/ }).click()
     await expect(panel).toContainText('已通过')
     await expect(panel).toContainText('未通过')
+  })
+
+  test('health metrics fallback does not synthesize current timestamps', () => {
+    const source = readFileSync(join(repoRoot, 'apps/web/src/app/(app)/health/page.tsx'), 'utf8')
+    const apiClient = readFileSync(join(repoRoot, 'apps/web/src/lib/api-client.ts'), 'utf8')
+
+    expect(source).toContain('timestamp: null')
+    expect(source).not.toContain('timestamp: new Date().toISOString()')
+    expect(apiClient).toContain('timestamp: string | null')
   })
 })
