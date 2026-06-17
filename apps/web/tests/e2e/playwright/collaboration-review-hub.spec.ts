@@ -1,5 +1,9 @@
 import { expect, Page, test } from '@playwright/test'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { setupApiMocks } from './fixtures/api-mocks'
+
+const repoRoot = join(__dirname, '..', '..', '..', '..', '..')
 
 async function prepareAuthenticatedPage(page: Page) {
   await setupApiMocks(page)
@@ -67,4 +71,11 @@ test('collaboration review hub supports filtering, detail selection, and review 
   await page.getByTestId('collaboration-return-revision').click()
   await expect(page.getByText('已退回修订')).toBeVisible()
   await expect(page.getByTestId('collaboration-review-detail')).toContainText('退回修订')
+})
+
+test('collaboration freshness banner does not synthesize review timestamps', () => {
+  const source = readFileSync(join(repoRoot, 'apps/web/src/app/(app)/collaboration/page.tsx'), 'utf8')
+
+  expect(source).not.toContain("reviews[0]?.updated_at || new Date().toISOString()")
+  expect(source).toContain("reviews[0]?.updated_at ? formatTime(reviews[0].updated_at) :")
 })
