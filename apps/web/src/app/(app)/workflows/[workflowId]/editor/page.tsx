@@ -241,7 +241,7 @@ function normalizeNodes(rawNodes: any[] | undefined): WorkflowNode[] {
       depends_on: Array.isArray(node.depends_on) ? node.depends_on.map(String) : [],
       position: node.position || { x: 80 + (index % 3) * 260, y: 80 + Math.floor(index / 3) * 170 },
       data: {
-        label: String(node?.data?.label || node?.label || template?.label || `节点 ${index + 1}`),
+        label: String(node?.data?.label || node?.label || template?.label || NODE_TYPE_LABELS[type] || type),
         skill,
         description: node?.data?.description || template?.description || '',
       },
