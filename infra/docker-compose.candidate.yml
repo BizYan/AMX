@@ -1,0 +1,21 @@
+services:
+  api:
+    env_file:
+      - ${AMX_ENV_FILE:?AMX_ENV_FILE must point to the candidate env file}
+    restart: "no"
+
+  worker:
+    env_file:
+      - ${AMX_ENV_FILE:?AMX_ENV_FILE must point to the candidate env file}
+    restart: "no"
+
+  web:
+    env_file:
+      - ${AMX_ENV_FILE:?AMX_ENV_FILE must point to the candidate env file}
+    restart: "no"
+
+volumes:
+  postgres_data:
+    name: ${AMX_POSTGRES_VOLUME:?AMX_POSTGRES_VOLUME must be candidate scoped}
+  redis_data:
+    name: ${AMX_REDIS_VOLUME:?AMX_REDIS_VOLUME must be candidate scoped}

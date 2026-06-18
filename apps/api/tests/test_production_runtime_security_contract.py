@@ -30,6 +30,94 @@ def test_runtime_containers_use_internal_redis_service_by_default():
     assert compose.count("ARQ_REDIS_URL: ${CONTAINER_ARQ_REDIS_URL:-redis://redis:6379/1}") == 2
 
 
+def test_base_compose_keeps_production_defaults_but_allows_candidate_isolation():
+    compose = read("infra/docker-compose.yml")
+
+    for service in ("postgres", "redis", "api", "worker", "web"):
+        assert f"container_name: ${{AMX_CONTAINER_PREFIX:-consultant_ai}}_{service}" in compose
+
+    assert "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB" in compose
+    assert "pg_isready -U consultant -d consultant_ai" not in compose
+    assert compose.count("${AMX_ENV_FILE:-../.env}") == 3
+    assert "name: ${AMX_RUNTIME_NETWORK:-amx_runtime_network}" in compose
+
+
+def test_candidate_compose_override_replaces_env_and_disables_restarts():
+    candidate = read("infra/docker-compose.candidate.yml")
+
+    assert candidate.count("${AMX_ENV_FILE:?AMX_ENV_FILE must point to the candidate env file}") == 3
+    assert candidate.count('restart: "no"') == 3
+    assert "${AMX_POSTGRES_VOLUME:?AMX_POSTGRES_VOLUME must be candidate scoped}" in candidate
+    assert "${AMX_REDIS_VOLUME:?AMX_REDIS_VOLUME must be candidate scoped}" in candidate
+    assert "../.env" not in candidate
+
+
+def test_candidate_safety_script_fails_closed_before_compose_up():
+    script = read("infra/deploy/validate-candidate-verification.sh")
+
+    for required in (
+        "--env-file",
+        "--compose-project-name",
+        "candidate env file must not be production .env",
+        "COMPOSE_PROJECT_NAME must start with amx_rc_",
+        "POSTGRES_DB must not be production database",
+        "AMX_RUNTIME_NETWORK must be candidate scoped",
+        "AMX_POSTGRES_VOLUME must be candidate scoped",
+        "AMX_REDIS_VOLUME must be candidate scoped",
+        "must not use production port",
+        "working directory must not be production path",
+        "candidate compose config must not reference ../.env",
+        "candidate compose config must not include production container names",
+        "candidate compose config must not bind production ports",
+        "candidate API/worker/web restart policy must be no",
+    ):
+        assert required in script
+
+
+def test_candidate_verification_workflow_is_manual_and_non_production():
+    workflow = read(".github/workflows/candidate-verification.yml")
+
+    assert "workflow_dispatch:" in workflow
+    assert "push:" not in workflow
+    assert "pull_request:" not in workflow
+    assert "environment: release-candidate" in workflow
+    assert "concurrency:" in workflow
+    assert "secrets.RELEASE_CANDIDATE_BOOTSTRAP_ADMIN_EMAIL" in workflow
+    assert "secrets.RELEASE_CANDIDATE_BOOTSTRAP_ADMIN_PASSWORD" in workflow
+    assert "secrets.PRODUCTION" not in workflow
+    assert "OCI_" not in workflow
+    assert "gh release" not in workflow
+    assert "git tag" not in workflow
+    assert "deploy-production" not in workflow
+    assert "git worktree add" not in workflow
+    assert "Overlay verification infrastructure" not in workflow
+    assert "cp infra/docker-compose.yml" not in workflow
+    assert "compose_project_name" not in workflow
+    assert "default: \"1877e0b4a0cd208890391b76afc8c5f23647cd3b\"" not in workflow
+    assert "fetch-depth: 0" in workflow
+    assert 'test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"' in workflow
+    assert 'git merge-base --is-ancestor "$CANDIDATE_SHA" origin/main' in workflow
+    assert 'PROJECT_NAME="amx_rc_${SHORT_SHA}"' in workflow
+    assert 'CANDIDATE_ENV_FILE=$RUNNER_TEMP/.env.rc.${SHORT_SHA}' in workflow
+    assert "test -f infra/docker-compose.candidate.yml" in workflow
+    assert "test -f infra/deploy/validate-candidate-verification.sh" in workflow
+    assert "alembic upgrade head && alembic downgrade 0021_invitation_delivery && alembic upgrade head" in workflow
+    assert "authenticated-smoke.sh" in workflow
+    assert "down -v --remove-orphans" in workflow
+    assert "remaining_containers" in workflow
+    assert "remaining_networks" in workflow
+    assert "remaining_volumes" in workflow
+    assert "actions/upload-artifact@v4" in workflow
+    assert "path: artifacts" in workflow
+    artifact_section = workflow.split("path: artifacts", 1)[1]
+    assert "candidate-compose-config" not in artifact_section
+    assert ".env.rc." not in artifact_section
+    assert "candidate-compose-logs-redacted.txt" in workflow
+    assert "docker compose run --rm api" not in workflow
+    assert "exec -T api" in workflow
+    assert workflow.count("-f infra/docker-compose.candidate.yml") >= 8
+
+
 def test_runtime_containers_receive_explicit_environment():
     compose = read("infra/docker-compose.yml")
     deploy = read("infra/deploy/deploy-oci.sh")
