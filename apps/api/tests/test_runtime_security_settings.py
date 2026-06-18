@@ -16,6 +16,9 @@ os.environ.setdefault("JWT_SECRET_KEY", "test-runtime-security-secret")
     [
         "",
         "test-secret",
+        "mock-secret-with-at-least-32-bytes",
+        "demo-secret-with-at-least-32-bytes",
+        "placeholder-secret-with-at-least-32-bytes",
         "change-me-in-production",
         "your-super-secret-jwt-key-change-in-production",
     ],

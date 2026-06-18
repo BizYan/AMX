@@ -53,3 +53,39 @@ def test_provider_readiness_summary_flags_live_sandbox_and_missing_core_types():
     assert summary.required_types[0].status == "ready"
     assert any(item.provider_type == "gitnexus" and item.readiness == "sandbox" for item in summary.items)
     assert any("GitNexus Sandbox" in action for action in summary.recommended_actions)
+
+
+def test_provider_readiness_distinguishes_live_mock_degraded_and_failed_states():
+    tenant_id = uuid4()
+    providers = [
+        make_provider("Live LLM", "llm", config={"api_key": "prod-secret-123456"}),
+        make_provider("Mock LLM", "llm", config={"api_key": "sk-test-123456"}),
+        make_provider(
+            "Graphify Live",
+            "graphify",
+            config={"api_key": "prod-graphify-secret", "health_status": "degraded"},
+        ),
+        make_provider(
+            "GitNexus Live",
+            "gitnexus",
+            config={"service_key": "prod-gitnexus-secret", "last_test_status": "failed"},
+        ),
+    ]
+
+    summary = build_provider_readiness_summary(
+        tenant_id=tenant_id,
+        providers=providers,
+    )
+
+    readiness_by_name = {item.name: item.readiness for item in summary.items}
+
+    assert readiness_by_name["Live LLM"] == "live"
+    assert readiness_by_name["Mock LLM"] == "mock"
+    assert readiness_by_name["Graphify Live"] == "degraded"
+    assert readiness_by_name["GitNexus Live"] == "failed"
+    assert summary.live_providers == 1
+    assert summary.mock_providers == 1
+    assert summary.degraded_providers == 1
+    assert summary.failed_providers == 1
+    assert summary.production_ready is False
+    assert set(summary.missing_required_types) == {"graphify", "gitnexus"}
