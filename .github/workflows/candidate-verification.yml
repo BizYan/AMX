@@ -171,7 +171,7 @@ jobs:
             -f infra/docker-compose.candidate.yml \
             --env-file "$CANDIDATE_ENV_FILE" \
             exec -T api sh -lc \
-            'alembic upgrade head && alembic downgrade 0021_invitation_delivery && alembic upgrade head' \
+            '/app/.venv/bin/alembic upgrade head && /app/.venv/bin/alembic downgrade 0021_invitation_delivery && /app/.venv/bin/alembic upgrade head' \
             | tee artifacts/migration-verification.txt
 
       - name: Run candidate health check
