@@ -187,8 +187,11 @@ class ProviderReadinessSummary(BaseModel):
     total_providers: int
     live_providers: int
     sandbox_providers: int
+    mock_providers: int = 0
     unconfigured_providers: int
     inactive_providers: int
+    degraded_providers: int = 0
+    failed_providers: int = 0
     readiness_score: int
     production_ready: bool
     missing_required_types: list[str] = Field(default_factory=list)

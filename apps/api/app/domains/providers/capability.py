@@ -6,13 +6,36 @@ from app.domains.providers.models import Provider, ProviderStatus
 
 SANDBOX_SECRET_VALUES = {
     "test_api_key",
+    "test-api-key",
     "test-key",
     "test_key",
     "sandbox",
+    "sandbox-key",
     "mock",
+    "mock-key",
     "placeholder",
+    "placeholder-key",
+    "demo",
+    "demo-key",
+    "fake",
+    "fake-key",
 }
-SANDBOX_NAME_MARKERS = ("sandbox", "mock", "test", "demo")
+SANDBOX_NAME_MARKERS = ("sandbox",)
+MOCK_NAME_MARKERS = ("mock", "test", "demo", "placeholder", "fake")
+SANDBOX_SECRET_PREFIXES = ("sandbox-", "sandbox_", "sandbox.")
+MOCK_SECRET_PREFIXES = (
+    "demo-",
+    "demo_",
+    "fake-",
+    "fake_",
+    "mock-",
+    "mock_",
+    "placeholder-",
+    "placeholder_",
+    "sk-test",
+    "test-",
+    "test_",
+)
 
 
 def config_text(config: dict[str, Any], *keys: str) -> str:
@@ -39,16 +62,29 @@ def provider_secret_value(provider: Provider) -> str:
 
 def is_sandbox_provider(provider: Provider) -> bool:
     """Whether a provider is configured only for sandbox/mock/demo use."""
+    return provider_fake_configuration_kind(provider) in {"sandbox", "mock"}
+
+
+def provider_fake_configuration_kind(provider: Provider) -> str | None:
+    """Return sandbox/mock when provider config is not production evidence."""
     config = provider.config_json or {}
     api_key = provider_secret_value(provider).lower()
     provider_name_lower = (provider.name or "").lower()
     configured_mode = config_text(config, "mode", "environment", "profile").lower()
 
-    return (
-        (bool(api_key) and api_key in SANDBOX_SECRET_VALUES)
-        or configured_mode in {"sandbox", "mock", "test", "demo"}
-        or any(marker in provider_name_lower for marker in SANDBOX_NAME_MARKERS)
-    )
+    if configured_mode == "sandbox" or any(marker in provider_name_lower for marker in SANDBOX_NAME_MARKERS):
+        return "sandbox"
+    if configured_mode in {"mock", "test", "demo", "placeholder", "fake"} or any(
+        marker in provider_name_lower for marker in MOCK_NAME_MARKERS
+    ):
+        return "mock"
+    if api_key:
+        if api_key == "sandbox" or api_key.startswith(SANDBOX_SECRET_PREFIXES):
+            return "sandbox"
+        if api_key in SANDBOX_SECRET_VALUES or api_key.startswith(MOCK_SECRET_PREFIXES):
+            return "mock"
+
+    return None
 
 
 def is_live_configured(provider: Provider) -> bool:
