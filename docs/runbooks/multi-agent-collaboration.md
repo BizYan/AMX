@@ -36,8 +36,10 @@ Do not assign every task to every agent. Add temporary agents only when their sp
 5. The working agent implements and runs the narrowest local verification that proves the change.
 6. The working agent prepares PR evidence, including risk level, focused verification, intentional non-runs, rollback, and GitNexus evidence or fallback.
 7. CI runs and remains the broad PR gate.
-8. Human approves merge into release branch or `main`.
-9. Production deploy runs only after human approval and release validation.
+8. Low-risk documentation-only PRs may auto-merge after required checks pass.
+   Product, API, security, migration, Docker, workflow, release, deployment,
+   and production PRs require explicit Owner Go before merge.
+9. Production deploy runs only after explicit Owner Go and release validation.
 
 ## Delegation Rules
 
@@ -51,6 +53,10 @@ Temporary agents must:
 - run their own focused verification before handoff;
 - record GitNexus freshness and post-change evidence when applicable;
 - avoid merging, deploying production, or bypassing Codex review.
+
+Temporary agents must not treat a successful API candidate gate as full
+frontend commercial-delivery validation. Any browser/user journey claim requires
+separate browser or Playwright evidence.
 
 ## GitNexus Usage
 

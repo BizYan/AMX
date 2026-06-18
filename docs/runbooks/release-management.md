@@ -13,6 +13,21 @@ Use semantic versioning:
 
 Merging a PR is not automatically a production release. Group stable PRs into a release slice when possible, then validate that slice once. Deploy immediately only for approved hotfixes or when the human owner explicitly asks for same-slice release.
 
+Product, API, security, migration, Docker, workflow, release, deployment, and
+production PRs require explicit Owner Go before merge. Low-risk
+documentation-only PRs may auto-merge after required checks pass, but that does
+not authorize a release or production deployment.
+
+No release or production deployment may bypass these gates:
+
+- isolated candidate verification for the exact SHA;
+- exact tag/SHA evidence;
+- production health;
+- authenticated production smoke;
+- deployment provenance;
+- candidate teardown evidence;
+- rollback target verification.
+
 1. Merge all accepted feature branches into the release branch or confirm `main` is the intended release ref.
 2. Run `pwsh infra/scripts/test-delivery-readiness.ps1` and resolve every reported blocker.
 3. Run CI on the release ref, including deterministic Playwright E2E.
@@ -29,7 +44,8 @@ git tag -a v0.3.0 -m "AMX v0.3.0"
 git push origin v0.3.0
 ```
 
-7. Use GitHub production deployment workflow with the release tag or approved release ref.
+7. Use GitHub production deployment workflow with the Owner-approved release tag
+   or approved release ref.
 8. Verify production health, OCI commit/status, and GitNexus service health/index refresh.
 9. Confirm both the GitHub Release entry and GitHub production Deployment show
    success. A deployment without a GitHub Release is not a completed versioned
@@ -64,6 +80,11 @@ repository Alembic/CI migration checks.
 Candidate runtime startup scope is intentionally limited to `postgres`,
 `redis`, and `api`. `worker` and `web` must remain config-isolated in the
 rendered Compose config, but this workflow does not runtime-verify them.
+
+A successful API candidate gate must not be described as a full frontend
+commercial-delivery validation. If a release changes login, navigation, web
+delivery, document workflows, or other browser-facing commercial paths, record
+separate browser or frontend evidence before making that claim.
 
 ## Release Validation Scope
 

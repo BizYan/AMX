@@ -72,6 +72,27 @@ This workflow is not a replacement for protected branches. It is an automated li
 
 Use `docs/runbooks/development-verification-standard.md` to decide which checks must be run locally before PR. GitHub Actions are the standard broad PR gate, so agents should not duplicate every CI check locally unless the branch is high-risk or a CI failure is being debugged.
 
+## Merge Authority
+
+Low-risk documentation-only PRs may auto-merge after required checks pass and no
+review blocker remains.
+
+The following PR classes require explicit Owner Go before merge:
+
+- product behavior;
+- API behavior or contracts;
+- security, auth, permissions, secrets, or credential handling;
+- database migrations or schema compatibility;
+- Docker, Compose, runtime, or infrastructure configuration;
+- GitHub Actions workflows or CI/CD behavior;
+- release notes, release automation, tags, or GitHub Release behavior;
+- deployment scripts, production operations, rollback, or OCI behavior;
+- any production-facing risk or incident fix.
+
+Required checks are necessary but not sufficient for these classes. Do not infer
+Owner Go from green CI, a resolved review, a successful candidate workflow, or a
+release cadence threshold.
+
 ## Git Transport Fallback
 
 Default branch publication is still normal Git:
@@ -122,12 +143,23 @@ Every PR must state:
 
 Merging a PR is not automatically a production release. Multiple accepted PRs may be grouped into a release slice and validated together when that reduces repeated deployment overhead.
 
-Deploy immediately only for approved hotfixes or when the human owner explicitly asks for same-slice release. Production deployment still goes through GitHub Actions and release validation.
+Deploy immediately only for approved hotfixes or when the human owner explicitly
+asks for same-slice release. Production deployment still goes through GitHub
+Actions and release validation.
+
+No release or deployment may bypass candidate verification, exact SHA evidence,
+health, authenticated smoke, provenance, teardown, and rollback verification.
+The candidate verification workflow is a pre-tag evidence gate, not a production
+deployment and not a replacement for production health, smoke, provenance, or
+rollback evidence.
 
 ## Agent Rules
 
 - Agents may create branches and PRs.
 - Agents may deploy staging from their PR branch.
-- Agents may not merge to `main`.
-- Agents may not deploy production.
+- Agents may auto-merge Low-risk documentation-only PRs after required checks.
+- Agents may not merge Product/API/security/migration/Docker/workflow/release/
+  deployment/production PRs without explicit Owner Go.
+- Agents may not deploy production without explicit Owner Go and passing release
+  gates.
 - Every PR must include command output, risk, rollback, and agent attribution.

@@ -32,6 +32,12 @@ real directories.
 
 ## Production Deploy
 
+Production deploys require explicit Owner Go and must use the repository
+`Deploy production` GitHub Actions workflow. The manual OCI commands below are
+for break-glass diagnosis or documented rollback operations only; they must not
+be used to bypass candidate verification, exact SHA evidence, health,
+authenticated smoke, provenance, teardown, or rollback verification.
+
 Before the first deployment with runtime security guardrails:
 
 ```bash
@@ -54,6 +60,16 @@ bash infra/deploy/deploy-oci.sh \
 bash infra/deploy/health-check.sh --base-url https://amx.yuanda.win
 ```
 
+After any approved deployment, verify the workflow evidence instead of relying
+only on manual shell output:
+
+- deployed ref and deployed SHA match the approved tag or SHA;
+- production `/health` passed;
+- authenticated production smoke passed;
+- GitNexus refresh passed;
+- deployment provenance passed;
+- rollback target still resolves and remains usable.
+
 ## Rollback
 
 ```bash
@@ -63,6 +79,9 @@ bash infra/deploy/rollback-oci.sh \
   --ref <known-good-tag-or-sha>
 bash infra/deploy/health-check.sh --base-url https://amx.yuanda.win
 ```
+
+Rollback also requires health, authenticated smoke, provenance, service status,
+and GitNexus verification when applicable.
 
 ## Logs
 

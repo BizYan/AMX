@@ -4,6 +4,12 @@ Describe the business or infrastructure outcome of this PR.
 
 Risk level: Low / Medium / High / Release
 
+Owner Go required before merge: Yes / No
+
+Low-risk documentation-only PRs may set Owner Go required to `No` after
+required checks pass. Product, API, security, migration, Docker, workflow,
+release, deployment, and production PRs must set it to `Yes`.
+
 ## Scope
 
 - [ ] Backend
@@ -37,6 +43,12 @@ Not run locally, with reason:
 
 State the production risk, migration impact, and rollback command or Git ref.
 
+For release or deployment PRs, state how candidate verification, exact SHA
+evidence, health, authenticated smoke, provenance, teardown, and rollback
+verification will be satisfied. A successful API candidate gate must not be
+described as full frontend commercial-delivery validation unless a real
+browser/user journey is also verified.
+
 ## Agent Attribution
 
 State whether Codex, Antigravity, Claude, or a human authored the change. Include branch names for any agent side branches and summarize any temporary agent handoff.
@@ -53,12 +65,12 @@ State whether Codex, Antigravity, Claude, or a human authored the change. Includ
 
 ## Batch Completion Checklist
 
-- Batch:
+- Batch number:
 - PRs included:
-- Acceptance items completed:
+- Acceptance items:
 - Verification evidence:
 - Unresolved gaps:
-- Next Batch status:
+- Next-Batch decision:
 - [ ] This PR is not being treated as Batch completion unless all Batch acceptance items above are complete.
 
 ## Engineering Consistency
