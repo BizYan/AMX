@@ -10,6 +10,30 @@ def read(relative_path: str) -> str:
     return (REPO_ROOT / relative_path).read_text(encoding="utf-8")
 
 
+def workflow_run_blocks(workflow: str) -> list[str]:
+    blocks: list[str] = []
+    lines = workflow.splitlines()
+
+    for index, line in enumerate(lines):
+        stripped = line.lstrip()
+        if not (stripped.startswith("run: |") or stripped.startswith("run: >")):
+            continue
+
+        parent_indent = len(line) - len(stripped)
+        block_lines: list[str] = []
+        for candidate in lines[index + 1 :]:
+            if not candidate.strip():
+                block_lines.append(candidate)
+                continue
+            candidate_indent = len(candidate) - len(candidate.lstrip())
+            if candidate_indent <= parent_indent:
+                break
+            block_lines.append(candidate)
+        blocks.append("\n".join(block_lines))
+
+    return blocks
+
+
 def test_runtime_ports_bind_to_loopback_by_default():
     compose = read("infra/docker-compose.yml")
 
@@ -82,6 +106,7 @@ def test_candidate_verification_workflow_is_manual_and_non_production():
     assert "push:" not in workflow
     assert "pull_request:" not in workflow
     assert "environment: release-candidate" in workflow
+    assert "REQUESTED_CANDIDATE_SHA: ${{ inputs.ref }}" in workflow
     assert "concurrency:" in workflow
     assert "secrets.RELEASE_CANDIDATE_BOOTSTRAP_ADMIN_EMAIL" in workflow
     assert "secrets.RELEASE_CANDIDATE_BOOTSTRAP_ADMIN_PASSWORD" in workflow
@@ -96,8 +121,9 @@ def test_candidate_verification_workflow_is_manual_and_non_production():
     assert "compose_project_name" not in workflow
     assert "default: \"1877e0b4a0cd208890391b76afc8c5f23647cd3b\"" not in workflow
     assert "fetch-depth: 0" in workflow
-    assert 'test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"' in workflow
-    assert 'git merge-base --is-ancestor "$CANDIDATE_SHA" origin/main' in workflow
+    assert 'test "$CHECKED_OUT_SHA" = "$REQUESTED_CANDIDATE_SHA"' in workflow
+    assert 'git merge-base --is-ancestor "$CHECKED_OUT_SHA" origin/main' in workflow
+    assert 'echo "CANDIDATE_SHA=$CHECKED_OUT_SHA" >> "$GITHUB_ENV"' in workflow
     assert 'PROJECT_NAME="amx_rc_${SHORT_SHA}"' in workflow
     assert 'CANDIDATE_ENV_FILE=$RUNNER_TEMP/.env.rc.${SHORT_SHA}' in workflow
     assert "test -f infra/docker-compose.candidate.yml" in workflow
@@ -111,6 +137,9 @@ def test_candidate_verification_workflow_is_manual_and_non_production():
     assert "CREATE TABLE IF NOT EXISTS documents (" in workflow
     assert "project_id uuid NOT NULL" in workflow
     assert "metadata_json jsonb" in workflow
+    assert "Verify historical migration compatibility baseline" in workflow
+    assert "historical migration compatibility baseline verification" in workflow
+    assert "not a clean empty-database full-history migration proof" in workflow
     assert "/app/.venv/bin/alembic stamp 0021_invitation_delivery" in workflow
     assert (
         "/app/.venv/bin/alembic upgrade head"
@@ -128,6 +157,8 @@ def test_candidate_verification_workflow_is_manual_and_non_production():
     assert "remaining_containers" in workflow
     assert "up -d --build postgres redis api" in workflow
     assert "up -d --build\n" not in workflow
+    assert "runtime_started=postgres,redis,api" in workflow
+    assert "config_isolated_not_runtime_started=worker,web" in workflow
     assert "remaining_networks" in workflow
     assert "remaining_volumes" in workflow
     assert "actions/upload-artifact@v4" in workflow
@@ -139,6 +170,64 @@ def test_candidate_verification_workflow_is_manual_and_non_production():
     assert "docker compose run --rm api" not in workflow
     assert "exec -T api" in workflow
     assert workflow.count("-f infra/docker-compose.candidate.yml") >= 8
+
+
+def test_candidate_workflow_shell_run_blocks_do_not_interpolate_github_inputs():
+    workflow = read(".github/workflows/candidate-verification.yml")
+    run_blocks = workflow_run_blocks(workflow)
+
+    assert run_blocks
+    forbidden = ("${{ github.event.inputs.ref }}", "${{ inputs.ref }}")
+    offenders = [
+        block
+        for block in run_blocks
+        if any(expression in block for expression in forbidden)
+    ]
+
+    assert offenders == []
+
+
+def test_candidate_workflow_derives_resources_from_verified_sha():
+    workflow = read(".github/workflows/candidate-verification.yml")
+
+    assert 'CHECKED_OUT_SHA="$(git rev-parse HEAD)"' in workflow
+    assert 'test "$CHECKED_OUT_SHA" = "$REQUESTED_CANDIDATE_SHA"' in workflow
+    assert 'echo "CANDIDATE_SHA=$CHECKED_OUT_SHA" >> "$GITHUB_ENV"' in workflow
+    assert 'SHORT_SHA="${CANDIDATE_SHA:0:12}"' in workflow
+    assert 'PROJECT_NAME="amx_rc_${SHORT_SHA}"' in workflow
+    assert 'echo "candidate_sha=$CANDIDATE_SHA"' in workflow
+    assert 'SHORT_SHA="${REQUESTED_CANDIDATE_SHA:0:12}"' not in workflow
+    assert 'PROJECT_NAME="amx_rc_${REQUESTED_CANDIDATE_SHA' not in workflow
+
+
+def test_candidate_migration_gate_claim_matches_implementation_and_docs():
+    workflow = read(".github/workflows/candidate-verification.yml")
+    release_runbook = read("docs/runbooks/release-management.md")
+    blocker = read("docs/programs/v1.0-release-promotion-blocker.md")
+
+    for document in (workflow, release_runbook, blocker):
+        assert "historical migration compatibility baseline verification" in document
+        assert "clean empty-database full-history migration proof" in document
+
+    assert "Verify disposable PostgreSQL migration cycle" not in workflow
+    assert "Disposable PostgreSQL Migration Upgrade Verification" not in blocker
+    assert "/app/.venv/bin/alembic stamp 0021_invitation_delivery" in workflow
+    assert "/app/.venv/bin/alembic downgrade 0021_invitation_delivery" in workflow
+    assert "baseline_fixture=0021_invitation_delivery plus projects/documents ORM smoke columns" in workflow
+
+
+def test_candidate_runtime_scope_remains_api_only_at_runtime():
+    workflow = read(".github/workflows/candidate-verification.yml")
+    release_runbook = read("docs/runbooks/release-management.md")
+    blocker = read("docs/programs/v1.0-release-promotion-blocker.md")
+
+    assert "up -d --build postgres redis api" in workflow
+    assert "up -d --build postgres redis api worker" not in workflow
+    assert "up -d --build postgres redis api web" not in workflow
+    assert "runtime_started=postgres,redis,api" in workflow
+    assert "config_isolated_not_runtime_started=worker,web" in workflow
+    assert "runtime startup scope is intentionally limited to `postgres`" in release_runbook
+    assert "runtime-start only `postgres`, `redis`, and `api`" in blocker
 
 
 def test_runtime_containers_receive_explicit_environment():

@@ -47,11 +47,23 @@ Do not create the `v1.0.0` tag until every release criterion has either passing 
 For `v1.0.0`, candidate verification must run through the manual-only
 `Candidate verification` workflow before tagging. The workflow must verify the
 exact release-candidate SHA in an isolated Compose project, use candidate-only
-secrets, run disposable PostgreSQL migration verification, run authenticated
-smoke with `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD`, upload
-evidence artifacts, and tear down the candidate stack. Do not dispatch the
-production deployment workflow or create a tag as part of candidate
-verification.
+secrets, run historical migration compatibility baseline verification, run
+authenticated smoke with `BOOTSTRAP_ADMIN_EMAIL` and
+`BOOTSTRAP_ADMIN_PASSWORD`, upload evidence artifacts, and tear down the
+candidate stack. Do not dispatch the production deployment workflow or create a
+tag as part of candidate verification.
+
+The candidate migration gate is not a clean empty-database full-history migration proof.
+It uses the documented repository compatibility baseline:
+stamp `0021_invitation_delivery`, provide the minimal legacy
+`projects`/`documents` fixture columns required by current ORM smoke paths,
+then run upgrade, downgrade to `0021_invitation_delivery`, and upgrade again.
+Clean full-history migration coverage remains the responsibility of the
+repository Alembic/CI migration checks.
+
+Candidate runtime startup scope is intentionally limited to `postgres`,
+`redis`, and `api`. `worker` and `web` must remain config-isolated in the
+rendered Compose config, but this workflow does not runtime-verify them.
 
 ## Release Validation Scope
 
