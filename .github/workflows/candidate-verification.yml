@@ -153,7 +153,7 @@ jobs:
             -f infra/docker-compose.yml \
             -f infra/docker-compose.candidate.yml \
             --env-file "$CANDIDATE_ENV_FILE" \
-            up -d --build
+            up -d --build postgres redis api
           docker compose \
             -p "$COMPOSE_PROJECT_NAME" \
             -f infra/docker-compose.yml \
