@@ -46,6 +46,8 @@ Default rule: do not keep Antigravity or Claude active on every task. Add them o
 9. GitHub Actions must pass.
 10. Codex may merge ready PRs after all gates pass, then release and deploy automatically when cadence or urgency requires it.
 
+For program work split into Batches, a PR is only a reviewable unit of work, not automatically a completed Batch. After each Batch, the executing agent must submit a `Batch completion checklist` that identifies the Batch number, PRs included, acceptance items completed, verification evidence, unresolved gaps, and whether the next Batch may start.
+
 ## GitNexus Rules
 
 GitNexus is the shared code-fact and impact-record layer. It does not replace tests, code review, browser verification, `rg`, or human release authority.

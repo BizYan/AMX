@@ -6,6 +6,7 @@ Business logic for document management, versioning, baselines, and quality asses
 import asyncio
 import hashlib
 import json
+import time
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Any
@@ -59,6 +60,8 @@ FORMAL_DELIVERY_STATES = {
     DocumentStatus.APPROVED.value,
     DocumentStatus.PUBLISHED.value,
 }
+
+NON_DELIVERABLE_GENERATION_STATUSES = {"placeholder", "failed", "partial"}
 
 ALLOWED_STATUS_TRANSITIONS: dict[str, set[str]] = {
     status: set(targets) for status, targets in DEFAULT_TRANSITIONS.items()
@@ -580,7 +583,7 @@ class DocumentService:
                 document.metadata_json = updates.metadata
 
         if status_update:
-            # Block placeholder documents from entering formal delivery states
+            # Block incomplete AI-generated documents from entering formal delivery states.
             metadata = document.metadata_json or {}
             generation_status = metadata.get("generation_status")
             formal_delivery_states = [
@@ -588,10 +591,13 @@ class DocumentService:
                 DocumentStatus.APPROVED.value,
                 DocumentStatus.PUBLISHED.value,
             ]
-            if generation_status == "placeholder" and status_update.status in formal_delivery_states:
+            if (
+                generation_status in NON_DELIVERABLE_GENERATION_STATUSES
+                and status_update.status in formal_delivery_states
+            ):
                 raise ValueError(
-                    f"Cannot transition placeholder document to '{status_update.status}'. "
-                    f"Document must be regenerated with LLM before it can enter review/approval flow."
+                    f"Cannot transition {generation_status} document to '{status_update.status}'. "
+                    "Document must be successfully regenerated with LLM before it can enter review/approval flow."
                 )
 
             document.status = status_update.status
@@ -680,10 +686,11 @@ class DocumentService:
             return [f"Invalid status transition from '{current_status}' to '{next_status}'"]
 
         metadata = dict(document.metadata_json or {})
-        if metadata.get("generation_status") == "placeholder" and next_status in FORMAL_DELIVERY_STATES:
+        generation_status = metadata.get("generation_status")
+        if generation_status in NON_DELIVERABLE_GENERATION_STATUSES and next_status in FORMAL_DELIVERY_STATES:
             return [
-                f"Cannot transition placeholder document to '{next_status}'. "
-                "Document must be regenerated with LLM before it can enter review/approval flow."
+                f"Cannot transition {generation_status} document to '{next_status}'. "
+                "Document must be successfully regenerated with LLM before it can enter review/approval flow."
             ]
 
         if next_status == DocumentStatus.PUBLISHED.value:
@@ -2172,6 +2179,53 @@ class DocumentGenerationService:
             pass
         return None
 
+    def _llm_provider_name(self, llm: LLMGateway | None) -> str | None:
+        """Return the provider selected for generation evidence."""
+        if llm is None:
+            return None
+        primary_provider = getattr(llm, "primary_provider", None)
+        if primary_provider is not None:
+            return getattr(primary_provider, "name", None)
+        providers = getattr(llm, "providers", None) or []
+        if providers:
+            return getattr(providers[0], "name", None)
+        return None
+
+    def _build_generation_evidence(
+        self,
+        *,
+        status: str,
+        prompt: str | None,
+        started_at: float,
+        llm: LLMGateway | None = None,
+        response: Any | None = None,
+        error: Exception | None = None,
+    ) -> dict[str, Any]:
+        """Build non-secret generation metadata for production readiness gates."""
+        provider_name = self._llm_provider_name(llm)
+        model = getattr(response, "model", None)
+        if model is None and llm is not None:
+            primary_provider = getattr(llm, "primary_provider", None)
+            model = getattr(primary_provider, "model", None)
+            if model is None:
+                providers = getattr(llm, "providers", None) or []
+                model = getattr(providers[0], "model", None) if providers else None
+
+        evidence: dict[str, Any] = {
+            "status": status,
+            "provider": provider_name,
+            "model": model,
+            "usage": getattr(response, "usage", None) or {},
+            "finish_reason": getattr(response, "finish_reason", None),
+            "latency_ms": round((time.perf_counter() - started_at) * 1000, 2),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "prompt_sha256": hashlib.sha256((prompt or "").encode("utf-8")).hexdigest() if prompt else None,
+        }
+        if error is not None:
+            evidence["error_type"] = error.__class__.__name__
+            evidence["error_message"] = str(error)
+        return evidence
+
     def _generate_structured_placeholder(
         self,
         title: str,
@@ -2486,9 +2540,11 @@ Provide comprehensive test cases in structured format.
         content = ""
         generation_status = "placeholder"
         generation_issues = []
+        generation_evidence: dict[str, Any] = {}
         llm = self._get_llm_gateway()
         if llm:
             prompt = self._get_schema_prompt(doc_type, context)
+            started_at = time.perf_counter()
             try:
                 response = await llm.generate(
                     prompt,
@@ -2496,10 +2552,24 @@ Provide comprehensive test cases in structured format.
                 )
                 content = response.text
                 generation_status = "generated"
+                generation_evidence = self._build_generation_evidence(
+                    status=generation_status,
+                    prompt=prompt,
+                    started_at=started_at,
+                    llm=llm,
+                    response=response,
+                )
             except Exception as e:
                 # Fallback to template if LLM fails
                 content = f"# {title}\n\nDocument content generation failed. Please manually complete this document.\n\nError: {str(e)}"
                 generation_status = "failed"
+                generation_evidence = self._build_generation_evidence(
+                    status=generation_status,
+                    prompt=prompt,
+                    started_at=started_at,
+                    llm=llm,
+                    error=e,
+                )
                 generation_issues.append({
                     "type": "generation_failed",
                     "message": str(e),
@@ -2512,6 +2582,12 @@ Provide comprehensive test cases in structured format.
             schema = get_schema_for_doc_type(doc_type)
             content = self._generate_structured_placeholder(title, doc_type, schema, context)
             generation_status = "placeholder"
+            generation_evidence = self._build_generation_evidence(
+                status=generation_status,
+                prompt=None,
+                started_at=time.perf_counter(),
+                llm=None,
+            )
 
         # Create document
         doc_service = DocumentService(self.db)
@@ -2526,6 +2602,7 @@ Provide comprehensive test cases in structured format.
                 "generated": True,
                 "generation_status": generation_status,
                 "generation_issues": generation_issues,
+                "generation_evidence": generation_evidence,
                 "context_keys": list(context.keys()),
             },
         )
@@ -2581,12 +2658,13 @@ Provide comprehensive test cases in structured format.
         # Use LLM to fill remaining placeholders if configured
         llm = self._get_llm_gateway()
         generation_issues = []
+        generation_evidence: dict[str, Any] = {}
         if llm and (
             placeholder_evidence["unresolved_placeholders"]
             or "[待填写]" in filled_content
             or "${" in filled_content
         ):
-            filled_content, generation_issues = await self._fill_remaining_placeholders_with_llm(
+            filled_content, generation_issues, generation_evidence = await self._fill_remaining_placeholders_with_llm(
                 filled_content, doc_type, context, llm
             )
             placeholder_evidence = self._build_template_placeholder_evidence(
@@ -2614,6 +2692,16 @@ Provide comprehensive test cases in structured format.
         else:
             generation_status = "generated"
 
+        if generation_evidence:
+            generation_evidence["status"] = generation_status
+        else:
+            generation_evidence = self._build_generation_evidence(
+                status=generation_status,
+                prompt=None,
+                started_at=time.perf_counter(),
+                llm=llm,
+            )
+
         document = await doc_service.create_document(
             tenant_id=tenant_id,
             project_id=project_id,
@@ -2625,6 +2713,7 @@ Provide comprehensive test cases in structured format.
                 "generated": True,
                 "generation_status": generation_status,
                 "generation_issues": generation_issues,
+                "generation_evidence": generation_evidence,
                 "template_placeholder_evidence": placeholder_evidence,
                 "unresolved_template_placeholders": placeholder_evidence["unresolved_placeholders"],
                 "template_id": str(template_id),
@@ -2724,7 +2813,7 @@ Provide comprehensive test cases in structured format.
         doc_type: str,
         context: dict[str, Any],
         llm: LLMGateway,
-    ) -> str:
+    ) -> tuple[str, list[dict[str, Any]], dict[str, Any]]:
         """Use LLM to fill remaining placeholders in template content.
 
         Args:
@@ -2734,7 +2823,7 @@ Provide comprehensive test cases in structured format.
             llm: LLM gateway
 
         Returns:
-            Content with placeholders filled by LLM
+            Content with placeholders filled by LLM, issues, and generation evidence
         """
         project_name = context.get("project_name", "Unknown Project")
 
@@ -2752,18 +2841,33 @@ Context information:
 
 Provide the complete filled document in the same markdown format.
 """
+        started_at = time.perf_counter()
         try:
             response = await llm.generate(prompt, {"temperature": 0.7, "max_tokens": 8192})
-            return response.text, []
+            evidence = self._build_generation_evidence(
+                status="generated",
+                prompt=prompt,
+                started_at=started_at,
+                llm=llm,
+                response=response,
+            )
+            return response.text, [], evidence
         except Exception as e:
             # Return original content without polluting it with HTML comments
             # Issues are returned separately for structured tracking
+            evidence = self._build_generation_evidence(
+                status="partial",
+                prompt=prompt,
+                started_at=started_at,
+                llm=llm,
+                error=e,
+            )
             return content, [{
                 "type": "placeholder_fill_failed",
                 "message": str(e),
                 "stage": "placeholder_fill",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
-            }]
+            }], evidence
 
     async def validate_generated_content(
         self,

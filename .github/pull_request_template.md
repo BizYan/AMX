@@ -51,6 +51,16 @@ State whether Codex, Antigravity, Claude, or a human authored the change. Includ
 - [ ] `infra\scripts\invoke-gitnexus-change-record.ps1` output is summarized, including Git evidence status, GitNexus symbol status, fallback status, or an equivalent explicit-`--repo` GitNexus/MCP result plus raw `git diff` and untracked-file list is summarized.
 - [ ] GitNexus result was used as context only; tests and review remain the correctness gate.
 
+## Batch Completion Checklist
+
+- Batch:
+- PRs included:
+- Acceptance items completed:
+- Verification evidence:
+- Unresolved gaps:
+- Next Batch status:
+- [ ] This PR is not being treated as Batch completion unless all Batch acceptance items above are complete.
+
 ## Engineering Consistency
 
 - [ ] Existing service, util, API client, component, or schema was reused where appropriate.

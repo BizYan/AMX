@@ -81,6 +81,7 @@ jobs:
             "## Risk And Rollback"
             "## Agent Attribution"
             "## GitNexus Impact Record"
+            "## Batch Completion Checklist"
           )
 
           for section in "${required_sections[@]}"; do
