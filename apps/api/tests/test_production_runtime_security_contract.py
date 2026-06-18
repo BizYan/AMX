@@ -80,19 +80,42 @@ def test_candidate_verification_workflow_is_manual_and_non_production():
     assert "workflow_dispatch:" in workflow
     assert "push:" not in workflow
     assert "pull_request:" not in workflow
-    assert "git worktree add ../amx-candidate" in workflow
-    assert "Overlay verification infrastructure" in workflow
-    assert "secrets.CANDIDATE_BOOTSTRAP_ADMIN_EMAIL" in workflow
-    assert "secrets.CANDIDATE_BOOTSTRAP_ADMIN_PASSWORD" in workflow
+    assert "environment: release-candidate" in workflow
+    assert "concurrency:" in workflow
+    assert "secrets.RELEASE_CANDIDATE_BOOTSTRAP_ADMIN_EMAIL" in workflow
+    assert "secrets.RELEASE_CANDIDATE_BOOTSTRAP_ADMIN_PASSWORD" in workflow
     assert "secrets.PRODUCTION" not in workflow
     assert "OCI_" not in workflow
     assert "gh release" not in workflow
     assert "git tag" not in workflow
     assert "deploy-production" not in workflow
+    assert "git worktree add" not in workflow
+    assert "Overlay verification infrastructure" not in workflow
+    assert "cp infra/docker-compose.yml" not in workflow
+    assert "compose_project_name" not in workflow
+    assert "default: \"1877e0b4a0cd208890391b76afc8c5f23647cd3b\"" not in workflow
+    assert "fetch-depth: 0" in workflow
+    assert 'test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"' in workflow
+    assert 'git merge-base --is-ancestor "$CANDIDATE_SHA" origin/main' in workflow
+    assert 'PROJECT_NAME="amx_rc_${SHORT_SHA}"' in workflow
+    assert 'CANDIDATE_ENV_FILE=$RUNNER_TEMP/.env.rc.${SHORT_SHA}' in workflow
+    assert "test -f infra/docker-compose.candidate.yml" in workflow
+    assert "test -f infra/deploy/validate-candidate-verification.sh" in workflow
     assert "alembic upgrade head && alembic downgrade 0021_invitation_delivery && alembic upgrade head" in workflow
     assert "authenticated-smoke.sh" in workflow
     assert "down -v --remove-orphans" in workflow
+    assert "remaining_containers" in workflow
+    assert "remaining_networks" in workflow
+    assert "remaining_volumes" in workflow
     assert "actions/upload-artifact@v4" in workflow
+    assert "path: artifacts" in workflow
+    artifact_section = workflow.split("path: artifacts", 1)[1]
+    assert "candidate-compose-config" not in artifact_section
+    assert ".env.rc." not in artifact_section
+    assert "candidate-compose-logs-redacted.txt" in workflow
+    assert "docker compose run --rm api" not in workflow
+    assert "exec -T api" in workflow
+    assert workflow.count("-f infra/docker-compose.candidate.yml") >= 8
 
 
 def test_runtime_containers_receive_explicit_environment():
