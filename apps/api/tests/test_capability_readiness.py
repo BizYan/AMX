@@ -84,7 +84,10 @@ async def test_provider_test_rejects_sandbox_as_production_ready():
         name="Sandbox LLM",
         config={"api_key": "mock", "mode": "sandbox"},
     )
-    registry = SimpleNamespace(get_provider=AsyncMock(return_value=provider))
+    registry = SimpleNamespace(
+        get_provider=AsyncMock(return_value=provider),
+        record_run=AsyncMock(),
+    )
 
     with patch("app.domains.providers.router.get_registry", return_value=registry):
         response = await call_test_provider(
@@ -98,6 +101,13 @@ async def test_provider_test_rejects_sandbox_as_production_ready():
     assert response.production_ready is False
     assert response.sandbox_fallback is True
     assert response.status == "sandbox"
+    registry.record_run.assert_awaited_once()
+    recorded = registry.record_run.await_args.kwargs
+    assert recorded["tenant_id"] == provider.tenant_id
+    assert recorded["provider_id"] == provider.id
+    assert recorded["capability_type"] == "text_generation"
+    assert recorded["status"].value == "failure"
+    assert "sandbox" in recorded["error_message"].lower()
 
 
 @pytest.mark.asyncio
@@ -133,7 +143,10 @@ async def test_gitnexus_provider_test_supports_health_capability():
             "health_path": "/api/health",
         },
     )
-    registry = SimpleNamespace(get_provider=AsyncMock(return_value=provider))
+    registry = SimpleNamespace(
+        get_provider=AsyncMock(return_value=provider),
+        record_run=AsyncMock(),
+    )
 
     with (
         patch("app.domains.providers.router.get_registry", return_value=registry),
@@ -155,6 +168,13 @@ async def test_gitnexus_provider_test_supports_health_capability():
     assert response.output == {"status": "ok"}
     assert response.production_ready is True
     assert response.sandbox_fallback is False
+    registry.record_run.assert_awaited_once()
+    recorded = registry.record_run.await_args.kwargs
+    assert recorded["tenant_id"] == provider.tenant_id
+    assert recorded["provider_id"] == provider.id
+    assert recorded["capability_type"] == "health"
+    assert recorded["status"].value == "success"
+    assert recorded["error_message"] is None
 
 
 @pytest.mark.asyncio
