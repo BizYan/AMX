@@ -105,8 +105,12 @@ def test_candidate_verification_workflow_is_manual_and_non_production():
     assert 'exec -T postgres psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' in workflow
     assert 'CREATE EXTENSION IF NOT EXISTS "uuid-ossp";' in workflow
     assert "CREATE EXTENSION IF NOT EXISTS vector;" in workflow
-    assert "CREATE TABLE IF NOT EXISTS projects (id uuid PRIMARY KEY);" in workflow
-    assert "CREATE TABLE IF NOT EXISTS documents (id uuid PRIMARY KEY);" in workflow
+    assert "CREATE TABLE IF NOT EXISTS projects (" in workflow
+    assert "owner_id uuid" in workflow
+    assert "status varchar(20) NOT NULL DEFAULT" in workflow
+    assert "CREATE TABLE IF NOT EXISTS documents (" in workflow
+    assert "project_id uuid NOT NULL" in workflow
+    assert "metadata_json jsonb" in workflow
     assert "/app/.venv/bin/alembic stamp 0021_invitation_delivery" in workflow
     assert (
         "/app/.venv/bin/alembic upgrade head"
