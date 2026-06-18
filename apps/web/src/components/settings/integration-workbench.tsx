@@ -134,11 +134,21 @@ function hasAuth(integration: IntegrationProvider) {
 }
 
 function configHasEndpoint(config: Record<string, unknown>) {
-  return Boolean(config.base_url || config.endpoint || config.url || config.server_url || config.api_url)
+  return Boolean(
+    config.base_url
+    || config.endpoint
+    || config.url
+    || config.server_url
+    || config.api_url
+    || config.health_path
+    || config.sync_path
+  )
 }
 
 function configHasAuth(config: Record<string, unknown>) {
-  return Boolean(config.api_key || config.token || config.access_token || config.secret || config.service_key)
+  return ['api_key', 'token', 'access_token', 'secret', 'service_key'].some((key) =>
+    Object.prototype.hasOwnProperty.call(config, key)
+  )
 }
 
 const sensitiveConfigKeys = ['api_key', 'token', 'access_token', 'secret', 'service_key']
