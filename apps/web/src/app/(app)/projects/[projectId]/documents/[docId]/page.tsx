@@ -155,6 +155,7 @@ function getStatusCapabilityMessage(capability?: DocumentStatusCapability) {
     if (blocker.includes('must be approved')) return '文档批准后才能发布'
     if (blocker.includes('unresolved template placeholders')) return '仍有模板变量未补齐'
     if (blocker.includes('placeholder document')) return '占位文档必须重新生成后才能进入正式流程'
+    if (blocker.includes('Document delivery readiness blocks publish')) return '交付准备度未达标，请先处理未完成或低质量章节'
     if (blocker.includes('Invalid status transition')) return '当前生命周期状态不允许执行此动作'
     return blocker
   }

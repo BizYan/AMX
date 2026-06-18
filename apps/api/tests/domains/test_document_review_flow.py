@@ -410,9 +410,42 @@ async def test_publish_rejects_unresolved_template_placeholders():
         metadata_json={},
     )
     service = DocumentService(AsyncMock())
+    service.count_unresolved_comments = AsyncMock(return_value=0)
 
     blockers = await service.get_status_transition_blockers(document, "published")
 
     assert blockers == [
         "Document contains unresolved template placeholders and cannot be published: client_name"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_publish_rejects_unready_delivery_quality_sections():
+    document = SimpleNamespace(
+        id=UUID("12345678-1234-1234-1234-123456789012"),
+        tenant_id=UUID("00000000-0000-0000-0000-000000000001"),
+        status="approved",
+        content="# Ready content",
+        metadata_json={
+            "delivery": {
+                "delivery_readiness": {
+                    "ready": False,
+                    "unresolved_sections": ["brd.business_flows"],
+                    "low_quality_sections": ["brd.requirement_modules"],
+                    "blockers": [
+                        "unresolved sections: brd.business_flows",
+                        "low quality sections: brd.requirement_modules",
+                    ],
+                }
+            }
+        },
+    )
+    service = DocumentService(AsyncMock())
+    service.count_unresolved_comments = AsyncMock(return_value=0)
+
+    blockers = await service.get_status_transition_blockers(document, "published")
+
+    assert blockers == [
+        "Document delivery readiness blocks publish: unresolved sections: brd.business_flows; "
+        "low quality sections: brd.requirement_modules"
     ]
