@@ -101,6 +101,40 @@ def _sandbox_test_response(
     )
 
 
+async def _record_provider_test_run(
+    *,
+    registry,
+    tenant_id: UUID,
+    provider: Provider,
+    response: ProviderTestResponse,
+) -> None:
+    record_run = getattr(registry, "record_run", None)
+    if not callable(record_run):
+        return
+
+    usage = (response.output or {}).get("usage") if isinstance(response.output, dict) else None
+    input_tokens = usage.get("input_tokens") if isinstance(usage, dict) else None
+    output_tokens = usage.get("output_tokens") if isinstance(usage, dict) else None
+    if response.status == "timeout":
+        run_status = RunStatus.TIMEOUT
+    elif response.success and response.production_ready:
+        run_status = RunStatus.SUCCESS
+    else:
+        run_status = RunStatus.FAILURE
+
+    await record_run(
+        tenant_id=tenant_id,
+        provider_id=provider.id,
+        version_id=getattr(provider, "current_version_id", None),
+        capability_type=response.capability_type or "unknown",
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        latency_ms=response.latency_ms,
+        status=run_status,
+        error_message=None if run_status == RunStatus.SUCCESS else response.message,
+    )
+
+
 async def get_current_user(
     authorization: str = Header(..., description="Bearer token"),
     db: AsyncSession = Depends(get_db),
@@ -479,7 +513,7 @@ async def test_provider(
     start_time = time.time()
 
     if provider.status != ProviderStatus.ACTIVE.value:
-        return ProviderTestResponse(
+        response = ProviderTestResponse(
             success=False,
             message="Provider is inactive and cannot be used for live capability tests.",
             latency_ms=int((time.time() - start_time) * 1000),
@@ -491,21 +525,35 @@ async def test_provider(
             production_ready=False,
             sandbox_fallback=False,
         )
+        await _record_provider_test_run(
+            registry=registry,
+            tenant_id=current_user.tenant_id,
+            provider=provider,
+            response=response,
+        )
+        return response
 
     sandbox_provider = is_sandbox_provider(provider)
     live_configured = is_live_configured(provider)
 
     if sandbox_provider:
         await asyncio.sleep(0.05)
-        return _sandbox_test_response(
+        response = _sandbox_test_response(
             data,
             int((time.time() - start_time) * 1000),
             configured=bool(provider_secret_value(provider)),
             allowed=data.allow_sandbox,
         )
+        await _record_provider_test_run(
+            registry=registry,
+            tenant_id=current_user.tenant_id,
+            provider=provider,
+            response=response,
+        )
+        return response
 
     if not live_configured:
-        return ProviderTestResponse(
+        response = ProviderTestResponse(
             success=False,
             message="Provider is missing live credentials or required production configuration.",
             latency_ms=int((time.time() - start_time) * 1000),
@@ -517,6 +565,22 @@ async def test_provider(
             production_ready=False,
             sandbox_fallback=False,
         )
+        await _record_provider_test_run(
+            registry=registry,
+            tenant_id=current_user.tenant_id,
+            provider=provider,
+            response=response,
+        )
+        return response
+
+    async def finish(response: ProviderTestResponse) -> ProviderTestResponse:
+        await _record_provider_test_run(
+            registry=registry,
+            tenant_id=current_user.tenant_id,
+            provider=provider,
+            response=response,
+        )
+        return response
 
     try:
         # Test based on provider type
@@ -536,7 +600,7 @@ async def test_provider(
                 )
                 await gateway.close()
 
-                return ProviderTestResponse(
+                return await finish(ProviderTestResponse(
                     success=True,
                     message="LLM generation successful",
                     latency_ms=int((time.time() - start_time) * 1000),
@@ -547,12 +611,12 @@ async def test_provider(
                     configured=True,
                     production_ready=True,
                     sandbox_fallback=False,
-                )
+                ))
             elif data.capability_type == "embedding":
                 response = await gateway.embed(texts=["test"])
                 await gateway.close()
 
-                return ProviderTestResponse(
+                return await finish(ProviderTestResponse(
                     success=True,
                     message="Embedding successful",
                     latency_ms=int((time.time() - start_time) * 1000),
@@ -563,7 +627,7 @@ async def test_provider(
                     configured=True,
                     production_ready=True,
                     sandbox_fallback=False,
-                )
+                ))
 
         elif provider.provider_type == ProviderType.GRAPHIFY.value:
             from app.integrations.graphify.adapter import GraphifyProvider
@@ -577,7 +641,7 @@ async def test_provider(
                     params=data.params,
                 )
 
-                return ProviderTestResponse(
+                return await finish(ProviderTestResponse(
                     success=True,
                     message="Graph extraction successful",
                     latency_ms=int((time.time() - start_time) * 1000),
@@ -588,7 +652,7 @@ async def test_provider(
                     configured=True,
                     production_ready=True,
                     sandbox_fallback=False,
-                )
+                ))
 
         elif provider.provider_type == ProviderType.GITNEXUS.value:
             from app.integrations.gitnexus.adapter import GitNexusProvider
@@ -600,7 +664,7 @@ async def test_provider(
             if data.capability_type == "health":
                 response = await gitnexus.check_health()
 
-                return ProviderTestResponse(
+                return await finish(ProviderTestResponse(
                     success=True,
                     message="GitNexus health check successful",
                     latency_ms=int((time.time() - start_time) * 1000),
@@ -611,9 +675,9 @@ async def test_provider(
                     configured=True,
                     production_ready=True,
                     sandbox_fallback=False,
-                )
+                ))
             elif data.capability_type in {"commits", "issues"} and not repo_url:
-                return ProviderTestResponse(
+                return await finish(ProviderTestResponse(
                     success=False,
                     message="GitNexus repository capability requires params.repo_url.",
                     latency_ms=int((time.time() - start_time) * 1000),
@@ -624,11 +688,11 @@ async def test_provider(
                     configured=True,
                     production_ready=False,
                     sandbox_fallback=False,
-                )
+                ))
             elif data.capability_type == "commits":
                 response = await gitnexus.fetch_commits(repo_url=repo_url, params=data.params)
 
-                return ProviderTestResponse(
+                return await finish(ProviderTestResponse(
                     success=True,
                     message="Commits fetch successful",
                     latency_ms=int((time.time() - start_time) * 1000),
@@ -639,11 +703,11 @@ async def test_provider(
                     configured=True,
                     production_ready=True,
                     sandbox_fallback=False,
-                )
+                ))
             elif data.capability_type == "issues":
                 response = await gitnexus.fetch_issues(repo_url=repo_url, params=data.params)
 
-                return ProviderTestResponse(
+                return await finish(ProviderTestResponse(
                     success=True,
                     message="Issues fetch successful",
                     latency_ms=int((time.time() - start_time) * 1000),
@@ -654,9 +718,9 @@ async def test_provider(
                     configured=True,
                     production_ready=True,
                     sandbox_fallback=False,
-                )
+                ))
 
-        return ProviderTestResponse(
+        return await finish(ProviderTestResponse(
             success=False,
             message=f"Unknown capability: {data.capability_type}",
             latency_ms=int((time.time() - start_time) * 1000),
@@ -666,10 +730,10 @@ async def test_provider(
             configured=True,
             production_ready=False,
             sandbox_fallback=False,
-        )
+        ))
 
     except Exception as e:
-        return ProviderTestResponse(
+        return await finish(ProviderTestResponse(
             success=False,
             message=f"Test failed: {str(e)}",
             latency_ms=int((time.time() - start_time) * 1000),
@@ -680,7 +744,7 @@ async def test_provider(
             configured=True,
             production_ready=False,
             sandbox_fallback=False,
-        )
+        ))
 
 
 # Provider Runs Endpoints
