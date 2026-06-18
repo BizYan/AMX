@@ -93,6 +93,19 @@ Raw API health JSON should not be the authenticated product health page.
 ## Non-Goals
 
 The system does not give agents autonomous production release authority.
+Product, API, security, migration, Docker, workflow, release, deployment, and
+production changes require explicit Owner Go before merge or promotion.
+
+Low-risk documentation-only PRs may be auto-merged after required checks pass
+when they do not change product behavior, API behavior, security posture,
+migrations, Docker/runtime configuration, workflows, release behavior,
+deployment behavior, or production state.
+
+Release-candidate API verification is not a full frontend commercial-delivery
+validation. It may support Owner Go only for the exact verified SHA and only
+when the report clearly states the API runtime scope, migration-compatibility
+scope, isolation, teardown, health, authenticated smoke, provenance, and
+rollback evidence.
 
 GitNexus does not replace tests, CI, review, or user acceptance.
 

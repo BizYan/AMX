@@ -4,9 +4,17 @@ This repository follows `docs/architecture.md`, `docs/product-spec.md`, the on-d
 
 ## Authority Model
 
-The human owner keeps final authority for product scope.
+The human owner keeps final authority for product scope, release promotion, and
+production state.
 
-Codex may create branches, commits, tests, reports, pull requests, merge ready PRs into `main`, publish releases, and deploy production after all repository gates pass. Agents must not rewrite protected history or bypass CI, review, release, deployment, or production verification gates.
+Codex may create branches, commits, tests, reports, and pull requests after a
+clear instruction. Codex may auto-merge Low-risk documentation-only PRs after
+all required checks pass and no review blocker remains.
+
+Product, API, security, migration, Docker, workflow, release, deployment, and
+production PRs require explicit Owner Go before merge. Agents must not rewrite
+protected history or bypass CI, review, candidate verification, release,
+deployment, production verification, teardown, or rollback gates.
 
 ## Required Workspaces
 
@@ -44,9 +52,21 @@ Default rule: do not keep Antigravity or Claude active on every task. Add them o
 7. The working agent pushes a branch and opens a PR using `.github/pull_request_template.md`.
 8. Claude performs business and UX acceptance only when the change needs independent business review or documentation acceptance.
 9. GitHub Actions must pass.
-10. Codex may merge ready PRs after all gates pass, then release and deploy automatically when cadence or urgency requires it.
+10. Codex may auto-merge ready Low-risk documentation-only PRs after all
+    required checks pass. All product, API, security, migration, Docker,
+    workflow, release, deployment, and production PRs stop for explicit Owner
+    Go before merge.
 
-For program work split into Batches, a PR is only a reviewable unit of work, not automatically a completed Batch. After each Batch, the executing agent must submit a `Batch completion checklist` that identifies the Batch number, PRs included, acceptance items completed, verification evidence, unresolved gaps, and whether the next Batch may start.
+For program work split into Batches, a PR is only a reviewable unit of work, not
+automatically a completed Batch. After each Batch, the executing agent must
+submit a `Batch completion checklist` with exactly these fields:
+
+- Batch number;
+- PRs included;
+- acceptance items;
+- verification evidence;
+- unresolved gaps;
+- next-Batch decision.
 
 ## GitNexus Rules
 
@@ -110,9 +130,16 @@ For frontend interaction changes, run Playwright or browser verification and inc
 
 For database or migration changes, verify Alembic upgrade on a disposable database before production deployment.
 
-Production release verification is a separate gate: deploy through GitHub Actions, verify production health, OCI commit/status, GitNexus service health, and release-critical smoke paths.
+Production release verification is a separate Owner-approved gate. No release or
+deployment may bypass candidate verification, exact SHA evidence, health,
+authenticated smoke, provenance, teardown, and rollback verification.
 
-Do not deploy every merge by default. Multiple stable PRs may be grouped into a release slice and validated together. Deploy automatically when the workspace cadence is reached: 5 merged major or critical PRs, 10 merged normal or medium PRs, or 15 merged PRs total since the last successfully verified production deployment. Approved hotfixes and urgent security fixes may deploy immediately.
+Do not deploy every merge by default. Multiple stable PRs may be grouped into a
+release slice and validated together. Release or deployment cadence may make a
+promotion review due, but it does not grant merge, tag, release, or production
+deployment authority for Product/API/security/migration/Docker/workflow/release/
+deployment/production changes without explicit Owner Go. Approved hotfixes and
+urgent security fixes still require the documented production gates.
 
 ## Continuous Improvement Rules
 

@@ -131,7 +131,26 @@ Baseline gates:
 
 ## Deployment Rules
 
-Production deployment is human-approved only.
+Production deployment is Owner-approved only. Agents may prepare evidence,
+publish documentation-only PRs within the governance rules, and operate the
+approved GitHub Actions workflow, but product, API, security, migration, Docker,
+workflow, release, deployment, and production changes require explicit Owner Go
+before merge or promotion.
+
+No release or production deployment may bypass:
+
+- isolated candidate verification for the exact SHA;
+- exact tag/SHA evidence;
+- production health;
+- authenticated production smoke;
+- deployment provenance;
+- candidate teardown evidence;
+- rollback target verification.
+
+A successful API candidate gate proves API runtime, migration-compatibility
+baseline, authenticated smoke, isolation, and teardown for the verified SHA. It
+must not be described as a full frontend or browser-based commercial-delivery
+validation unless a real browser/user journey was separately verified.
 
 Staging deployment may be triggered from PR branches when GitHub Environment secrets are configured.
 

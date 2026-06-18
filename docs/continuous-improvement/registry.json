@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-06-15",
+  "updated_at": "2026-06-19",
   "entries": [
     {
       "id": "IMP-001",
@@ -145,6 +145,47 @@
         "summary": "The verification rule now explicitly separates console rendering from source and browser evidence."
       },
       "next_review": "2026-07-15"
+    },
+    {
+      "id": "IMP-006",
+      "title": "Align merge, release, deployment, and Batch governance authority",
+      "category": "governance-alignment",
+      "priority": "P0",
+      "status": "candidate",
+      "recurrence": 3,
+      "summary": "Repository rules, runbooks, release evidence, and product docs used inconsistent language for agent merge authority, Owner Go, release promotion, deployment gates, and Batch completion.",
+      "evidence": [
+        {
+          "kind": "project-rule",
+          "reference": "AGENTS.md"
+        },
+        {
+          "kind": "runbook",
+          "reference": "docs/runbooks/github-governance.md"
+        },
+        {
+          "kind": "release-doc",
+          "reference": "docs/releases/v1.0.0.md"
+        },
+        {
+          "kind": "program-doc",
+          "reference": "docs/programs/v1.0-acceptance-report.md"
+        }
+      ],
+      "proposed_change": "Make Low-risk documentation-only PR auto-merge explicit, require Owner Go for product/API/security/migration/Docker/workflow/release/deployment/production PRs, preserve full release/deploy gates, and require standardized Batch completion checklists.",
+      "destinations": [
+        "AGENTS.md",
+        "docs/architecture.md",
+        "docs/product-spec.md",
+        "docs/runbooks/github-governance.md",
+        "docs/runbooks/release-management.md",
+        "docs/runbooks/development-verification-standard.md",
+        "docs/runbooks/oci-operations.md",
+        "docs/programs/v1.0-acceptance-report.md",
+        ".github/pull_request_template.md"
+      ],
+      "validation": {},
+      "next_review": "2026-07-19"
     }
   ]
 }

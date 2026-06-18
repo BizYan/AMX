@@ -38,6 +38,16 @@ Automatically treat a task as High when it:
 - has GitNexus impact across multiple core call chains;
 - has unclear module boundaries.
 
+## Merge Authority By Risk
+
+Low-risk documentation-only PRs may auto-merge after required checks pass and no
+review blocker remains.
+
+Product, API, security, migration, Docker, workflow, release, deployment, and
+production PRs require explicit Owner Go before merge. Passing focused checks,
+GitHub CI, or a candidate workflow is evidence for the Owner decision; it is not
+itself merge authority for those PR classes.
+
 ## Verification Levels
 
 ### Level 0: Development Loop
@@ -139,6 +149,8 @@ Run release-level verification only when merging a release branch or deploying p
 - Smoke E2E or route smoke only for the release-critical user paths.
 
 Production deployment must still use the `Deploy production` GitHub Actions workflow.
+No release or deploy may bypass candidate verification, exact SHA evidence,
+health, authenticated smoke, provenance, teardown, and rollback verification.
 
 ## Real API Smoke Policy
 
@@ -166,6 +178,11 @@ Required coverage:
 - provider readiness;
 - quota or ops readiness;
 - capability readiness.
+
+Real API smoke and the isolated candidate API gate prove API runtime readiness
+for the exact SHA under test. They do not prove a full frontend/browser
+commercial-delivery journey unless that journey is separately exercised through
+browser or Playwright evidence.
 
 ## E2E Policy
 
@@ -285,3 +302,12 @@ Every PR still needs:
 - GitNexus status and one post-change impact record, or a clear fallback note.
 
 For small docs-only PRs, the GitNexus record can be limited to `gitnexus status` plus a note that no code impact analysis was needed.
+
+For Batch work, each Batch completion report must include:
+
+- Batch number;
+- PRs included;
+- acceptance items;
+- verification evidence;
+- unresolved gaps;
+- next-Batch decision.
