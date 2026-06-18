@@ -101,7 +101,11 @@ def test_candidate_verification_workflow_is_manual_and_non_production():
     assert 'CANDIDATE_ENV_FILE=$RUNNER_TEMP/.env.rc.${SHORT_SHA}' in workflow
     assert "test -f infra/docker-compose.candidate.yml" in workflow
     assert "test -f infra/deploy/validate-candidate-verification.sh" in workflow
-    assert "alembic upgrade head && alembic downgrade 0021_invitation_delivery && alembic upgrade head" in workflow
+    assert (
+        "/app/.venv/bin/alembic upgrade head && "
+        "/app/.venv/bin/alembic downgrade 0021_invitation_delivery && "
+        "/app/.venv/bin/alembic upgrade head"
+    ) in workflow
     assert "authenticated-smoke.sh" in workflow
     assert "down -v --remove-orphans" in workflow
     assert "remaining_containers" in workflow
