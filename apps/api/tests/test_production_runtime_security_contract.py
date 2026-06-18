@@ -187,6 +187,24 @@ def test_candidate_workflow_shell_run_blocks_do_not_interpolate_github_inputs():
     assert offenders == []
 
 
+def test_candidate_workflow_ref_enters_bash_only_through_requested_sha_env():
+    workflow = read(".github/workflows/candidate-verification.yml")
+    run_blocks = workflow_run_blocks(workflow)
+
+    assert "REQUESTED_CANDIDATE_SHA: ${{ inputs.ref }}" in workflow
+    assert "ref: ${{ inputs.ref }}" in workflow
+    assert "${{ github.event.inputs.ref }}" not in workflow
+
+    verify_block = next(
+        block
+        for block in run_blocks
+        if '[[ "$REQUESTED_CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]' in block
+    )
+    assert "${{ inputs.ref }}" not in verify_block
+    assert 'test "$CHECKED_OUT_SHA" = "$REQUESTED_CANDIDATE_SHA"' in verify_block
+    assert 'echo "CANDIDATE_SHA=$CHECKED_OUT_SHA" >> "$GITHUB_ENV"' in verify_block
+
+
 def test_candidate_workflow_derives_resources_from_verified_sha():
     workflow = read(".github/workflows/candidate-verification.yml")
 
