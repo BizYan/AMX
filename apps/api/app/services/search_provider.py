@@ -5,9 +5,10 @@ Abstract and concrete implementations for full-text search using PostgreSQL FTS.
 
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
+import re
 from uuid import UUID
 
-from sqlalchemy import select, text
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.knowledge.schemas import FTSearchResult
@@ -85,6 +86,10 @@ class PostgresFTSProvider(SearchProvider):
         """
         self.session = session
 
+    def _dialect_name(self) -> str:
+        bind = self.session.get_bind()
+        return bind.dialect.name if bind is not None else ""
+
     async def index_document(
         self,
         entry_id: UUID,
@@ -111,6 +116,31 @@ class PostgresFTSProvider(SearchProvider):
 
         if not entry:
             raise ValueError(f"KnowledgeEntry {entry_id} not found")
+
+        if self._dialect_name() != "postgresql":
+            from app.domains.knowledge.models import FTSDocument
+
+            existing = (
+                await self.session.execute(
+                    select(FTSDocument).where(FTSDocument.entry_id == entry_id)
+                )
+            ).scalar_one_or_none()
+            if existing:
+                existing.content = content
+                existing.metadata_json = metadata
+                existing.search_vector = content
+                existing.updated_at = datetime.now(timezone.utc)
+            else:
+                self.session.add(
+                    FTSDocument(
+                        entry_id=entry_id,
+                        content=content,
+                        metadata_json=metadata,
+                        search_vector=content,
+                    )
+                )
+            await self.session.flush()
+            return
 
         # Use raw SQL for tsvector creation
         # Insert or update on conflict
@@ -151,6 +181,9 @@ class PostgresFTSProvider(SearchProvider):
         Returns:
             List of FTSearchResult ordered by relevance rank
         """
+        if self._dialect_name() != "postgresql":
+            return await self._portable_search(query, top_k, filters)
+
         # Build the search query with ranking
         query_template = """
             SELECT
@@ -216,6 +249,58 @@ class PostgresFTSProvider(SearchProvider):
                 metadata=row[3] if len(row) > 3 else None,
             )
             for row in rows
+        ]
+
+    async def _portable_search(
+        self,
+        query: str,
+        top_k: int,
+        filters: dict | None = None,
+    ) -> list[FTSearchResult]:
+        """Run deterministic lexical search for non-PostgreSQL disposable databases."""
+        from app.domains.knowledge.models import FTSDocument, KnowledgeEntry
+
+        normalized_query = query.strip().lower()
+        terms = [term for term in re.split(r"\W+", normalized_query) if term]
+        predicates = [func.lower(FTSDocument.content).contains(normalized_query)]
+        predicates.extend(func.lower(FTSDocument.content).contains(term) for term in terms)
+
+        statement = (
+            select(FTSDocument, KnowledgeEntry)
+            .join(KnowledgeEntry, KnowledgeEntry.id == FTSDocument.entry_id)
+            .where(FTSDocument.deleted_at.is_(None), KnowledgeEntry.deleted_at.is_(None))
+        )
+        if predicates:
+            statement = statement.where(or_(*predicates))
+
+        filters = filters or {}
+        if filters.get("tenant_id"):
+            statement = statement.where(KnowledgeEntry.tenant_id == filters["tenant_id"])
+        if filters.get("project_id"):
+            statement = statement.where(KnowledgeEntry.project_id == filters["project_id"])
+        if filters.get("entry_type"):
+            statement = statement.where(KnowledgeEntry.entry_type == filters["entry_type"])
+        if filters.get("source_file_ids"):
+            statement = statement.where(KnowledgeEntry.source_file_id.in_(filters["source_file_ids"]))
+
+        rows = (await self.session.execute(statement.limit(top_k * 4))).all()
+        ranked: list[tuple[int, FTSDocument]] = []
+        for document, _entry in rows:
+            content_lower = document.content.lower()
+            rank = int(normalized_query in content_lower)
+            rank += sum(1 for term in terms if term in content_lower)
+            ranked.append((rank, document))
+
+        ranked.sort(key=lambda item: item[0], reverse=True)
+        return [
+            FTSearchResult(
+                entry_id=document.entry_id,
+                rank=float(rank),
+                headline=document.content[:240],
+                metadata=document.metadata_json,
+            )
+            for rank, document in ranked[:top_k]
+            if rank > 0
         ]
 
     async def delete_document(self, entry_id: UUID) -> None:
