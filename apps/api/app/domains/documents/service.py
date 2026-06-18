@@ -700,6 +700,9 @@ class DocumentService:
                     "Document contains unresolved template placeholders and cannot be published: "
                     + ", ".join(unresolved_placeholders)
                 ]
+            delivery_readiness = self._get_delivery_readiness_blocker(metadata)
+            if delivery_readiness:
+                return [delivery_readiness]
             if policy.publish_gates.require_resolved_comments:
                 unresolved_comment_count = await self.count_unresolved_comments(
                     document.id,
@@ -711,6 +714,34 @@ class DocumentService:
                     ]
 
         return []
+
+    def _get_delivery_readiness_blocker(self, metadata: dict[str, Any]) -> str | None:
+        """Return a publish blocker from document delivery readiness metadata."""
+        delivery = metadata.get("delivery") if isinstance(metadata, dict) else None
+        if not isinstance(delivery, dict):
+            return None
+        readiness = delivery.get("delivery_readiness")
+        if not isinstance(readiness, dict) or readiness.get("ready") is not False:
+            return None
+
+        blockers = [str(item) for item in readiness.get("blockers") or [] if str(item).strip()]
+        unresolved_sections = [
+            str(item)
+            for item in readiness.get("unresolved_sections") or []
+            if str(item).strip()
+        ]
+        low_quality_sections = [
+            str(item)
+            for item in readiness.get("low_quality_sections") or []
+            if str(item).strip()
+        ]
+        if not blockers and unresolved_sections:
+            blockers.append("unresolved sections: " + ", ".join(unresolved_sections))
+        if not blockers and low_quality_sections:
+            blockers.append("low quality sections: " + ", ".join(low_quality_sections))
+        if not blockers:
+            blockers.append("delivery readiness is not complete")
+        return "Document delivery readiness blocks publish: " + "; ".join(blockers)
 
     async def get_document_lifecycle_policy(
         self,

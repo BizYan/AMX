@@ -83,4 +83,31 @@ test.describe('P2 document review and release flow', () => {
     await expect(page.getByTestId('document-status-capability-message-published')).toContainText('缺少“发布文档”权限')
     await expect(page.getByTestId('document-publish-action')).toBeDisabled()
   })
+
+  test('explains delivery readiness blockers from status capabilities', async ({ page }) => {
+    await setupApiMocks(page, {
+      documents: MOCK.MOCK_DOCUMENTS.map((document) =>
+        document.id === 'doc-e2e-001'
+          ? { ...document, status: 'approved' }
+          : document
+      ),
+      statusCapabilities: [
+        {
+          status: 'published',
+          permission_action: 'documents.publish',
+          allowed: false,
+          authorization_reason: 'rbac',
+          blockers: [
+            'Document delivery readiness blocks publish: low quality sections: brd.requirement_modules',
+          ],
+        },
+      ],
+    })
+
+    await gotoAppPage(page, '/projects/project-e2e-001/documents/doc-e2e-001')
+
+    await expect(page.getByTestId('document-status-capability-published')).toContainText('受限')
+    await expect(page.getByTestId('document-status-capability-message-published')).toContainText('交付准备度未达标')
+    await expect(page.getByTestId('document-publish-action')).toBeDisabled()
+  })
 })
