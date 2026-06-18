@@ -47,6 +47,7 @@ def test_candidate_compose_override_replaces_env_and_disables_restarts():
 
     assert candidate.count("${AMX_ENV_FILE:?AMX_ENV_FILE must point to the candidate env file}") == 3
     assert candidate.count('restart: "no"') == 3
+    assert 'command: ["sh", "-c", "sleep infinity"]' in candidate
     assert "${AMX_POSTGRES_VOLUME:?AMX_POSTGRES_VOLUME must be candidate scoped}" in candidate
     assert "${AMX_REDIS_VOLUME:?AMX_REDIS_VOLUME must be candidate scoped}" in candidate
     assert "../.env" not in candidate
@@ -117,6 +118,8 @@ def test_candidate_verification_workflow_is_manual_and_non_production():
         "/app/.venv/bin/alembic upgrade head"
     ) in workflow
     assert "authenticated-smoke.sh" in workflow
+    assert "Start candidate API server" in workflow
+    assert "uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1" in workflow
     assert "down -v --remove-orphans" in workflow
     assert "remaining_containers" in workflow
     assert "up -d --build postgres redis api" in workflow
