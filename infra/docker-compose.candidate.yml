@@ -1,5 +1,6 @@
 services:
   api:
+    command: ["sh", "-c", "sleep infinity"]
     env_file:
       - ${AMX_ENV_FILE:?AMX_ENV_FILE must point to the candidate env file}
     restart: "no"

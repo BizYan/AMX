@@ -205,6 +205,18 @@ jobs:
             exec -T api /app/.venv/bin/alembic upgrade head \
             | tee -a artifacts/migration-verification.txt
 
+      - name: Start candidate API server
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker compose \
+            -p "$COMPOSE_PROJECT_NAME" \
+            -f infra/docker-compose.yml \
+            -f infra/docker-compose.candidate.yml \
+            --env-file "$CANDIDATE_ENV_FILE" \
+            exec -T api sh -c \
+            'nohup /app/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1 > /proc/1/fd/1 2> /proc/1/fd/2 &'
+
       - name: Run candidate health check
         shell: bash
         run: |
