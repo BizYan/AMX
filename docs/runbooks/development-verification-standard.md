@@ -140,6 +140,33 @@ Run release-level verification only when merging a release branch or deploying p
 
 Production deployment must still use the `Deploy production` GitHub Actions workflow.
 
+## Real API Smoke Policy
+
+Real API smoke is the release and staging proof that configured credentials can
+exercise the backend without Playwright API fixtures or fake JWTs. It is separate
+from deterministic mock E2E. The deterministic mock E2E is not production-readiness evidence.
+
+Run the real smoke path with configured environment credentials:
+
+```bash
+bash infra/deploy/authenticated-smoke.sh --base-url "$BASE_URL" --env-file "$ENV_FILE"
+```
+
+The smoke path must fail clearly when credentials are missing or login fails. It
+must not synthesize a token, use `setupApiMocks`, or treat sandbox/test provider
+state as live production evidence.
+
+Required coverage:
+
+- `/health`;
+- login through `/api/v1/identity/auth/login`;
+- `/api/v1/identity/auth/me`;
+- project list;
+- document list;
+- provider readiness;
+- quota or ops readiness;
+- capability readiness.
+
 ## E2E Policy
 
 Use focused Playwright specs for:

@@ -17,7 +17,7 @@ Merging a PR is not automatically a production release. Group stable PRs into a 
 2. Run `pwsh infra/scripts/test-delivery-readiness.ps1` and resolve every reported blocker.
 3. Run CI on the release ref, including deterministic Playwright E2E.
 4. Deploy staging when the slice changes release-critical flows or infrastructure.
-5. Run smoke tests against staging or the release-critical local route set.
+5. Run smoke tests against staging or the release-critical local route set. Real API smoke evidence is mandatory for a production release and must come from `bash infra/deploy/authenticated-smoke.sh` with configured credentials; deterministic mock E2E is not a substitute.
 6. Create release tag when cutting a versioned release. Pushing the tag triggers
    the Release workflow, which validates the release and publishes the GitHub
    Release entry after all quality gates pass:
@@ -43,6 +43,7 @@ Always verify:
 - GitHub Actions deploy workflow result;
 - `/health` output;
 - authenticated production smoke for login, current user, projects, documents, readiness, and commissioning;
+- real API smoke evidence for provider readiness and quota or ops readiness;
 - OCI deployed git commit, requested-ref match, tracked working tree status, and required running services;
 - GitNexus service health and index refresh status.
 

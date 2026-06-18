@@ -71,6 +71,18 @@ check_authenticated_json() {
   echo "[authenticated-smoke] $name ok"
 }
 
+check_public_json() {
+  local name="$1"
+  local path="$2"
+  local output
+
+  output="$(curl -fsS "$BASE_URL$path")"
+  python3 -c 'import json,sys; json.load(sys.stdin)' <<<"$output"
+  echo "[authenticated-smoke] $name ok"
+}
+
+check_public_json "health" "/health"
+
 echo "[authenticated-smoke] logging in through $BASE_URL/api/v1/identity/auth/login"
 login_payload="$(
   python3 -c 'import json,os; print(json.dumps({"email": os.environ["BOOTSTRAP_ADMIN_EMAIL"], "password": os.environ["BOOTSTRAP_ADMIN_PASSWORD"]}))'
@@ -91,6 +103,8 @@ fi
 check_authenticated_json "current user" "/api/v1/identity/auth/me"
 check_authenticated_json "projects" "/api/v1/projects?page=1&page_size=5"
 check_authenticated_json "documents" "/api/v1/documents?page=1&page_size=5"
+check_authenticated_json "provider readiness" "/api/v1/providers/readiness"
+check_authenticated_json "quota" "/api/v1/ops/quota"
 check_authenticated_json "capability readiness" "/api/v1/ops/capabilities/readiness"
 check_authenticated_json "capability commissioning" "/api/v1/ops/capabilities/commissioning"
 
