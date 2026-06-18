@@ -119,6 +119,8 @@ def test_candidate_verification_workflow_is_manual_and_non_production():
     assert "authenticated-smoke.sh" in workflow
     assert "down -v --remove-orphans" in workflow
     assert "remaining_containers" in workflow
+    assert "up -d --build postgres redis api" in workflow
+    assert "up -d --build\n" not in workflow
     assert "remaining_networks" in workflow
     assert "remaining_volumes" in workflow
     assert "actions/upload-artifact@v4" in workflow
