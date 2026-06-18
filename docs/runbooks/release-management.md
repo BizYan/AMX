@@ -44,6 +44,15 @@ For the proposed v1.0 release, use these evidence artifacts before tagging:
 
 Do not create the `v1.0.0` tag until every release criterion has either passing evidence or an owner-accepted documented gap. Real authenticated API smoke remains mandatory for production promotion and must not be replaced by deterministic mock E2E.
 
+For `v1.0.0`, candidate verification must run through the manual-only
+`Candidate verification` workflow before tagging. The workflow must verify the
+exact release-candidate SHA in an isolated Compose project, use candidate-only
+secrets, run disposable PostgreSQL migration verification, run authenticated
+smoke with `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD`, upload
+evidence artifacts, and tear down the candidate stack. Do not dispatch the
+production deployment workflow or create a tag as part of candidate
+verification.
+
 ## Release Validation Scope
 
 Always verify:

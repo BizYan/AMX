@@ -1,0 +1,226 @@
+name: Candidate verification
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Exact release candidate SHA to verify"
+        required: true
+        default: "1877e0b4a0cd208890391b76afc8c5f23647cd3b"
+      compose_project_name:
+        description: "Isolated Compose project name; must start with amx_rc_"
+        required: true
+        default: "amx_rc_1877e0b"
+
+jobs:
+  verify-candidate:
+    name: Verify isolated release candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CANDIDATE_ENV_FILE: .env.rc.1877e0b
+      COMPOSE_PROJECT_NAME: ${{ github.event.inputs.compose_project_name }}
+      AMX_ENV_FILE: ../.env.rc.1877e0b
+      AMX_CONTAINER_PREFIX: ${{ github.event.inputs.compose_project_name }}
+      AMX_RUNTIME_NETWORK: ${{ github.event.inputs.compose_project_name }}_network
+      AMX_POSTGRES_VOLUME: ${{ github.event.inputs.compose_project_name }}_postgres_data
+      AMX_REDIS_VOLUME: ${{ github.event.inputs.compose_project_name }}_redis_data
+      POSTGRES_DB: ${{ github.event.inputs.compose_project_name }}
+      POSTGRES_USER: consultant
+      POSTGRES_BIND_ADDRESS: 127.0.0.1
+      POSTGRES_HOST_PORT: "25432"
+      REDIS_BIND_ADDRESS: 127.0.0.1
+      REDIS_HOST_PORT: "26379"
+      API_BIND_ADDRESS: 127.0.0.1
+      API_HOST_PORT: "28000"
+      WEB_BIND_ADDRESS: 127.0.0.1
+      WEB_HOST_PORT: "23000"
+      NEXT_PUBLIC_API_URL: http://127.0.0.1:28000/api/v1
+    steps:
+      - name: Checkout verification tooling
+        uses: actions/checkout@v4
+
+      - name: Materialize exact candidate worktree
+        shell: bash
+        run: |
+          git fetch origin main --no-tags
+          git worktree add ../amx-candidate "${{ github.event.inputs.ref }}"
+          git -C ../amx-candidate rev-parse HEAD | tee candidate-sha.txt
+
+      - name: Overlay verification infrastructure
+        shell: bash
+        run: |
+          cp infra/docker-compose.yml ../amx-candidate/infra/docker-compose.yml
+          cp infra/docker-compose.candidate.yml ../amx-candidate/infra/docker-compose.candidate.yml
+          cp infra/deploy/validate-candidate-verification.sh ../amx-candidate/infra/deploy/validate-candidate-verification.sh
+          chmod +x ../amx-candidate/infra/deploy/validate-candidate-verification.sh
+
+      - name: Verify exact candidate SHA
+        shell: bash
+        working-directory: ../amx-candidate
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ github.event.inputs.ref }}"
+          git rev-parse HEAD | tee ../AMX/candidate-sha.txt
+
+      - name: Generate candidate environment
+        shell: bash
+        working-directory: ../amx-candidate
+        env:
+          CANDIDATE_POSTGRES_PASSWORD: ${{ secrets.CANDIDATE_POSTGRES_PASSWORD }}
+          CANDIDATE_BOOTSTRAP_ADMIN_EMAIL: ${{ secrets.CANDIDATE_BOOTSTRAP_ADMIN_EMAIL }}
+          CANDIDATE_BOOTSTRAP_ADMIN_PASSWORD: ${{ secrets.CANDIDATE_BOOTSTRAP_ADMIN_PASSWORD }}
+          CANDIDATE_JWT_SECRET_KEY: ${{ secrets.CANDIDATE_JWT_SECRET_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$CANDIDATE_POSTGRES_PASSWORD"
+          test -n "$CANDIDATE_BOOTSTRAP_ADMIN_EMAIL"
+          test -n "$CANDIDATE_BOOTSTRAP_ADMIN_PASSWORD"
+          test -n "$CANDIDATE_JWT_SECRET_KEY"
+          cat > "$CANDIDATE_ENV_FILE" <<EOF
+          ENVIRONMENT=staging
+          COMPOSE_PROJECT_NAME=$COMPOSE_PROJECT_NAME
+          AMX_ENV_FILE=$AMX_ENV_FILE
+          AMX_CONTAINER_PREFIX=$AMX_CONTAINER_PREFIX
+          AMX_RUNTIME_NETWORK=$AMX_RUNTIME_NETWORK
+          AMX_POSTGRES_VOLUME=$AMX_POSTGRES_VOLUME
+          AMX_REDIS_VOLUME=$AMX_REDIS_VOLUME
+          POSTGRES_DB=$POSTGRES_DB
+          POSTGRES_USER=$POSTGRES_USER
+          POSTGRES_PASSWORD=$CANDIDATE_POSTGRES_PASSWORD
+          DATABASE_URL=postgresql+asyncpg://$POSTGRES_USER:$CANDIDATE_POSTGRES_PASSWORD@postgres:5432/$POSTGRES_DB
+          POSTGRES_BIND_ADDRESS=$POSTGRES_BIND_ADDRESS
+          POSTGRES_HOST_PORT=$POSTGRES_HOST_PORT
+          REDIS_BIND_ADDRESS=$REDIS_BIND_ADDRESS
+          REDIS_HOST_PORT=$REDIS_HOST_PORT
+          API_BIND_ADDRESS=$API_BIND_ADDRESS
+          API_HOST_PORT=$API_HOST_PORT
+          WEB_BIND_ADDRESS=$WEB_BIND_ADDRESS
+          WEB_HOST_PORT=$WEB_HOST_PORT
+          NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+          BOOTSTRAP_ADMIN_EMAIL=$CANDIDATE_BOOTSTRAP_ADMIN_EMAIL
+          BOOTSTRAP_ADMIN_PASSWORD=$CANDIDATE_BOOTSTRAP_ADMIN_PASSWORD
+          JWT_SECRET_KEY=$CANDIDATE_JWT_SECRET_KEY
+          EOF
+          chmod 600 "$CANDIDATE_ENV_FILE"
+
+      - name: Render candidate compose config
+        shell: bash
+        working-directory: ../amx-candidate
+        run: |
+          mkdir -p artifacts
+          docker compose \
+            -p "$COMPOSE_PROJECT_NAME" \
+            -f infra/docker-compose.yml \
+            -f infra/docker-compose.candidate.yml \
+            --env-file "$CANDIDATE_ENV_FILE" \
+            config > artifacts/candidate-compose-config.yml
+
+      - name: Run pre-start safety assertions
+        shell: bash
+        working-directory: ../amx-candidate
+        run: |
+          bash infra/deploy/validate-candidate-verification.sh \
+            --env-file "$CANDIDATE_ENV_FILE" \
+            --compose-project-name "$COMPOSE_PROJECT_NAME" \
+            --compose-config artifacts/candidate-compose-config.yml \
+            | tee artifacts/pre-start-safety.txt
+
+      - name: Start isolated candidate stack
+        shell: bash
+        working-directory: ../amx-candidate
+        run: |
+          docker compose \
+            -p "$COMPOSE_PROJECT_NAME" \
+            -f infra/docker-compose.yml \
+            -f infra/docker-compose.candidate.yml \
+            --env-file "$CANDIDATE_ENV_FILE" \
+            up -d --build
+          docker compose \
+            -p "$COMPOSE_PROJECT_NAME" \
+            -f infra/docker-compose.yml \
+            -f infra/docker-compose.candidate.yml \
+            --env-file "$CANDIDATE_ENV_FILE" \
+            ps | tee artifacts/docker-compose-ps.txt
+
+      - name: Verify disposable PostgreSQL migration cycle
+        shell: bash
+        working-directory: ../amx-candidate
+        run: |
+          docker compose \
+            -p "$COMPOSE_PROJECT_NAME" \
+            -f infra/docker-compose.yml \
+            -f infra/docker-compose.candidate.yml \
+            --env-file "$CANDIDATE_ENV_FILE" \
+            run --rm api sh -lc \
+            'alembic upgrade head && alembic downgrade 0021_invitation_delivery && alembic upgrade head' \
+            | tee artifacts/migration-verification.txt
+
+      - name: Run candidate health check
+        shell: bash
+        working-directory: ../amx-candidate
+        run: |
+          docker compose \
+            -p "$COMPOSE_PROJECT_NAME" \
+            -f infra/docker-compose.yml \
+            -f infra/docker-compose.candidate.yml \
+            --env-file "$CANDIDATE_ENV_FILE" \
+            ps | tee artifacts/health-check.txt
+          for attempt in {1..30}; do
+            if curl -fsS http://127.0.0.1:28000/health | tee -a artifacts/health-check.txt; then
+              echo "[candidate-health] healthy" | tee -a artifacts/health-check.txt
+              exit 0
+            fi
+            echo "[candidate-health] attempt $attempt failed; retrying" | tee -a artifacts/health-check.txt
+            sleep 3
+          done
+          exit 1
+
+      - name: Run candidate authenticated smoke
+        shell: bash
+        working-directory: ../amx-candidate
+        run: |
+          bash infra/deploy/authenticated-smoke.sh \
+            --base-url http://127.0.0.1:28000 \
+            --env-file "$CANDIDATE_ENV_FILE" \
+            | tee artifacts/authenticated-smoke.txt
+
+      - name: Collect candidate logs
+        if: always()
+        shell: bash
+        working-directory: ../amx-candidate
+        run: |
+          docker compose \
+            -p "$COMPOSE_PROJECT_NAME" \
+            -f infra/docker-compose.yml \
+            -f infra/docker-compose.candidate.yml \
+            --env-file "$CANDIDATE_ENV_FILE" \
+            logs --tail=200 > artifacts/candidate-compose-logs.txt || true
+
+      - name: Teardown candidate stack
+        if: always()
+        shell: bash
+        working-directory: ../amx-candidate
+        run: |
+          docker compose \
+            -p "$COMPOSE_PROJECT_NAME" \
+            -f infra/docker-compose.yml \
+            -f infra/docker-compose.candidate.yml \
+            --env-file "$CANDIDATE_ENV_FILE" \
+            down -v --remove-orphans || true
+          docker ps -a --filter "name=$COMPOSE_PROJECT_NAME" | tee artifacts/post-teardown-containers.txt
+          docker network ls --filter "name=$COMPOSE_PROJECT_NAME" | tee artifacts/post-teardown-networks.txt
+          docker volume ls --filter "name=$COMPOSE_PROJECT_NAME" | tee artifacts/post-teardown-volumes.txt
+          rm -f "$CANDIDATE_ENV_FILE"
+
+      - name: Upload candidate verification artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: candidate-verification-evidence
+          path: |
+            candidate-sha.txt
+            ../amx-candidate/artifacts
+          if-no-files-found: ignore

@@ -1,7 +1,7 @@
 services:
   postgres:
     image: pgvector/pgvector:pg16
-    container_name: consultant_ai_postgres
+    container_name: ${AMX_CONTAINER_PREFIX:-consultant_ai}_postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-consultant}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-consultant123}
@@ -15,7 +15,7 @@ services:
     networks:
       - consultant_ai_network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U consultant -d consultant_ai"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -23,7 +23,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: consultant_ai_redis
+    container_name: ${AMX_CONTAINER_PREFIX:-consultant_ai}_redis
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
     volumes:
       - redis_data:/data
@@ -42,9 +42,9 @@ services:
     build:
       context: ..
       dockerfile: apps/api/Dockerfile
-    container_name: consultant_ai_api
+    container_name: ${AMX_CONTAINER_PREFIX:-consultant_ai}_api
     env_file:
-      - ../.env
+      - ${AMX_ENV_FILE:-../.env}
     environment:
       ENVIRONMENT: ${ENVIRONMENT:-development}
       REDIS_URL: ${CONTAINER_REDIS_URL:-redis://redis:6379/0}
@@ -64,9 +64,9 @@ services:
     build:
       context: ..
       dockerfile: apps/worker/Dockerfile
-    container_name: consultant_ai_worker
+    container_name: ${AMX_CONTAINER_PREFIX:-consultant_ai}_worker
     env_file:
-      - ../.env
+      - ${AMX_ENV_FILE:-../.env}
     environment:
       ENVIRONMENT: ${ENVIRONMENT:-development}
       REDIS_URL: ${CONTAINER_REDIS_URL:-redis://redis:6379/0}
@@ -86,9 +86,9 @@ services:
       dockerfile: apps/web/Dockerfile
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:18000/api/v1}
-    container_name: consultant_ai_web
+    container_name: ${AMX_CONTAINER_PREFIX:-consultant_ai}_web
     env_file:
-      - ../.env
+      - ${AMX_ENV_FILE:-../.env}
     ports:
       - "${WEB_BIND_ADDRESS:-127.0.0.1}:${WEB_HOST_PORT:-3000}:3000"
     depends_on:
