@@ -170,9 +170,57 @@ jobs:
             -f infra/docker-compose.yml \
             -f infra/docker-compose.candidate.yml \
             --env-file "$CANDIDATE_ENV_FILE" \
-            exec -T api sh -lc \
-            '/app/.venv/bin/alembic upgrade head && /app/.venv/bin/alembic downgrade 0021_invitation_delivery && /app/.venv/bin/alembic upgrade head' \
+            exec -T api /app/.venv/bin/python -c \
+            'import textwrap; exec(textwrap.dedent("""
+              import asyncio
+              import os
+
+              import asyncpg
+
+
+              async def main():
+                  database_url = os.environ["DATABASE_URL"].replace("postgresql+asyncpg://", "postgresql://", 1)
+                  connection = await asyncpg.connect(database_url)
+                  try:
+                      await connection.execute("CREATE EXTENSION IF NOT EXISTS \\"uuid-ossp\\";")
+                      await connection.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+                      await connection.execute("CREATE TABLE IF NOT EXISTS projects (id uuid PRIMARY KEY);")
+                      await connection.execute("CREATE TABLE IF NOT EXISTS documents (id uuid PRIMARY KEY);")
+                  finally:
+                      await connection.close()
+
+
+              asyncio.run(main())
+              """))' \
             | tee artifacts/migration-verification.txt
+          docker compose \
+            -p "$COMPOSE_PROJECT_NAME" \
+            -f infra/docker-compose.yml \
+            -f infra/docker-compose.candidate.yml \
+            --env-file "$CANDIDATE_ENV_FILE" \
+            exec -T api /app/.venv/bin/alembic stamp 0021_invitation_delivery \
+            | tee -a artifacts/migration-verification.txt
+          docker compose \
+            -p "$COMPOSE_PROJECT_NAME" \
+            -f infra/docker-compose.yml \
+            -f infra/docker-compose.candidate.yml \
+            --env-file "$CANDIDATE_ENV_FILE" \
+            exec -T api /app/.venv/bin/alembic upgrade head \
+            | tee -a artifacts/migration-verification.txt
+          docker compose \
+            -p "$COMPOSE_PROJECT_NAME" \
+            -f infra/docker-compose.yml \
+            -f infra/docker-compose.candidate.yml \
+            --env-file "$CANDIDATE_ENV_FILE" \
+            exec -T api /app/.venv/bin/alembic downgrade 0021_invitation_delivery \
+            | tee -a artifacts/migration-verification.txt
+          docker compose \
+            -p "$COMPOSE_PROJECT_NAME" \
+            -f infra/docker-compose.yml \
+            -f infra/docker-compose.candidate.yml \
+            --env-file "$CANDIDATE_ENV_FILE" \
+            exec -T api /app/.venv/bin/alembic upgrade head \
+            | tee -a artifacts/migration-verification.txt
 
       - name: Run candidate health check
         shell: bash
