@@ -36,6 +36,14 @@ git push origin v0.3.0
    release.
 10. Record health check output and any smoke evidence in release notes.
 
+For the proposed v1.0 release, use these evidence artifacts before tagging:
+
+- `docs/releases/v1.0.0.md`
+- `docs/programs/v1.0-acceptance-report.md`
+- `docs/runbooks/v1.0-rollback.md`
+
+Do not create the `v1.0.0` tag until every release criterion has either passing evidence or an owner-accepted documented gap. Real authenticated API smoke remains mandatory for production promotion and must not be replaced by deterministic mock E2E.
+
 ## Release Validation Scope
 
 Always verify:
