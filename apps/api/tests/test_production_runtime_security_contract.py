@@ -101,9 +101,18 @@ def test_candidate_verification_workflow_is_manual_and_non_production():
     assert 'CANDIDATE_ENV_FILE=$RUNNER_TEMP/.env.rc.${SHORT_SHA}' in workflow
     assert "test -f infra/docker-compose.candidate.yml" in workflow
     assert "test -f infra/deploy/validate-candidate-verification.sh" in workflow
+    assert 'CREATE EXTENSION IF NOT EXISTS \\\\"uuid-ossp\\\\";' in workflow
+    assert "CREATE EXTENSION IF NOT EXISTS vector;" in workflow
+    assert "CREATE TABLE IF NOT EXISTS projects (id uuid PRIMARY KEY);" in workflow
+    assert "CREATE TABLE IF NOT EXISTS documents (id uuid PRIMARY KEY);" in workflow
+    assert "/app/.venv/bin/alembic stamp 0021_invitation_delivery" in workflow
     assert (
-        "/app/.venv/bin/alembic upgrade head && "
-        "/app/.venv/bin/alembic downgrade 0021_invitation_delivery && "
+        "/app/.venv/bin/alembic upgrade head"
+    ) in workflow
+    assert (
+        "/app/.venv/bin/alembic downgrade 0021_invitation_delivery"
+    ) in workflow
+    assert (
         "/app/.venv/bin/alembic upgrade head"
     ) in workflow
     assert "authenticated-smoke.sh" in workflow
