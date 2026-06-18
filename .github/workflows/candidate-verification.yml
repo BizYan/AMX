@@ -11,7 +11,7 @@ on:
         required: true
 
 concurrency:
-  group: release-candidate-${{ github.event.inputs.ref }}
+  group: release-candidate-${{ inputs.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -31,32 +31,33 @@ jobs:
       WEB_BIND_ADDRESS: 127.0.0.1
       WEB_HOST_PORT: "23000"
       NEXT_PUBLIC_API_URL: http://127.0.0.1:28000/api/v1
+      REQUESTED_CANDIDATE_SHA: ${{ inputs.ref }}
     steps:
       - name: Checkout exact candidate SHA
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.ref }}
+          ref: ${{ inputs.ref }}
           fetch-depth: 0
 
       - name: Verify exact SHA and main lineage
         shell: bash
         run: |
           set -euo pipefail
-          CANDIDATE_SHA="${{ github.event.inputs.ref }}"
-          [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
-          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          [[ "$REQUESTED_CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          CHECKED_OUT_SHA="$(git rev-parse HEAD)"
+          test "$CHECKED_OUT_SHA" = "$REQUESTED_CANDIDATE_SHA"
           git fetch origin main:refs/remotes/origin/main --no-tags
-          git merge-base --is-ancestor "$CANDIDATE_SHA" origin/main
+          git merge-base --is-ancestor "$CHECKED_OUT_SHA" origin/main
           test -f infra/docker-compose.candidate.yml
           test -f infra/deploy/validate-candidate-verification.sh
           mkdir -p artifacts
-          git rev-parse HEAD | tee artifacts/candidate-sha.txt
+          echo "CANDIDATE_SHA=$CHECKED_OUT_SHA" >> "$GITHUB_ENV"
+          printf '%s\n' "$CHECKED_OUT_SHA" | tee artifacts/candidate-sha.txt
 
       - name: Derive isolated candidate names
         shell: bash
         run: |
           set -euo pipefail
-          CANDIDATE_SHA="${{ github.event.inputs.ref }}"
           SHORT_SHA="${CANDIDATE_SHA:0:12}"
           PROJECT_NAME="amx_rc_${SHORT_SHA}"
           {
@@ -130,7 +131,7 @@ jobs:
             --compose-config "$COMPOSE_CONFIG_FILE" \
             | tee artifacts/pre-start-safety.txt
           {
-            echo "candidate_sha=${{ github.event.inputs.ref }}"
+            echo "candidate_sha=$CANDIDATE_SHA"
             echo "compose_project=$COMPOSE_PROJECT_NAME"
             echo "container_prefix=$AMX_CONTAINER_PREFIX"
             echo "network=$AMX_RUNTIME_NETWORK"
@@ -138,6 +139,8 @@ jobs:
             echo "redis_volume=$AMX_REDIS_VOLUME"
             echo "postgres_db=$POSTGRES_DB"
             echo "api_url=http://127.0.0.1:$API_HOST_PORT"
+            echo "runtime_started=postgres,redis,api"
+            echo "config_isolated_not_runtime_started=worker,web"
             echo "config_assertions=passed"
             echo "raw_compose_config_retained=false"
             echo "raw_env_retained=false"
@@ -161,10 +164,15 @@ jobs:
             --env-file "$CANDIDATE_ENV_FILE" \
             ps | tee artifacts/docker-compose-ps.txt
 
-      - name: Verify disposable PostgreSQL migration cycle
+      - name: Verify historical migration compatibility baseline
         shell: bash
         run: |
           set -euo pipefail
+          {
+            echo "[candidate-migration] gate=historical migration compatibility baseline verification"
+            echo "[candidate-migration] baseline_fixture=0021_invitation_delivery plus projects/documents ORM smoke columns"
+            echo "[candidate-migration] scope=not a clean empty-database full-history migration proof"
+          } | tee artifacts/migration-verification.txt
           docker compose \
             -p "$COMPOSE_PROJECT_NAME" \
             -f infra/docker-compose.yml \
@@ -203,7 +211,7 @@ jobs:
             updated_at timestamp with time zone NOT NULL DEFAULT now(),
             deleted_at timestamp with time zone
           );' \
-            | tee artifacts/migration-verification.txt
+            | tee -a artifacts/migration-verification.txt
           docker compose \
             -p "$COMPOSE_PROJECT_NAME" \
             -f infra/docker-compose.yml \
