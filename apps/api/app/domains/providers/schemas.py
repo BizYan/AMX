@@ -7,9 +7,14 @@ from datetime import datetime
 from typing import Any, Generic, TypeVar
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.domains.providers.models import ProviderType, ProviderStatus, RunStatus, HealthStatus
+from app.domains.providers.credential_boundary import (
+    redact_secrets,
+    sanitize_error_message,
+    validate_provider_config_boundary,
+)
 
 
 T = TypeVar("T")
@@ -31,6 +36,11 @@ class ProviderBase(BaseModel):
     config: dict[str, Any] = Field(default_factory=dict)
     capabilities: dict[str, Any] | None = None
 
+    @field_validator("config")
+    @classmethod
+    def validate_credential_boundary(cls, value: dict[str, Any]) -> dict[str, Any]:
+        return validate_provider_config_boundary(value)
+
 
 class ProviderCreate(ProviderBase):
     """Schema for creating a provider."""
@@ -42,6 +52,13 @@ class ProviderUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)
     config: dict[str, Any] | None = None
     status: ProviderStatus | None = None
+
+    @field_validator("config")
+    @classmethod
+    def validate_credential_boundary(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
+        if value is None:
+            return value
+        return validate_provider_config_boundary(value)
 
 
 class ProviderResponse(BaseModel):
@@ -59,12 +76,22 @@ class ProviderResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    @model_validator(mode="after")
+    def redact_config(self) -> "ProviderResponse":
+        self.config_json = redact_secrets(self.config_json)
+        return self
+
 
 class ProviderVersionBase(BaseModel):
     """Base provider version schema."""
     version: str
     config: dict[str, Any] = Field(default_factory=dict)
     capabilities: dict[str, Any] | None = None
+
+    @field_validator("config")
+    @classmethod
+    def validate_credential_boundary(cls, value: dict[str, Any]) -> dict[str, Any]:
+        return validate_provider_config_boundary(value)
 
 
 class ProviderVersionCreate(ProviderVersionBase):
@@ -83,6 +110,11 @@ class ProviderVersionResponse(BaseModel):
     capabilities_json: dict[str, Any] | None
     is_active: bool
     created_at: datetime
+
+    @model_validator(mode="after")
+    def redact_config(self) -> "ProviderVersionResponse":
+        self.config_json = redact_secrets(self.config_json)
+        return self
 
 
 class ProviderCapabilityResponse(BaseModel):
@@ -113,6 +145,11 @@ class ProviderRunResponse(BaseModel):
     status: str
     error_message: str | None
     created_at: datetime
+
+    @model_validator(mode="after")
+    def redact_error(self) -> "ProviderRunResponse":
+        self.error_message = sanitize_error_message(self.error_message)
+        return self
 
 
 class ProviderHealthResponse(BaseModel):
@@ -155,6 +192,12 @@ class ProviderTestResponse(BaseModel):
     configured: bool = False
     production_ready: bool = False
     sandbox_fallback: bool = False
+
+    @model_validator(mode="after")
+    def redact_provider_output(self) -> "ProviderTestResponse":
+        self.message = sanitize_error_message(self.message) or ""
+        self.output = redact_secrets(self.output)
+        return self
 
 
 class ProviderReadinessItem(BaseModel):

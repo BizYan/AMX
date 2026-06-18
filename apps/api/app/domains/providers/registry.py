@@ -28,6 +28,10 @@ from app.domains.providers.contracts import (
     GraphifyContract,
     GitNexusContract,
 )
+from app.domains.providers.credential_boundary import (
+    sanitize_error_message,
+    validate_provider_config_boundary,
+)
 
 
 class ProviderRegistry:
@@ -67,6 +71,8 @@ class ProviderRegistry:
         Raises:
             ValueError: If provider type is invalid
         """
+        config = validate_provider_config_boundary(config)
+
         # Create provider
         provider = Provider(
             tenant_id=tenant_id,
@@ -173,6 +179,7 @@ class ProviderRegistry:
         if not provider:
             return None
 
+        config = validate_provider_config_boundary(config)
         provider.config_json = config
         await self.db.flush()
         await self.db.refresh(provider)
@@ -238,6 +245,8 @@ class ProviderRegistry:
         Returns:
             Created ProviderVersion
         """
+        config = validate_provider_config_boundary(config)
+
         # Get latest version number
         result = await self.db.execute(
             select(func.max(ProviderVersion.version)).where(
@@ -364,7 +373,7 @@ class ProviderRegistry:
             output_tokens=output_tokens,
             latency_ms=latency_ms,
             status=status.value,
-            error_message=error_message,
+            error_message=sanitize_error_message(error_message),
         )
         self.db.add(run)
         await self.db.flush()

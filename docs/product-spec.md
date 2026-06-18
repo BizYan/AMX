@@ -46,6 +46,12 @@ Current implemented capability areas:
 - agent workflows and workflow run entry points;
 - OCI deployment and GitHub-governed release operations.
 
+Provider management stores non-secret provider metadata only. Real provider
+credentials must be supplied through approved runtime secret stores and
+referenced by `credential_ref` / `secret_ref`; raw keys must not be persisted in
+provider config, version config, API responses, logs, audit records, exports, or
+evidence artifacts.
+
 ## UX Requirements
 
 The production UI is Chinese-first. English may remain only for protocol names, model names, file extensions, API identifiers, and developer-only logs.
@@ -87,6 +93,10 @@ Operations pages must distinguish:
 - usage statistics;
 - agent workflow execution state;
 - export job state.
+
+Provider readiness must distinguish secret-managed live configuration from
+sandbox/mock/test state. A raw credential in persisted provider config is a
+security blocker, not production-readiness evidence.
 
 Raw API health JSON should not be the authenticated product health page.
 

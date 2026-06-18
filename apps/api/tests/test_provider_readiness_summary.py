@@ -16,13 +16,14 @@ def make_provider(name, provider_type, status="active", config=None):
     )
 
 
-def test_provider_readiness_summary_flags_live_sandbox_and_missing_core_types():
+def test_provider_readiness_summary_flags_live_sandbox_and_missing_core_types(monkeypatch):
+    monkeypatch.setenv("AMX_TEST_LLM_API_KEY", "live-secret")
     tenant_id = uuid4()
     providers = [
         make_provider(
             "MiniMax Live",
             "llm",
-            config={"api_key": "live-secret", "base_url": "https://api.example.test"},
+            config={"credential_ref": "env:AMX_TEST_LLM_API_KEY", "base_url": "https://api.example.test"},
         ),
         make_provider(
             "GitNexus Sandbox",
@@ -55,20 +56,24 @@ def test_provider_readiness_summary_flags_live_sandbox_and_missing_core_types():
     assert any("GitNexus Sandbox" in action for action in summary.recommended_actions)
 
 
-def test_provider_readiness_distinguishes_live_mock_degraded_and_failed_states():
+def test_provider_readiness_distinguishes_live_mock_degraded_and_failed_states(monkeypatch):
+    monkeypatch.setenv("AMX_TEST_LLM_API_KEY", "prod-secret-123456")
+    monkeypatch.setenv("AMX_TEST_MOCK_LLM_API_KEY", "sk-test-123456")
+    monkeypatch.setenv("AMX_TEST_GRAPHIFY_API_KEY", "prod-graphify-secret")
+    monkeypatch.setenv("AMX_TEST_GITNEXUS_API_KEY", "prod-gitnexus-secret")
     tenant_id = uuid4()
     providers = [
-        make_provider("Live LLM", "llm", config={"api_key": "prod-secret-123456"}),
-        make_provider("Mock LLM", "llm", config={"api_key": "sk-test-123456"}),
+        make_provider("Live LLM", "llm", config={"credential_ref": "env:AMX_TEST_LLM_API_KEY"}),
+        make_provider("Mock LLM", "llm", config={"credential_ref": "env:AMX_TEST_MOCK_LLM_API_KEY"}),
         make_provider(
             "Graphify Live",
             "graphify",
-            config={"api_key": "prod-graphify-secret", "health_status": "degraded"},
+            config={"credential_ref": "env:AMX_TEST_GRAPHIFY_API_KEY", "health_status": "degraded"},
         ),
         make_provider(
             "GitNexus Live",
             "gitnexus",
-            config={"service_key": "prod-gitnexus-secret", "last_test_status": "failed"},
+            config={"credential_ref": "env:AMX_TEST_GITNEXUS_API_KEY", "last_test_status": "failed"},
         ),
     ]
 

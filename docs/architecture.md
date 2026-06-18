@@ -46,6 +46,12 @@ Core backend responsibilities:
 - agent workflows, workflow versions, workflow runs, and ARQ execution;
 - exports, download jobs, and generated artifacts.
 
+Provider config and provider version rows are not secret stores. They may hold
+non-secret runtime metadata and `credential_ref` / `secret_ref` values only.
+Runtime adapters may resolve those references from approved environment secrets
+for a live candidate call, but resolved credentials must never be written back,
+returned through APIs, logged, audited, exported, or uploaded as evidence.
+
 Database schema is managed by Alembic. Runtime-only table creation should be treated as a compatibility fallback, not the preferred schema-management mechanism.
 
 ## Frontend Architecture
@@ -70,6 +76,10 @@ All interactive controls must either perform an action, navigate, open a dialog,
 Project is the primary work container. Documents, files, source files, traceability links, knowledge entries, and generated artifacts should be scoped to a project and tenant where applicable.
 
 Tenant is the operational boundary for users, roles, API keys, providers, quotas, and audit logs.
+
+Provider readiness is an operational gate, not an exemption from the credential
+boundary. Persisted raw credential fields such as `api_key`, `token`,
+`access_token`, `secret`, or `service_key` are treated as unsafe configuration.
 
 Document generation should preserve a traceable path from source material and prompt context to generated document, version, comments, workflow status, and export artifact.
 

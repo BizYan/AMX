@@ -70,7 +70,7 @@ def _classify_provider(provider) -> tuple[str, str, str]:
         return (
             "unconfigured",
             "Provider is missing live credentials or required production configuration.",
-            f"Configure api_key/token/service_key and endpoint for {getattr(provider, 'name', 'Provider')}.",
+            f"Configure credential_ref/secret_ref and endpoint for {getattr(provider, 'name', 'Provider')}.",
         )
 
     if operational_status in {"failed", "failure", "down", "error"}:
