@@ -52,6 +52,8 @@ from app.domains.projects.lifecycle import (
     default_document_lifecycle_policy,
 )
 from app.domains.projects.schemas import DocumentLifecyclePolicyResponse
+from app.domains.providers.credential_boundary import sanitize_error_message
+from app.domains.providers.models import CapabilityType, ProviderRun, RunStatus
 
 FORMAL_DELIVERY_STATES = {
     DocumentStatus.PENDING_REVIEW.value,
@@ -2254,8 +2256,79 @@ class DocumentGenerationService:
         }
         if error is not None:
             evidence["error_type"] = error.__class__.__name__
-            evidence["error_message"] = str(error)
+            evidence["error_message"] = sanitize_error_message(str(error))
         return evidence
+
+    def _build_source_grounding_evidence(self, context: dict[str, Any]) -> dict[str, Any]:
+        """Build non-secret evidence that generation used source-backed knowledge."""
+        grounding_items = context.get("source_grounding") or context.get("knowledge_grounding") or []
+        if isinstance(grounding_items, dict):
+            grounding_items = [grounding_items]
+        if not isinstance(grounding_items, list):
+            grounding_items = []
+
+        knowledge_entry_ids: list[str] = []
+        source_file_ids: list[str] = []
+        markers: list[str] = []
+        for item in grounding_items:
+            if not isinstance(item, dict):
+                continue
+            knowledge_entry_id = str(item.get("knowledge_entry_id") or "").strip()
+            source_file_id = str(item.get("source_file_id") or "").strip()
+            marker = str(item.get("marker") or "").strip()
+            if knowledge_entry_id and knowledge_entry_id not in knowledge_entry_ids:
+                knowledge_entry_ids.append(knowledge_entry_id)
+            if source_file_id and source_file_id not in source_file_ids:
+                source_file_ids.append(source_file_id)
+            if marker and marker not in markers:
+                markers.append(marker)
+
+        return {
+            "knowledge_entry_ids": knowledge_entry_ids,
+            "source_file_ids": source_file_ids,
+            "marker_count": len(markers),
+            "grounded": bool(knowledge_entry_ids and source_file_ids),
+        }
+
+    async def _record_provider_run(
+        self,
+        *,
+        tenant_id: UUID,
+        context: dict[str, Any],
+        evidence: dict[str, Any],
+        status: str,
+        error: Exception | None = None,
+    ) -> ProviderRun | None:
+        """Persist provider usage evidence when generation context names a provider."""
+        provider_id = context.get("provider_id")
+        if not provider_id:
+            return None
+        try:
+            provider_uuid = UUID(str(provider_id))
+        except (TypeError, ValueError):
+            return None
+        provider_version_id = context.get("provider_version_id")
+        try:
+            provider_version_uuid = UUID(str(provider_version_id)) if provider_version_id else None
+        except (TypeError, ValueError):
+            provider_version_uuid = None
+
+        usage = evidence.get("usage") or {}
+        run = ProviderRun(
+            tenant_id=tenant_id,
+            provider_id=provider_uuid,
+            version_id=provider_version_uuid,
+            capability_type=CapabilityType.TEXT_GENERATION.value,
+            input_tokens=usage.get("prompt_tokens"),
+            output_tokens=usage.get("completion_tokens"),
+            latency_ms=round(float(evidence.get("latency_ms") or 0)),
+            status=RunStatus.SUCCESS.value if status == "generated" else RunStatus.FAILURE.value,
+            error_message=sanitize_error_message(str(error)) if error is not None else None,
+        )
+        self.db.add(run)
+        await self.db.flush()
+        await self.db.refresh(run)
+        return run
 
     def _generate_structured_placeholder(
         self,
@@ -2572,6 +2645,8 @@ Provide comprehensive test cases in structured format.
         generation_status = "placeholder"
         generation_issues = []
         generation_evidence: dict[str, Any] = {}
+        source_grounding = self._build_source_grounding_evidence(context)
+        provider_run: ProviderRun | None = None
         llm = self._get_llm_gateway()
         if llm:
             prompt = self._get_schema_prompt(doc_type, context)
@@ -2590,9 +2665,16 @@ Provide comprehensive test cases in structured format.
                     llm=llm,
                     response=response,
                 )
+                provider_run = await self._record_provider_run(
+                    tenant_id=tenant_id,
+                    context=context,
+                    evidence=generation_evidence,
+                    status=generation_status,
+                )
             except Exception as e:
                 # Fallback to template if LLM fails
-                content = f"# {title}\n\nDocument content generation failed. Please manually complete this document.\n\nError: {str(e)}"
+                sanitized_error = sanitize_error_message(str(e))
+                content = f"# {title}\n\nDocument content generation failed. Please manually complete this document.\n\nError: {sanitized_error}"
                 generation_status = "failed"
                 generation_evidence = self._build_generation_evidence(
                     status=generation_status,
@@ -2601,9 +2683,16 @@ Provide comprehensive test cases in structured format.
                     llm=llm,
                     error=e,
                 )
+                provider_run = await self._record_provider_run(
+                    tenant_id=tenant_id,
+                    context=context,
+                    evidence=generation_evidence,
+                    status=generation_status,
+                    error=e,
+                )
                 generation_issues.append({
                     "type": "generation_failed",
-                    "message": str(e),
+                    "message": sanitized_error,
                     "stage": "initial_generation",
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 })
@@ -2622,6 +2711,8 @@ Provide comprehensive test cases in structured format.
 
         # Create document
         doc_service = DocumentService(self.db)
+        if provider_run is not None:
+            generation_evidence["provider_run_id"] = str(provider_run.id)
         document = await doc_service.create_document(
             tenant_id=tenant_id,
             project_id=project_id,
@@ -2634,6 +2725,7 @@ Provide comprehensive test cases in structured format.
                 "generation_status": generation_status,
                 "generation_issues": generation_issues,
                 "generation_evidence": generation_evidence,
+                "source_grounding": source_grounding,
                 "context_keys": list(context.keys()),
             },
         )

@@ -101,9 +101,15 @@ class ExportService:
             metadata = document.metadata_json or {}
             generation_status = str(metadata.get("generation_status") or "").lower()
             has_placeholder = (
-                generation_status == "placeholder"
+                generation_status in {"placeholder", "partial", "failed"}
                 or metadata.get("has_placeholders") is True
                 or document.status == "placeholder"
+            )
+            delivery = metadata.get("delivery") if isinstance(metadata, dict) else None
+            delivery_readiness = delivery.get("delivery_readiness") if isinstance(delivery, dict) else None
+            has_delivery_readiness_failure = (
+                isinstance(delivery_readiness, dict)
+                and delivery_readiness.get("ready") is False
             )
             empty_content = not (document.content or "").strip()
             not_formal = document.status not in production_statuses
@@ -113,6 +119,9 @@ class ExportService:
             if has_placeholder:
                 reason = "文档仍包含占位内容"
                 recommended_action = "回到项目文档工作台补齐内容或重新生成后再发布。"
+            elif has_delivery_readiness_failure:
+                reason = "Document delivery readiness failed"
+                recommended_action = "Resolve document delivery readiness blockers before export."
             elif empty_content:
                 reason = "文档内容为空"
                 recommended_action = "补齐正文并生成版本快照后再纳入交付包。"
@@ -389,6 +398,12 @@ class ExportService:
             return "PPTX"
         return extension.upper() if extension else "File"
 
+    def _document_delivery_readiness_failed(self, document: Any) -> bool:
+        metadata = getattr(document, "metadata_json", None) or {}
+        delivery = metadata.get("delivery") if isinstance(metadata, dict) else None
+        readiness = delivery.get("delivery_readiness") if isinstance(delivery, dict) else None
+        return isinstance(readiness, dict) and readiness.get("ready") is False
+
     async def create_export_job(
         self,
         tenant_id: UUID,
@@ -536,11 +551,23 @@ class ExportService:
 
         placeholder_documents = [
             doc for doc in documents
-            if (doc.metadata_json or {}).get("generation_status") == "placeholder"
+            if str((doc.metadata_json or {}).get("generation_status") or "").lower()
+            in {"placeholder", "partial", "failed"}
         ]
         if placeholder_documents:
             names = ", ".join(doc.title for doc in placeholder_documents)
-            raise ValueError(f"Cannot export placeholder documents: {names}")
+            raise ValueError(
+                "Cannot export placeholder documents or other non-generated AI documents: "
+                f"{names}"
+            )
+
+        readiness_blocked_documents = [
+            doc for doc in documents
+            if self._document_delivery_readiness_failed(doc)
+        ]
+        if readiness_blocked_documents:
+            names = ", ".join(doc.title for doc in readiness_blocked_documents)
+            raise ValueError(f"Cannot export documents with export readiness blockers: {names}")
 
         if not documents:
             raise ValueError("No exportable project documents found")
