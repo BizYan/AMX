@@ -24,6 +24,7 @@ import app.domains.projects.models  # noqa: F401
 from app.db.base import Base
 from app.db.init_schema import deduplicate_indexes
 from app.domains.collaboration.models import CollaborationWorkItem
+from app.domains.identity.models import AuditLog
 from app.domains.documents.models import Document
 from app.domains.export.models import ExportArtifact, ExportJob
 from app.domains.projects.delivery_plan_service import ProjectDeliveryPlanService
@@ -559,3 +560,105 @@ async def test_customer_portal_link_is_hashed_revocable_and_submits_acceptance(d
     )
     with pytest.raises(PermissionError, match="revoked"):
         await service.get_customer_portal(created.token)
+
+
+@pytest.mark.asyncio
+async def test_customer_portal_access_download_and_submission_create_sanitized_audit_evidence(db_session):
+    owner, _, launched = await _seed(db_session)
+    service = ProjectDeliveryPlanService(db_session)
+    created = await service.create_customer_portal_link(
+        launched.project.id,
+        owner.tenant_id,
+        owner.id,
+        CustomerPortalLinkCreate(
+            label="Sponsor acceptance",
+            customer_email="sponsor@example.com",
+            expires_in_days=7,
+        ),
+    )
+    plan = await service.get_plan(launched.project.id, owner.tenant_id)
+    link_id = plan.settings_json["customer_portal_links"][0]["id"]
+    job = ExportJob(
+        tenant_id=owner.tenant_id,
+        project_id=launched.project.id,
+        export_type="project_package",
+        status="completed",
+        created_by=owner.id,
+        completed_at=datetime.now(timezone.utc),
+    )
+    db_session.add(job)
+    await db_session.flush()
+    artifact = ExportArtifact(
+        tenant_id=owner.tenant_id,
+        job_id=job.id,
+        filename="customer-delivery.zip",
+        content_type="application/zip",
+        file_size=2048,
+        storage_path="exports/customer-delivery.zip",
+        file_hash="receipt-hash",
+    )
+    db_session.add(artifact)
+    await db_session.flush()
+
+    await service.get_customer_portal(created.token)
+    await service.get_customer_portal_artifact(created.token, artifact.id)
+    await service.submit_customer_portal_acceptance(
+        created.token,
+        CustomerPortalAcceptanceSubmit(
+            contact_name="Delivery Sponsor",
+            contact_email="sponsor@example.com",
+            decision="accepted",
+            notes="Customer accepted the synthetic delivery package.",
+            items=[
+                {
+                    "key": "scope",
+                    "title": "Scope delivered",
+                    "status": "accepted",
+                    "evidence": "Synthetic acceptance evidence.",
+                }
+            ],
+        ),
+    )
+
+    audit_logs = (
+        await db_session.execute(
+            select(AuditLog)
+            .where(
+                AuditLog.tenant_id == owner.tenant_id,
+                AuditLog.resource_id == launched.project.id,
+                AuditLog.action.in_(
+                    [
+                        "project.customer_portal.access",
+                        "project.customer_portal.artifact_download",
+                        "project.customer_portal.acceptance_submit",
+                    ]
+                ),
+            )
+            .order_by(AuditLog.created_at)
+        )
+    ).scalars().all()
+
+    assert [log.action for log in audit_logs] == [
+        "project.customer_portal.access",
+        "project.customer_portal.artifact_download",
+        "project.customer_portal.acceptance_submit",
+    ]
+    assert all(log.user_id is None for log in audit_logs)
+    assert audit_logs[0].extra_data == {"link_id": link_id, "package_ready": True}
+    assert audit_logs[1].extra_data == {
+        "link_id": link_id,
+        "artifact_id": str(artifact.id),
+        "filename": "customer-delivery.zip",
+        "download_count": 1,
+    }
+    assert audit_logs[2].extra_data == {
+        "link_id": link_id,
+        "decision": "accepted",
+        "item_count": 1,
+        "accepted_item_count": 1,
+        "receipt_id": audit_logs[2].extra_data["receipt_id"],
+    }
+    serialized = str([log.extra_data for log in audit_logs])
+    assert created.token not in serialized
+    assert "sponsor@example.com" not in serialized
+    assert "Customer accepted" not in serialized

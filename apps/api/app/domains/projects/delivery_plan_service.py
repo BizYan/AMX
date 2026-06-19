@@ -29,6 +29,7 @@ from app.domains.projects.schemas import (
     ProjectMilestoneUpdate,
 )
 from app.models.projects import Project
+from app.services.audit_service import AuditService
 
 
 FINAL_DOCUMENT_STATUSES = {"approved", "published"}
@@ -415,7 +416,19 @@ class ProjectDeliveryPlanService:
         link["last_accessed_at"] = datetime.now(timezone.utc).isoformat()
         plan.settings_json = {**(plan.settings_json or {})}
         await self.db.flush()
-        return await self._customer_portal_response(plan, link)
+        response = await self._customer_portal_response(plan, link)
+        await AuditService(self.db).log_action(
+            tenant_id=plan.tenant_id,
+            user_id=None,
+            action="project.customer_portal.access",
+            resource_type="project",
+            resource_id=plan.project_id,
+            metadata={
+                "link_id": link["id"],
+                "package_ready": response.package_ready,
+            },
+        )
+        return response
 
     async def submit_customer_portal_acceptance(
         self, token: str, data: CustomerPortalAcceptanceSubmit
@@ -445,6 +458,20 @@ class ProjectDeliveryPlanService:
         project = await self._project(plan.project_id, plan.tenant_id)
         await self._sync_acceptance_follow_ups(plan, data.items, project.owner_id)
         await self.db.flush()
+        await AuditService(self.db).log_action(
+            tenant_id=plan.tenant_id,
+            user_id=None,
+            action="project.customer_portal.acceptance_submit",
+            resource_type="project",
+            resource_id=plan.project_id,
+            metadata={
+                "link_id": link["id"],
+                "decision": data.decision,
+                "item_count": len(data.items),
+                "accepted_item_count": sum(item.status == "accepted" for item in data.items),
+                "receipt_id": acceptance["receipt_id"],
+            },
+        )
         return await self._customer_portal_response(plan, link)
 
     async def _sync_acceptance_follow_ups(
@@ -547,6 +574,19 @@ class ProjectDeliveryPlanService:
         link["download_count"] = int(link.get("download_count") or 0) + 1
         plan.settings_json = {**(plan.settings_json or {})}
         await self.db.flush()
+        await AuditService(self.db).log_action(
+            tenant_id=plan.tenant_id,
+            user_id=None,
+            action="project.customer_portal.artifact_download",
+            resource_type="project",
+            resource_id=plan.project_id,
+            metadata={
+                "link_id": link["id"],
+                "artifact_id": str(artifact.id),
+                "filename": artifact.filename,
+                "download_count": link["download_count"],
+            },
+        )
         return artifact
 
     async def _portal_plan_and_link(
