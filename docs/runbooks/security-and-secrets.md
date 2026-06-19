@@ -7,7 +7,8 @@
 - Production `.env` stays on OCI under the deployment directory.
 - Production `.env` must be owner-only (`chmod 600`).
 - Agent task prompts must not include raw tokens or private keys.
-- Provider registration and provider version config must not persist raw
+- Provider registration, provider version config, and productionized external
+  connector config must not persist raw
   credentials such as `api_key`, `token`, `access_token`, `secret`, or
   `service_key`. Store only non-secret metadata and `credential_ref` /
   `secret_ref` values.

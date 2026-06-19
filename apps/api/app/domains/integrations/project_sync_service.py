@@ -16,22 +16,37 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.domains.integrations.models import (
+    IntegrationInboundEvent,
     IntegrationProjectBinding,
     IntegrationProvider,
     IntegrationSyncRun,
     IntegrationSyncedAsset,
+    OutboxEvent,
 )
 from app.domains.integrations.schemas import (
     IntegrationNormalizedItem,
     IntegrationProjectBindingUpdate,
     IntegrationSyncPreviewResponse,
 )
-from app.domains.integrations.service import IntegrationService
+from app.domains.integrations.service import IntegrationCredentialError, IntegrationService
 from app.domains.knowledge.models import KnowledgeEntry, LineageRecord, ProvenanceRecord
 from app.domains.knowledge.schemas import KnowledgeEntryUpdate
 from app.domains.knowledge.service import KnowledgeService
 from app.domains.projects.models import SourceFile, SourceFileStatus
 from app.models.projects import Project
+
+
+JIRA_CONNECTOR_PROFILE = "jira_project_sync_v1"
+TRANSIENT_HTTP_STATUSES = {429, 500, 502, 503, 504}
+
+
+class IntegrationRemoteFetchError(RuntimeError):
+    """Classified remote connector fetch failure."""
+
+    def __init__(self, status: str, message: str, *, status_code: int | None = None):
+        super().__init__(message)
+        self.status = status
+        self.status_code = status_code
 
 
 class IntegrationProjectSyncService:
@@ -147,11 +162,21 @@ class IntegrationProjectSyncService:
         binding = await self._required_binding(binding_id, tenant_id)
         payload = await self._resolve_fetch(binding)
         items = self._normalize_payload(binding, payload)[:limit]
+        cursor = self._next_cursor(binding, items)
+        binding.cursor_json = {
+            **(binding.cursor_json or {}),
+            "last_preview": {
+                "previewed_at": datetime.now(timezone.utc).isoformat(),
+                "item_count": len(items),
+                "cursor": cursor,
+            },
+        }
+        await self.db.flush()
         return IntegrationSyncPreviewResponse(
             binding_id=binding.id,
             total=len(items),
             items=items,
-            cursor=self._next_cursor(binding, items),
+            cursor=cursor,
         )
 
     async def sync_binding(
@@ -169,13 +194,30 @@ class IntegrationProjectSyncService:
             cursor_before_json=dict(binding.cursor_json or {}),
             cursor_after_json=dict(binding.cursor_json or {}),
             requested_by=requested_by,
-            details_json={"binding_name": binding.name, "project_id": str(binding.project_id)},
+            details_json={
+                "binding_name": binding.name,
+                "project_id": str(binding.project_id),
+                "connector_profile": self._connector_profile(binding),
+            },
         )
         self.db.add(run)
         await self.db.flush()
+        await self._record_sync_event(
+            binding,
+            run,
+            "integration.project_sync.started",
+            {"requested_by": str(requested_by) if requested_by else None},
+        )
 
         if not binding.is_enabled:
-            return await self._fail_run(run, binding, "Binding is disabled")
+            return await self._fail_run(run, binding, "Binding is disabled", failure_state="binding_disabled")
+        if self._requires_preview_before_sync(binding) and not (binding.cursor_json or {}).get("last_preview"):
+            return await self._fail_run(
+                run,
+                binding,
+                "Preview is required before Jira project sync.",
+                failure_state="preview_required",
+            )
 
         try:
             payload = await self._resolve_fetch(binding)
@@ -198,7 +240,13 @@ class IntegrationProjectSyncService:
 
             cursor = self._next_cursor(binding, items)
             run.cursor_after_json = cursor
-            run.details_json = {**(run.details_json or {}), "item_errors": item_errors[:50]}
+            fetch_evidence = payload.get("_amx_fetch_evidence") if isinstance(payload, dict) else None
+            run.details_json = {
+                **(run.details_json or {}),
+                "item_errors": item_errors[:50],
+                "fetch_evidence": fetch_evidence or {"mode": "single_fetch"},
+                "failure_state": "item_errors" if item_errors else None,
+            }
             run.status = "partial" if run.failed_count else "completed"
             run.error_message = f"{run.failed_count} item(s) failed" if run.failed_count else None
             run.completed_at = datetime.now(timezone.utc)
@@ -206,11 +254,38 @@ class IntegrationProjectSyncService:
             binding.last_sync_status = run.status
             binding.last_synced_at = run.completed_at
             binding.last_error = run.error_message
+            await self._record_sync_event(
+                binding,
+                run,
+                "integration.project_sync.completed" if run.status == "completed" else "integration.project_sync.partial",
+                {
+                    "total_count": run.total_count,
+                    "created_count": run.created_count,
+                    "updated_count": run.updated_count,
+                    "unchanged_count": run.unchanged_count,
+                    "failed_count": run.failed_count,
+                },
+            )
+            await self._record_outbox_event(
+                binding,
+                run,
+                "integration.project_sync.completed" if run.status == "completed" else "integration.project_sync.partial",
+            )
             await self.db.flush()
             await self.db.refresh(run)
             return run
+        except IntegrationCredentialError as exc:
+            return await self._fail_run(run, binding, str(exc), failure_state=exc.status)
+        except IntegrationRemoteFetchError as exc:
+            return await self._fail_run(
+                run,
+                binding,
+                str(exc),
+                failure_state=exc.status,
+                details={"status_code": exc.status_code},
+            )
         except Exception as exc:
-            return await self._fail_run(run, binding, str(exc))
+            return await self._fail_run(run, binding, str(exc), failure_state="remote_error")
 
     async def list_runs(
         self,
@@ -300,17 +375,124 @@ class IntegrationProjectSyncService:
         headers = helper._build_headers(config)
         timeout = float(config.get("timeout_seconds") or 30)
         async with httpx.AsyncClient(timeout=timeout) as client:
+            if (
+                method == "GET"
+                and str(integration.provider_type).lower() == "jira"
+                and self._connector_profile(binding) == JIRA_CONNECTOR_PROFILE
+            ):
+                return await self._fetch_jira_paginated_payload(client, endpoint, headers, params, config, scope)
             if method == "GET":
-                response = await client.get(endpoint, headers=headers, params=params)
+                response = await self._request_with_retry(
+                    client,
+                    "GET",
+                    endpoint,
+                    config,
+                    headers=headers,
+                    params=params,
+                )
             else:
-                response = await client.request(
+                response = await self._request_with_retry(
+                    client,
                     method,
                     endpoint,
+                    config,
                     headers=headers,
                     json=scope.get("payload") or params,
                 )
-        response.raise_for_status()
         return response.json()
+
+    async def _fetch_jira_paginated_payload(
+        self,
+        client: httpx.AsyncClient,
+        endpoint: str,
+        headers: dict[str, str],
+        params: dict[str, Any],
+        config: dict[str, Any],
+        scope: dict[str, Any],
+    ) -> dict[str, Any]:
+        page_size = min(int(scope.get("page_size") or config.get("page_size") or 50), 100)
+        max_pages = max(1, min(int(scope.get("max_pages") or config.get("max_pages") or 3), 20))
+        start_at = int(params.pop("startAt", params.pop("start_at", 0)) or 0)
+        issues: list[Any] = []
+        pages = 0
+        total: int | None = None
+        next_start = start_at
+        for _ in range(max_pages):
+            page_params = {**params, "startAt": next_start, "maxResults": page_size}
+            response = await self._request_with_retry(
+                client,
+                "GET",
+                endpoint,
+                config,
+                headers=headers,
+                params=page_params,
+            )
+            body = response.json()
+            page_issues = body.get("issues") if isinstance(body, dict) else []
+            if not isinstance(page_issues, list):
+                raise IntegrationRemoteFetchError("remote_error", "Jira response does not contain an issues list.")
+            issues.extend(page_issues)
+            pages += 1
+            total = int(body.get("total", len(issues))) if isinstance(body, dict) else len(issues)
+            if not page_issues or len(issues) >= total:
+                break
+            next_start += page_size
+        return {
+            "issues": issues,
+            "total": total if total is not None else len(issues),
+            "_amx_fetch_evidence": {
+                "mode": "jira_paginated_fetch",
+                "page_size": page_size,
+                "max_pages": max_pages,
+                "pages_fetched": pages,
+                "items_fetched": len(issues),
+                "bounded": True,
+            },
+        }
+
+    async def _request_with_retry(
+        self,
+        client: httpx.AsyncClient,
+        method: str,
+        endpoint: str,
+        config: dict[str, Any],
+        **kwargs: Any,
+    ) -> httpx.Response:
+        retry_attempts = max(0, min(int(config.get("retry_attempts") or 1), 3))
+        last_response: httpx.Response | None = None
+        for attempt in range(retry_attempts + 1):
+            response = await client.request(method, endpoint, **kwargs)
+            last_response = response
+            if int(response.status_code) not in TRANSIENT_HTTP_STATUSES:
+                self._raise_for_response(response)
+                return response
+            if attempt >= retry_attempts:
+                break
+        assert last_response is not None
+        self._raise_for_response(last_response)
+        return last_response
+
+    def _raise_for_response(self, response: httpx.Response) -> None:
+        status_code = int(response.status_code)
+        if 200 <= status_code < 400:
+            return
+        if status_code in {401, 403}:
+            raise IntegrationRemoteFetchError(
+                "expired_credential",
+                f"Remote credential was rejected: HTTP {status_code}",
+                status_code=status_code,
+            )
+        if status_code == 429:
+            raise IntegrationRemoteFetchError(
+                "rate_limited",
+                "Remote connector rate limit reached: HTTP 429",
+                status_code=status_code,
+            )
+        raise IntegrationRemoteFetchError(
+            "remote_error",
+            f"Remote connector returned HTTP {status_code}",
+            status_code=status_code,
+        )
 
     def _normalize_payload(
         self,
@@ -545,18 +727,102 @@ class IntegrationProjectSyncService:
             "last_item_count": len(items),
         }
 
+    def _connector_profile(self, binding: IntegrationProjectBinding) -> str | None:
+        config = binding.integration_provider.config_json or {}
+        scope = binding.scope_json or {}
+        value = scope.get("connector_profile") or config.get("connector_profile")
+        return str(value) if value else None
+
+    def _requires_preview_before_sync(self, binding: IntegrationProjectBinding) -> bool:
+        config = binding.integration_provider.config_json or {}
+        scope = binding.scope_json or {}
+        if self._connector_profile(binding) != JIRA_CONNECTOR_PROFILE:
+            return False
+        return bool(scope.get("require_preview_before_sync", config.get("require_preview_before_sync", True)))
+
+    async def _record_sync_event(
+        self,
+        binding: IntegrationProjectBinding,
+        run: IntegrationSyncRun,
+        event_type: str,
+        payload: dict[str, Any],
+    ) -> None:
+        self.db.add(
+            IntegrationInboundEvent(
+                tenant_id=binding.tenant_id,
+                integration_provider_id=binding.integration_provider_id,
+                event_type=event_type,
+                payload={
+                    "binding_id": str(binding.id),
+                    "sync_run_id": str(run.id),
+                    "project_id": str(binding.project_id),
+                    "connector_profile": self._connector_profile(binding),
+                    **payload,
+                },
+                processed=True,
+                processed_at=datetime.now(timezone.utc),
+            )
+        )
+
+    async def _record_outbox_event(
+        self,
+        binding: IntegrationProjectBinding,
+        run: IntegrationSyncRun,
+        event_type: str,
+    ) -> None:
+        self.db.add(
+            OutboxEvent(
+                tenant_id=binding.tenant_id,
+                aggregate_type="integration_project_binding",
+                aggregate_id=binding.id,
+                event_type=event_type,
+                payload={
+                    "integration_provider_id": str(binding.integration_provider_id),
+                    "binding_id": str(binding.id),
+                    "sync_run_id": str(run.id),
+                    "project_id": str(binding.project_id),
+                    "status": run.status,
+                    "total_count": run.total_count,
+                    "created_count": run.created_count,
+                    "updated_count": run.updated_count,
+                    "unchanged_count": run.unchanged_count,
+                    "failed_count": run.failed_count,
+                },
+                published=False,
+            )
+        )
+
     async def _fail_run(
         self,
         run: IntegrationSyncRun,
         binding: IntegrationProjectBinding,
         message: str,
+        *,
+        failure_state: str = "remote_error",
+        details: dict[str, Any] | None = None,
     ) -> IntegrationSyncRun:
         run.status = "failed"
         run.error_message = message[:2000]
         run.failed_count = max(run.failed_count, 1)
         run.completed_at = datetime.now(timezone.utc)
+        run.details_json = {
+            **(run.details_json or {}),
+            "failure_state": failure_state,
+            **(details or {}),
+        }
         binding.last_sync_status = "failed"
         binding.last_error = run.error_message
+        await self._record_sync_event(
+            binding,
+            run,
+            "integration.project_sync.failed",
+            {
+                "failure_state": failure_state,
+                "error_message": run.error_message,
+                **(details or {}),
+            },
+        )
+        await self._record_outbox_event(binding, run, "integration.project_sync.failed")
         await self.db.flush()
         await self.db.refresh(run)
         return run

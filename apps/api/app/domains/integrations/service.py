@@ -9,6 +9,7 @@ import hmac
 import inspect
 import json
 import logfire
+import os
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urljoin
@@ -49,6 +50,27 @@ from app.domains.integrations.schemas import (
 # Exponential backoff delays for queued webhook retry delivery.
 WEBHOOK_DELAYS = [5, 30, 120]
 MAX_DELIVERY_ATTEMPTS = 3
+RAW_CREDENTIAL_CONFIG_KEYS = {
+    "api_key",
+    "api_token",
+    "access_token",
+    "token",
+    "secret",
+    "service_key",
+    "password",
+}
+
+
+class IntegrationCredentialError(ValueError):
+    """Raised when an integration credential reference cannot be resolved."""
+
+    def __init__(self, status: str, message: str):
+        super().__init__(message)
+        self.status = status
+
+
+class IntegrationConnectorConfigError(ValueError):
+    """Raised when a productionized connector stores unsafe configuration."""
 
 
 async def enqueue_webhook_retry_job(delivery_id: UUID, *, defer_by: int) -> None:
@@ -95,6 +117,7 @@ class IntegrationService:
         Returns:
             Created IntegrationProvider
         """
+        self._validate_provider_config(provider_type, config)
         integration = IntegrationProvider(
             tenant_id=tenant_id,
             provider_type=provider_type,
@@ -194,6 +217,7 @@ class IntegrationService:
         if updates.name is not None:
             integration.name = updates.name
         if updates.config_json is not None:
+            self._validate_provider_config(integration.provider_type, updates.config_json)
             integration.config_json = updates.config_json
         if updates.is_enabled is not None:
             integration.is_enabled = updates.is_enabled
@@ -254,8 +278,10 @@ class IntegrationService:
                 "details": {"provider_type": integration.provider_type},
             }
 
-        required_fields = ["base_url", "api_key"]
+        required_fields = ["base_url"]
         missing_fields = [field for field in required_fields if not config.get(field)]
+        if not self._integration_has_auth(config):
+            missing_fields.append("credential_ref")
 
         if missing_fields:
             return {
@@ -273,6 +299,16 @@ class IntegrationService:
                 method=method,
                 config=config,
             )
+        except IntegrationCredentialError as exc:
+            return {
+                "status": exc.status,
+                "message": str(exc),
+                "details": {
+                    "provider_type": integration.provider_type,
+                    "endpoint": endpoint,
+                    "checked_at": checked_at.isoformat(),
+                },
+            }
         except Exception as exc:
             return {
                 "status": "unreachable",
@@ -333,7 +369,7 @@ class IntegrationService:
 
         config = integration.config_json or {}
 
-        if not config.get("base_url") or not config.get("api_key"):
+        if not config.get("base_url") or not self._integration_has_auth(config):
             return {
                 "success": False,
                 "status": "unconfigured",
@@ -915,13 +951,54 @@ class IntegrationService:
 
     def _integration_has_auth(self, config: dict[str, Any]) -> bool:
         return bool(
-            config.get("api_key")
+            config.get("credential_ref")
+            or config.get("secret_ref")
+            or config.get("api_key")
             or config.get("token")
             or config.get("access_token")
             or config.get("secret")
             or config.get("service_key")
-            or config.get("credential_ref")
         )
+
+    def _validate_provider_config(self, provider_type: str, config: dict[str, Any]) -> None:
+        """Fail closed for the productionized Jira connector credential boundary."""
+        if str(provider_type).lower() != ProviderType.JIRA.value:
+            return
+        raw_keys = sorted(key for key in RAW_CREDENTIAL_CONFIG_KEYS if config.get(key))
+        if raw_keys:
+            raise IntegrationConnectorConfigError(
+                "Jira connector config must use credential_ref or secret_ref; raw credential fields are not allowed."
+            )
+
+    def _resolve_credential_value(self, config: dict[str, Any]) -> str:
+        credential_ref = str(config.get("credential_ref") or config.get("secret_ref") or "").strip()
+        if credential_ref:
+            if credential_ref.startswith("env:"):
+                env_name = credential_ref.removeprefix("env:").strip()
+                if not env_name:
+                    raise IntegrationCredentialError("missing_credential", "Credential reference is empty.")
+                value = os.environ.get(env_name)
+                if not value:
+                    raise IntegrationCredentialError(
+                        "missing_credential",
+                        f"Credential reference {credential_ref} is not available in the runtime environment.",
+                    )
+                return value
+            if credential_ref.startswith(("vault:", "secret:", "github-actions:")):
+                raise IntegrationCredentialError(
+                    "missing_credential",
+                    f"Credential resolver for {credential_ref.split(':', 1)[0]} references is not configured in this runtime.",
+                )
+            raise IntegrationCredentialError(
+                "missing_credential",
+                "Unsupported credential_ref scheme. Use env:<NAME> for candidate verification.",
+            )
+
+        for key in ("api_key", "api_token", "access_token", "token", "secret", "service_key"):
+            value = config.get(key)
+            if value:
+                return str(value)
+        return ""
 
     def _build_headers(self, config: dict[str, Any]) -> dict[str, str]:
         headers = {
@@ -929,7 +1006,7 @@ class IntegrationService:
             for key, value in (config.get("headers") or {}).items()
             if value is not None
         }
-        api_key = str(config.get("api_key") or "")
+        api_key = self._resolve_credential_value(config)
         auth_header = str(config.get("auth_header") or "Authorization")
         auth_scheme = str(config.get("auth_scheme") or "Bearer")
         if api_key:

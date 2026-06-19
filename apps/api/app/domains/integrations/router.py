@@ -48,6 +48,7 @@ from app.domains.integrations.schemas import (
 )
 from app.domains.integrations.project_sync_service import IntegrationProjectSyncService
 from app.domains.integrations.service import (
+    IntegrationConnectorConfigError,
     IntegrationService,
     WebhookService,
     OutboxService,
@@ -152,12 +153,15 @@ async def create_integration(
         Created integration
     """
     service = IntegrationService(db)
-    integration = await service.create_integration(
-        tenant_id=current_user.tenant_id,
-        provider_type=data.provider_type,
-        name=data.name,
-        config=data.config_json,
-    )
+    try:
+        integration = await service.create_integration(
+            tenant_id=current_user.tenant_id,
+            provider_type=data.provider_type,
+            name=data.name,
+            config=data.config_json,
+        )
+    except IntegrationConnectorConfigError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return IntegrationProviderResponse.model_validate(integration)
 
 
@@ -338,11 +342,14 @@ async def update_integration(
         HTTPException: If integration not found
     """
     service = IntegrationService(db)
-    integration = await service.update_integration(
-        integration_id=integration_id,
-        tenant_id=current_user.tenant_id,
-        updates=data,
-    )
+    try:
+        integration = await service.update_integration(
+            integration_id=integration_id,
+            tenant_id=current_user.tenant_id,
+            updates=data,
+        )
+    except IntegrationConnectorConfigError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     if not integration:
         raise HTTPException(status_code=404, detail="Integration not found")

@@ -5,6 +5,7 @@ os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
 os.environ["REDIS_URL"] = "redis://localhost:6379/0"
 os.environ["ARQ_REDIS_URL"] = "redis://localhost:6379/1"
 os.environ["JWT_SECRET_KEY"] = "test-secret"
+os.environ["AMX_TEST_JIRA_API_TOKEN"] = "test-jira-token"
 
 import pytest
 from fastapi import HTTPException
@@ -116,7 +117,7 @@ async def test_connection_probes_configured_endpoint_and_masks_credentials(db_se
         name="Jira",
         config={
             "base_url": "https://jira.example.com",
-            "api_key": "super-secret-token",
+            "credential_ref": "env:AMX_TEST_JIRA_API_TOKEN",
             "health_path": "/rest/api/2/myself",
             "auth_header": "X-API-Key",
             "auth_scheme": "raw",
@@ -128,11 +129,11 @@ async def test_connection_probes_configured_endpoint_and_masks_credentials(db_se
     assert result["status"] == "connected"
     assert result["details"]["endpoint"] == "https://jira.example.com/rest/api/2/myself"
     assert result["details"]["status_code"] == 200
-    assert "super-secret-token" not in str(result)
+    assert "test-jira-token" not in str(result)
     method, url, kwargs = FakeAsyncClient.requests[0]
     assert method == "GET"
     assert url == "https://jira.example.com/rest/api/2/myself"
-    assert kwargs["headers"]["X-API-Key"] == "super-secret-token"
+    assert kwargs["headers"]["X-API-Key"] == "test-jira-token"
 
 
 @pytest.mark.asyncio
@@ -298,7 +299,7 @@ async def test_operations_summary_reports_integration_webhook_and_outbox_evidenc
         tenant_id=tenant_id,
         provider_type="jira",
         name="Jira",
-        config={"base_url": "https://jira.example.com", "api_key": "key"},
+        config={"base_url": "https://jira.example.com", "credential_ref": "env:AMX_TEST_JIRA_API_TOKEN"},
     )
     synced.id = integration_id
     synced.last_sync_at = synced.created_at
