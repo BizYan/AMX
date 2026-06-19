@@ -446,6 +446,9 @@ async def test_customer_portal_link_is_hashed_revocable_and_submits_acceptance(d
     persisted = plan.settings_json["customer_portal_links"][0]
     assert created.token not in str(plan.settings_json)
     assert persisted["token_hash"] == service._portal_token_hash(created.token)
+    listed_links = await service.list_customer_portal_links(launched.project.id, owner.tenant_id)
+    assert created.token not in str([link.model_dump(mode="json") for link in listed_links])
+    assert "token_hash" not in str([link.model_dump(mode="json") for link in listed_links])
 
     portal = await service.get_customer_portal(created.token)
     assert portal.project_name == launched.project.name
@@ -563,6 +566,95 @@ async def test_customer_portal_link_is_hashed_revocable_and_submits_acceptance(d
 
 
 @pytest.mark.asyncio
+async def test_customer_portal_rejects_invalid_expired_and_cross_project_artifact_tokens(db_session):
+    owner, _, launched = await _seed(db_session)
+    other_owner, _, other_launched = await _seed(db_session)
+    service = ProjectDeliveryPlanService(db_session)
+    created = await service.create_customer_portal_link(
+        launched.project.id,
+        owner.tenant_id,
+        owner.id,
+        CustomerPortalLinkCreate(
+            label="Sponsor acceptance",
+            customer_email="sponsor@example.com",
+            expires_in_days=7,
+        ),
+    )
+    plan = await service.get_plan(launched.project.id, owner.tenant_id)
+
+    job = ExportJob(
+        tenant_id=owner.tenant_id,
+        project_id=launched.project.id,
+        export_type="project_package",
+        status="completed",
+        created_by=owner.id,
+        completed_at=datetime.now(timezone.utc),
+    )
+    other_job = ExportJob(
+        tenant_id=other_owner.tenant_id,
+        project_id=other_launched.project.id,
+        export_type="project_package",
+        status="completed",
+        created_by=other_owner.id,
+        completed_at=datetime.now(timezone.utc),
+    )
+    pending_job = ExportJob(
+        tenant_id=owner.tenant_id,
+        project_id=launched.project.id,
+        export_type="project_package",
+        status="failed",
+        created_by=owner.id,
+    )
+    db_session.add_all([job, other_job, pending_job])
+    await db_session.flush()
+    valid_artifact = ExportArtifact(
+        tenant_id=owner.tenant_id,
+        job_id=job.id,
+        filename="customer-delivery.zip",
+        content_type="application/zip",
+        file_size=2048,
+        storage_path="exports/customer-delivery.zip",
+    )
+    other_artifact = ExportArtifact(
+        tenant_id=other_owner.tenant_id,
+        job_id=other_job.id,
+        filename="other-customer-delivery.zip",
+        content_type="application/zip",
+        file_size=2048,
+        storage_path="exports/other-customer-delivery.zip",
+    )
+    failed_artifact = ExportArtifact(
+        tenant_id=owner.tenant_id,
+        job_id=pending_job.id,
+        filename="failed-delivery.zip",
+        content_type="application/zip",
+        file_size=2048,
+        storage_path="exports/failed-delivery.zip",
+    )
+    db_session.add_all([valid_artifact, other_artifact, failed_artifact])
+    await db_session.flush()
+
+    portal = await service.get_customer_portal(created.token)
+    assert [artifact.id for artifact in portal.artifacts] == [valid_artifact.id]
+    assert await service.get_customer_portal_artifact(created.token, valid_artifact.id)
+    with pytest.raises(ValueError, match="not found"):
+        await service.get_customer_portal("invalid-token")
+    with pytest.raises(ValueError, match="not found"):
+        await service.get_customer_portal_artifact(created.token, other_artifact.id)
+    with pytest.raises(ValueError, match="not found"):
+        await service.get_customer_portal_artifact(created.token, failed_artifact.id)
+
+    plan.settings_json["customer_portal_links"][0]["expires_at"] = (
+        datetime.now(timezone.utc) - timedelta(minutes=1)
+    ).isoformat()
+    await db_session.flush()
+    with pytest.raises(PermissionError, match="expired"):
+        await service.get_customer_portal(created.token)
+    with pytest.raises(PermissionError, match="expired"):
+        await service.get_customer_portal_artifact(created.token, valid_artifact.id)
+
+
+@pytest.mark.asyncio
 async def test_customer_portal_access_download_and_submission_create_sanitized_audit_evidence(db_session):
     owner, _, launched = await _seed(db_session)
     service = ProjectDeliveryPlanService(db_session)
@@ -662,3 +754,69 @@ async def test_customer_portal_access_download_and_submission_create_sanitized_a
     assert created.token not in serialized
     assert "sponsor@example.com" not in serialized
     assert "Customer accepted" not in serialized
+    assert "Synthetic acceptance evidence" not in serialized
+    assert "secret" not in serialized.lower()
+
+
+@pytest.mark.asyncio
+async def test_customer_portal_acceptance_allows_owner_to_close_delivery_after_package_is_ready(db_session):
+    owner, _, launched = await _seed(db_session)
+    service = ProjectDeliveryPlanService(db_session)
+    plan = await service.get_plan(launched.project.id, owner.tenant_id)
+    for milestone in plan.milestones:
+        if milestone.key != "release-delivery":
+            milestone.status = "completed"
+            milestone.completed_at = datetime.now(timezone.utc)
+    created = await service.create_customer_portal_link(
+        launched.project.id,
+        owner.tenant_id,
+        owner.id,
+        CustomerPortalLinkCreate(
+            label="Sponsor acceptance",
+            customer_email="sponsor@example.com",
+            expires_in_days=7,
+        ),
+    )
+    job = ExportJob(
+        tenant_id=owner.tenant_id,
+        project_id=launched.project.id,
+        export_type="project_package",
+        status="completed",
+        created_by=owner.id,
+        completed_at=datetime.now(timezone.utc),
+    )
+    db_session.add(job)
+    await db_session.flush()
+    db_session.add(
+        ExportArtifact(
+            tenant_id=owner.tenant_id,
+            job_id=job.id,
+            filename="customer-delivery.zip",
+            content_type="application/zip",
+            file_size=2048,
+            storage_path="exports/customer-delivery.zip",
+        )
+    )
+    await db_session.flush()
+
+    submitted = await service.submit_customer_portal_acceptance(
+        created.token,
+        CustomerPortalAcceptanceSubmit(
+            contact_name="Delivery Sponsor",
+            contact_email="sponsor@example.com",
+            decision="accepted",
+            notes="Customer accepted the synthetic delivery package.",
+            items=[
+                {
+                    "key": "scope",
+                    "title": "Scope delivered",
+                    "status": "accepted",
+                    "evidence": "Synthetic acceptance evidence.",
+                }
+            ],
+        ),
+    )
+    assert submitted.gate.status == "passed"
+    closed = await service.close_delivery(launched.project.id, owner.tenant_id, owner.id)
+    assert closed.closed_at is not None
+    assert next(item for item in plan.milestones if item.key == "release-delivery").status == "completed"
