@@ -6,6 +6,7 @@ os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
 os.environ["REDIS_URL"] = "redis://localhost:6379/0"
 os.environ["ARQ_REDIS_URL"] = "redis://localhost:6379/1"
 os.environ["JWT_SECRET_KEY"] = "test-secret"
+os.environ["AMX_TEST_JIRA_API_TOKEN"] = "test-jira-token"
 
 import pytest
 from sqlalchemy import select
@@ -17,6 +18,7 @@ import app.models.identity  # noqa: F401
 from app.db.base import Base
 from app.db.init_schema import deduplicate_indexes
 from app.domains.integrations.models import (
+    IntegrationInboundEvent,
     IntegrationProjectBinding,
     IntegrationSyncRun,
     IntegrationSyncedAsset,
@@ -74,7 +76,7 @@ async def make_context(db_session):
         name="Delivery Jira",
         config={
             "base_url": "https://jira.example.com",
-            "api_key": "secret",
+            "credential_ref": "env:AMX_TEST_JIRA_API_TOKEN",
             "sync_path": "/rest/api/2/search",
         },
     )
@@ -105,14 +107,80 @@ class FakeProjectSyncClient:
 
 
 class FakeProjectSyncResponse:
-    def __init__(self, body: dict):
+    def __init__(self, body: dict, status_code: int = 200):
         self._body = body
+        self.status_code = status_code
 
     def raise_for_status(self):
         return None
 
     def json(self):
         return self._body
+
+
+class FakeJiraConnectorResponse:
+    def __init__(self, body: dict, status_code: int = 200):
+        self._body = body
+        self.status_code = status_code
+
+    def json(self):
+        return self._body
+
+
+class FakeJiraConnectorClient:
+    requests: list[tuple[str, str, dict]] = []
+    transient_once = False
+    status_code = 200
+
+    def __init__(self, *args, **kwargs):
+        self.args = args
+        self.kwargs = kwargs
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    async def request(self, method: str, url: str, **kwargs):
+        self.requests.append((method, url, kwargs))
+        if self.transient_once:
+            self.transient_once = False
+            return FakeJiraConnectorResponse({"error": "temporary"}, 500)
+        if self.status_code >= 400:
+            return FakeJiraConnectorResponse({"error": "blocked"}, self.status_code)
+        params = kwargs.get("params") or {}
+        start_at = int(params.get("startAt", 0))
+        max_results = int(params.get("maxResults", 2))
+        all_issues = [
+            {
+                "key": "AMX-101",
+                "fields": {
+                    "summary": "Connector requirement 101",
+                    "description": "First connector item.",
+                    "updated": "2026-06-18T10:00:00Z",
+                },
+                "self": "https://jira.example.com/rest/api/2/issue/AMX-101",
+            },
+            {
+                "key": "AMX-102",
+                "fields": {
+                    "summary": "Connector requirement 102",
+                    "description": "Second connector item.",
+                    "updated": "2026-06-19T10:00:00Z",
+                },
+                "self": "https://jira.example.com/rest/api/2/issue/AMX-102",
+            },
+        ]
+        page = all_issues[start_at : start_at + max_results]
+        return FakeJiraConnectorResponse(
+            {
+                "startAt": start_at,
+                "maxResults": max_results,
+                "total": len(all_issues),
+                "issues": page,
+            }
+        )
 
 
 @pytest.mark.asyncio
@@ -237,7 +305,7 @@ async def test_project_binding_sync_requires_configured_source_path(db_session, 
         name="Health-only Jira",
         config={
             "base_url": "https://jira.example.com",
-            "api_key": "secret",
+            "credential_ref": "env:AMX_TEST_JIRA_API_TOKEN",
         },
     )
     service = IntegrationProjectSyncService(db_session)
@@ -466,3 +534,171 @@ async def test_outbox_publish_routes_by_provider_and_event_type(db_session, monk
     assert delivered_subscription_ids == [matching_subscription.id]
     assert result == {"processed": 1, "published": 1, "failed": 0}
     assert event.published is True
+
+
+@pytest.mark.asyncio
+async def test_jira_connector_rejects_raw_credentials_and_requires_preview_before_sync(db_session):
+    tenant_id, user_id, project_id, _integration = await make_context(db_session)
+    service = IntegrationService(db_session)
+
+    with pytest.raises(ValueError):
+        await service.create_integration(
+            tenant_id=tenant_id,
+            provider_type="jira",
+            name="Unsafe Jira",
+            config={
+                "base_url": "https://jira.example.com",
+                "api_key": "raw-secret-must-not-persist",
+                "sync_path": "/rest/api/2/search",
+            },
+        )
+
+    integration = await service.create_integration(
+        tenant_id=tenant_id,
+        provider_type="jira",
+        name="Safe Jira",
+        config={
+            "base_url": "https://jira.example.com",
+            "credential_ref": "env:AMX_TEST_JIRA_API_TOKEN",
+            "sync_path": "/rest/api/2/search",
+            "connector_profile": "jira_project_sync_v1",
+        },
+    )
+    assert "raw-secret-must-not-persist" not in str(integration.config_json)
+
+    binding = await IntegrationProjectSyncService(db_session).create_binding(
+        tenant_id=tenant_id,
+        integration_id=integration.id,
+        project_id=project_id,
+        name="Jira production connector",
+        scope={
+            "item_path": "issues",
+            "connector_profile": "jira_project_sync_v1",
+            "external_scope": "project = AMX",
+        },
+        field_mapping={"external_id": "key", "title": "fields.summary", "content": "fields.description"},
+        created_by=user_id,
+    )
+
+    run = await IntegrationProjectSyncService(db_session).sync_binding(binding.id, tenant_id, user_id)
+
+    assert run.status == "failed"
+    assert run.details_json["failure_state"] == "preview_required"
+    assert binding.last_sync_status == "failed"
+
+
+@pytest.mark.asyncio
+async def test_jira_connector_preview_paginated_sync_retry_audit_and_outbox(db_session, monkeypatch):
+    tenant_id, user_id, project_id, integration = await make_context(db_session)
+    integration.config_json = {
+        **integration.config_json,
+        "connector_profile": "jira_project_sync_v1",
+        "page_size": 1,
+        "max_pages": 5,
+        "retry_attempts": 1,
+    }
+    service = IntegrationProjectSyncService(db_session)
+    binding = await service.create_binding(
+        tenant_id=tenant_id,
+        integration_id=integration.id,
+        project_id=project_id,
+        name="Jira production connector",
+        scope={
+            "item_path": "issues",
+            "connector_profile": "jira_project_sync_v1",
+            "external_scope": "project = AMX",
+            "page_size": 1,
+            "max_pages": 5,
+        },
+        field_mapping={
+            "external_id": "key",
+            "title": "fields.summary",
+            "content": "fields.description",
+            "updated_at": "fields.updated",
+            "external_url": "self",
+        },
+        created_by=user_id,
+    )
+    FakeJiraConnectorClient.requests = []
+    FakeJiraConnectorClient.transient_once = True
+    FakeJiraConnectorClient.status_code = 200
+    monkeypatch.setattr("app.domains.integrations.project_sync_service.httpx.AsyncClient", FakeJiraConnectorClient)
+
+    preview = await service.preview_binding(binding.id, tenant_id)
+    run = await service.sync_binding(binding.id, tenant_id, user_id)
+
+    assert preview.total == 2
+    assert run.status == "completed"
+    assert run.created_count == 2
+    assert run.details_json["fetch_evidence"]["mode"] == "jira_paginated_fetch"
+    assert run.details_json["fetch_evidence"]["pages_fetched"] == 2
+    assert run.details_json["fetch_evidence"]["bounded"] is True
+    assert binding.cursor_json["last_item_count"] == 2
+    assert len(list((await db_session.scalars(select(IntegrationSyncedAsset))).all())) == 2
+
+    request_headers = [kwargs["headers"] for _method, _url, kwargs in FakeJiraConnectorClient.requests]
+    assert any(headers["Authorization"] == "Bearer test-jira-token" for headers in request_headers)
+    assert "test-jira-token" not in str(integration.config_json)
+    assert "test-jira-token" not in str(run.details_json)
+
+    event_types = [event.event_type for event in (await db_session.scalars(select(IntegrationInboundEvent))).all()]
+    assert "integration.project_sync.started" in event_types
+    assert "integration.project_sync.completed" in event_types
+
+    outbox_events = list((await db_session.scalars(select(OutboxEvent))).all())
+    assert any(event.event_type == "integration.project_sync.completed" for event in outbox_events)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("credential_ref", "status_code", "expected_state"),
+    [
+        ("env:AMX_MISSING_JIRA_TOKEN", 200, "missing_credential"),
+        ("env:AMX_TEST_JIRA_API_TOKEN", 401, "expired_credential"),
+        ("env:AMX_TEST_JIRA_API_TOKEN", 429, "rate_limited"),
+    ],
+)
+async def test_jira_connector_records_clear_failure_states(
+    db_session,
+    monkeypatch,
+    credential_ref,
+    status_code,
+    expected_state,
+):
+    tenant_id, user_id, project_id, integration = await make_context(db_session)
+    integration.config_json = {
+        "base_url": "https://jira.example.com",
+        "credential_ref": credential_ref,
+        "sync_path": "/rest/api/2/search",
+        "connector_profile": "jira_project_sync_v1",
+        "retry_attempts": 0,
+    }
+    service = IntegrationProjectSyncService(db_session)
+    binding = await service.create_binding(
+        tenant_id=tenant_id,
+        integration_id=integration.id,
+        project_id=project_id,
+        name=f"Jira failure {expected_state}",
+        scope={
+            "item_path": "issues",
+            "connector_profile": "jira_project_sync_v1",
+            "require_preview_before_sync": False,
+        },
+        field_mapping={"external_id": "key", "title": "fields.summary", "content": "fields.description"},
+        created_by=user_id,
+    )
+    FakeJiraConnectorClient.requests = []
+    FakeJiraConnectorClient.transient_once = False
+    FakeJiraConnectorClient.status_code = status_code
+    monkeypatch.setattr("app.domains.integrations.project_sync_service.httpx.AsyncClient", FakeJiraConnectorClient)
+
+    run = await service.sync_binding(binding.id, tenant_id, user_id)
+
+    assert run.status == "failed"
+    assert run.details_json["failure_state"] == expected_state
+    assert binding.last_sync_status == "failed"
+    event = await db_session.scalar(
+        select(IntegrationInboundEvent).where(IntegrationInboundEvent.event_type == "integration.project_sync.failed")
+    )
+    assert event is not None
+    assert event.payload["failure_state"] == expected_state
