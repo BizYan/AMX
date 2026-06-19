@@ -7,6 +7,17 @@
 - Production `.env` stays on OCI under the deployment directory.
 - Production `.env` must be owner-only (`chmod 600`).
 - Agent task prompts must not include raw tokens or private keys.
+- Provider registration and provider version config must not persist raw
+  credentials such as `api_key`, `token`, `access_token`, `secret`, or
+  `service_key`. Store only non-secret metadata and `credential_ref` /
+  `secret_ref` values.
+- Candidate or staging provider validation may resolve `credential_ref` values
+  from runtime environment variables such as `env:AMX_CANDIDATE_LLM_API_KEY`.
+  The resolved secret must never be written back to provider config, API
+  responses, logs, audit records, exports, or evidence artifacts.
+- Real document-generation provider commissioning requires an owner-approved
+  spend cap before the first live call. The default candidate cap is the first
+  of USD 5 total spend, 50 generation calls, or 100k tokens.
 
 ## Runtime Network Exposure
 
@@ -21,6 +32,9 @@
 - GitHub repository secrets for deploy automation.
 - OCI filesystem for production `.env`.
 - Cloudflare dashboard for DNS and SSL mode.
+- GitHub Environment or isolated candidate runtime secrets for temporary
+  provider validation. Do not use Provider `config_json` or provider version
+  config as a secret store.
 
 ## Dependency Security
 

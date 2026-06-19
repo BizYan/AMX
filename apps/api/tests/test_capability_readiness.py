@@ -133,13 +133,14 @@ async def test_provider_test_allows_explicit_sandbox_probe_without_production_re
 
 
 @pytest.mark.asyncio
-async def test_gitnexus_provider_test_supports_health_capability():
+async def test_gitnexus_provider_test_supports_health_capability(monkeypatch):
+    monkeypatch.setenv("AMX_TEST_GITNEXUS_SERVICE_KEY", "live-secret")
     provider = make_provider(
         name="GitNexus",
         provider_type=ProviderType.GITNEXUS.value,
         config={
             "endpoint": "http://gitnexus-server:4747",
-            "service_key": "live-secret",
+            "credential_ref": "env:AMX_TEST_GITNEXUS_SERVICE_KEY",
             "health_path": "/api/health",
         },
     )
@@ -185,13 +186,14 @@ async def test_gitnexus_provider_test_supports_health_capability():
         ("issues", "app.integrations.gitnexus.adapter.GitNexusProvider.fetch_issues"),
     ],
 )
-async def test_gitnexus_provider_test_requires_repo_url_for_repository_capabilities(capability, method_path):
+async def test_gitnexus_provider_test_requires_repo_url_for_repository_capabilities(capability, method_path, monkeypatch):
+    monkeypatch.setenv("AMX_TEST_GITNEXUS_SERVICE_KEY", "live-secret")
     provider = make_provider(
         name="GitNexus",
         provider_type=ProviderType.GITNEXUS.value,
         config={
             "endpoint": "http://gitnexus-server:4747",
-            "service_key": "live-secret",
+            "credential_ref": "env:AMX_TEST_GITNEXUS_SERVICE_KEY",
             "health_path": "/api/health",
         },
     )
@@ -283,9 +285,12 @@ async def test_knowledge_graph_requires_source_lineage_before_ready():
 
 
 @pytest.mark.asyncio
-async def test_readiness_is_ready_when_live_core_assets_exist():
+async def test_readiness_is_ready_when_live_core_assets_exist(monkeypatch):
     tenant_id = uuid4()
-    live_provider = make_provider(config={"api_key": "live-secret", "base_url": "https://api.example.test"})
+    monkeypatch.setenv("AMX_TEST_LLM_API_KEY", "live-secret")
+    live_provider = make_provider(
+        config={"credential_ref": "env:AMX_TEST_LLM_API_KEY", "base_url": "https://api.example.test"}
+    )
     live_provider.tenant_id = tenant_id
     integration = make_integration()
     integration.tenant_id = tenant_id

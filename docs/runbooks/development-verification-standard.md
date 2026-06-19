@@ -168,6 +168,12 @@ The smoke path must fail clearly when credentials are missing or login fails. It
 must not synthesize a token, use `setupApiMocks`, or treat sandbox/test provider
 state as live production evidence.
 
+Provider smoke must also preserve the credential boundary: provider
+registration and provider versions may contain only non-secret metadata plus
+`credential_ref` / `secret_ref`. The runtime may resolve a candidate-only
+environment secret for the live call, but raw provider API keys must not appear
+in persisted config, API responses, logs, audit records, exports, or artifacts.
+
 Required coverage:
 
 - `/health`;

@@ -357,19 +357,24 @@ class CapabilityCommissioningService:
             ),
             can_run=count > 0,
             configuration_requirements={
-                "required_fields": ["api_key/token/service_key", "base_url", "model"],
+                "required_fields": ["credential_ref/secret_ref", "base_url", "model"],
                 "forbidden_values": ["mock", "sandbox", "test_api_key", "placeholder"],
-                "secret_policy": "Store real credentials in controlled runtime configuration or a secret manager; never commit them to the repository.",
+                "secret_policy": (
+                    "Store real credentials only in controlled runtime secrets. "
+                    "Provider config and version config may contain non-secret references only."
+                ),
+                "candidate_spend_cap": "Stop at the first of USD 5 total spend, 50 generation calls, or 100k tokens.",
             },
             validation_steps=[
-                "Create or update an active LLM Provider with live credentials.",
+                "Create or update an active LLM Provider with credential_ref/secret_ref only.",
                 "/api/v1/providers/{provider_id}/test",
                 "Confirm success=true, mode=live, production_ready=true, sandbox_fallback=false.",
             ],
             evidence_requirements=[
                 "successful_live_provider_test",
-                "non_sandbox_credentials",
+                "secret_managed_non_sandbox_credential_ref",
                 "active_provider_status",
+                "spend_cap_or_usage_limit",
             ],
         )
 

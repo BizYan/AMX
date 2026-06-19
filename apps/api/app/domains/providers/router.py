@@ -35,6 +35,7 @@ from app.domains.providers.capability import (
     is_sandbox_provider,
     provider_secret_value,
 )
+from app.domains.providers.credential_boundary import provider_runtime_config
 from app.domains.providers.registry import ProviderRegistry
 from app.domains.providers.readiness import build_provider_readiness_summary
 from app.models.identity import User
@@ -85,7 +86,10 @@ def _sandbox_test_response(
     message = (
         "Provider is configured for sandbox/test use. Enable allow_sandbox only for non-production checks."
         if configured
-        else "Provider has no live credential configured. Add a real API key or service token before testing production readiness."
+        else (
+            "Provider has no live credential reference configured. "
+            "Add credential_ref/secret_ref before testing production readiness."
+        )
     )
     return ProviderTestResponse(
         success=False,
@@ -541,7 +545,7 @@ async def test_provider(
         response = _sandbox_test_response(
             data,
             int((time.time() - start_time) * 1000),
-            configured=bool(provider_secret_value(provider)),
+            configured=True,
             allowed=data.allow_sandbox,
         )
         await _record_provider_test_run(
@@ -557,7 +561,7 @@ async def test_provider(
             success=False,
             message="Provider is missing live credentials or required production configuration.",
             latency_ms=int((time.time() - start_time) * 1000),
-            output={"required": ["api_key/token/service_key", "active status"]},
+            output={"required": ["credential_ref/secret_ref", "active status"]},
             status="unconfigured",
             mode="live",
             capability_type=data.capability_type,
@@ -632,7 +636,9 @@ async def test_provider(
         elif provider.provider_type == ProviderType.GRAPHIFY.value:
             from app.integrations.graphify.adapter import GraphifyProvider
 
-            graphify = GraphifyProvider(config=provider.config_json)
+            graphify = GraphifyProvider(
+                config=provider_runtime_config(provider, credential_key="api_key")
+            )
 
             if data.capability_type == "graph_query":
                 response = await graphify.extract_graph(
@@ -657,7 +663,9 @@ async def test_provider(
         elif provider.provider_type == ProviderType.GITNEXUS.value:
             from app.integrations.gitnexus.adapter import GitNexusProvider
 
-            gitnexus = GitNexusProvider(config=provider.config_json)
+            gitnexus = GitNexusProvider(
+                config=provider_runtime_config(provider, credential_key="service_key")
+            )
             repo_url_param = data.params.get("repo_url")
             repo_url = repo_url_param.strip() if isinstance(repo_url_param, str) else None
 

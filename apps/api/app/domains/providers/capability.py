@@ -2,6 +2,7 @@
 
 from typing import Any
 
+from app.domains.providers.credential_boundary import provider_resolved_credential
 from app.domains.providers.models import Provider, ProviderStatus
 
 SANDBOX_SECRET_VALUES = {
@@ -48,16 +49,8 @@ def config_text(config: dict[str, Any], *keys: str) -> str:
 
 
 def provider_secret_value(provider: Provider) -> str:
-    """Return the credential-like value used to judge live configuration."""
-    config = provider.config_json or {}
-    return config_text(
-        config,
-        "api_key",
-        "token",
-        "access_token",
-        "secret",
-        "service_key",
-    )
+    """Return the runtime credential resolved from a non-secret reference."""
+    return provider_resolved_credential(provider)
 
 
 def is_sandbox_provider(provider: Provider) -> bool:

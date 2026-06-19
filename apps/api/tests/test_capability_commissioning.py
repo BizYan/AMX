@@ -297,12 +297,14 @@ async def test_commissioning_returns_structured_setup_requirements_and_requires_
     integration_check = checks["external_integration_connectivity"]
 
     assert provider_check.configuration_requirements["required_fields"] == [
-        "api_key/token/service_key",
+        "credential_ref/secret_ref",
         "base_url",
         "model",
     ]
+    assert provider_check.configuration_requirements["candidate_spend_cap"]
     assert "/api/v1/providers/{provider_id}/test" in provider_check.validation_steps
     assert "successful_live_provider_test" in provider_check.evidence_requirements
+    assert "secret_managed_non_sandbox_credential_ref" in provider_check.evidence_requirements
 
     assert integration_check.status == "failed"
     assert integration_check.evidence["configured_integration_count"] == 1
