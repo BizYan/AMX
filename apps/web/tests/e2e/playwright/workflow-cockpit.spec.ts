@@ -44,6 +44,10 @@ test.describe('智能编排工作台与编辑器', () => {
     await page.getByTestId('workflow-run-workflow-e2e-prd').click()
     await expect(page.locator('body')).toContainText('工作流已进入执行队列', { timeout: 8000 })
     await expect(page).toHaveURL(/\/agent-ops/)
+    const dialog = page.getByRole('dialog')
+    await expect(dialog).toContainText('export_package')
+    await expect(dialog).toContainText('node_provider_or_tool_reference')
+    await expect(dialog).toContainText('artifact-e2e-new')
   })
 
   test('workflow detail links recent runs to the operations center', async ({ page }) => {

@@ -412,6 +412,140 @@ async def test_dag_executor_completes_workflow_run_with_task_evidence(db_session
 
 
 @pytest.mark.asyncio
+async def test_workflow_run_binds_immutable_version_input_snapshot_retry_and_safe_tool_evidence(db_session, monkeypatch):
+    tenant_id, user_id, project_id, document = await _seed_exportable_document(db_session)
+    storage = CapturingStorage()
+    monkeypatch.setattr("app.domains.export.service.get_storage_provider", lambda: storage)
+
+    workflow_service = WorkflowService(db_session)
+    workflow = await workflow_service.create_workflow(
+        tenant_id=tenant_id,
+        name="Runtime Evidence Workflow",
+        description="Validate runtime evidence boundary",
+        category="export_orchestration",
+        created_by=user_id,
+    )
+    version = await workflow_service.create_version(
+        workflow_id=workflow.id,
+        tenant_id=tenant_id,
+        dag_json={
+            "nodes": [
+                {"id": "review", "type": "skill", "skill": "DocumentReviewer"},
+                {
+                    "id": "export",
+                    "type": "tool",
+                    "tool": "document_export",
+                    "depends_on": ["review"],
+                    "config": {
+                        "document_id": str(document.id),
+                        "format": "markdown",
+                    },
+                },
+            ]
+        },
+        skill_contracts=[],
+        tool_contracts=[],
+        created_by=user_id,
+    )
+
+    original_input = {
+        "content": "## Runtime evidence\nNo credentials should appear.",
+        "secret": "sk-should-not-persist-in-runtime-evidence",
+    }
+    run_service = AgentRunService(db_session)
+    run = await run_service.create_run(
+        tenant_id=tenant_id,
+        project_id=project_id,
+        workflow_version_id=version.id,
+        input_data=original_input,
+        created_by=user_id,
+    )
+    original_input["content"] = "mutated after create"
+
+    run = await run_service.get_run(run.id, tenant_id)
+    assert run.workflow_version_id == version.id
+    assert run.input_data["content"] == "## Runtime evidence\nNo credentials should appear."
+    assert run.metadata_json["workflow_version_id"] == str(version.id)
+    assert run.metadata_json["workflow_version"] == version.version
+    assert run.metadata_json["input_snapshot"]["content"] == "## Runtime evidence\nNo credentials should appear."
+    assert "secret" not in str(run.metadata_json)
+
+    await run_service.create_tasks_for_dag(
+        run_id=run.id,
+        tenant_id=tenant_id,
+        dag_json=version.dag_json,
+        input_data=run.input_data,
+    )
+    result = await DAGExecutor(db_session).execute_workflow(
+        run.id,
+        version.dag_json,
+        run.input_data,
+        {"tenant_id": tenant_id, "created_by": user_id},
+    )
+    assert result["success"] is True
+
+    tasks = await run_service.get_run_tasks(run.id, tenant_id)
+    export_task = next(task for task in tasks if task.node_id == "export")
+    assert export_task.output_data["artifact_refs"]
+    assert export_task.output_data["artifact_refs"][0]["kind"] == "export_artifact"
+    assert "credential" not in str(export_task.output_data).lower()
+    assert "sk-should-not" not in str(export_task.output_data)
+
+    events = await run_service.get_run_events(run.id, tenant_id)
+    provider_events = [event for event in events if event.event_type == "node_provider_or_tool_reference"]
+    assert provider_events
+    assert provider_events[-1].event_data["node_id"] == "export"
+    assert provider_events[-1].event_data["tool_name"] == "document_export"
+    assert provider_events[-1].event_data["artifact_refs"][0]["kind"] == "export_artifact"
+    assert "sk-should-not" not in str([event.event_data for event in events])
+
+    await run_service.update_run_status(run.id, tenant_id, "failed", error_message="manual retry test")
+    retry = await run_service.prepare_run_retry(run.id, tenant_id)
+    assert retry.status == "pending"
+    assert retry.metadata_json["retry_attempt"] == 1
+    assert retry.metadata_json["previous_status"] == "failed"
+
+    retry_events = await run_service.get_run_events(run.id, tenant_id)
+    assert [event.event_type for event in retry_events].count("run_retry_queued") == 1
+    assert retry_events[-1].event_data["attempt"] == 1
+    assert retry_events[-1].event_data["previous_status"] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_workflow_runtime_cancel_marks_running_tasks_cancelled_with_event_evidence(db_session):
+    tenant_id = uuid4()
+    project_id = uuid4()
+
+    run_service = AgentRunService(db_session)
+    run = await run_service.create_run(
+        tenant_id=tenant_id,
+        project_id=project_id,
+        run_type="workflow",
+        input_data={"content": "cancel me"},
+    )
+    await run_service.submit_task(
+        run_id=run.id,
+        tenant_id=tenant_id,
+        node_id="review",
+        skill_name="DocumentReviewer",
+        input_data=run.input_data,
+    )
+    await run_service.update_run_status(run.id, tenant_id, "running")
+    task = (await run_service.get_run_tasks(run.id, tenant_id))[0]
+    await run_service.update_task_status(task.id, "running")
+
+    cancelled = await run_service.cancel_run(run.id, tenant_id, reason="Owner cancelled")
+
+    assert cancelled.status == "cancelled"
+    task = (await run_service.get_run_tasks(run.id, tenant_id))[0]
+    assert task.status == "cancelled"
+    assert task.error_message == "Owner cancelled"
+    events = await run_service.get_run_events(run.id, tenant_id)
+    assert events[-1].event_type == "run_cancelled"
+    assert events[-1].event_data["cancelled_task_ids"] == [str(task.id)]
+
+
+@pytest.mark.asyncio
 async def test_run_list_and_detail_responses_include_runtime_summaries(db_session):
     tenant_id = uuid4()
     user_id = uuid4()
