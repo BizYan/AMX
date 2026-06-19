@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { use, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { sourceFilesApi, SourceFile, SourceIngestionJob } from '@/lib/api-client'
+import { knowledgeApi, sourceFilesApi, SourceFile, SourceIngestionJob } from '@/lib/api-client'
 import { createClientId } from '@/lib/client-id'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -90,6 +90,46 @@ function buildFileSummary(file: SourceFile) {
   if (file.status === 'processing') return '系统正在解析正文、识别结构化事实，并准备写入知识库。'
   if (file.status === 'failed') return file.errorMessage || '资料解析未完成，需要补充更清晰的文件或人工确认关键信息。'
   return '资料已进入摄取队列，等待解析服务处理。'
+}
+
+function SourceKnowledgeEvidence({ projectId, file }: { projectId: string; file: SourceFile }) {
+  const isReadyWithKnowledge = file.status === 'ready' && (file.extractedKnowledgeCount ?? 0) > 0
+  const sourceFileId = encodeURIComponent(file.id)
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['source-knowledge-evidence', projectId, file.id],
+    queryFn: () => knowledgeApi.getEntries({ projectId, sourceFileId: file.id, pageSize: 5 }),
+    enabled: isReadyWithKnowledge,
+    staleTime: 30000,
+  })
+
+  if (!isReadyWithKnowledge) {
+    return null
+  }
+
+  const entryCount = data?.total ?? file.extractedKnowledgeCount ?? 0
+  const evidenceText = isLoading
+    ? '正在确认知识可检索状态'
+    : isError
+      ? '知识条目已抽取，检索证据刷新失败'
+      : `知识可检索：${entryCount} 条来源知识已连接到该文件`
+
+  return (
+    <div
+      data-testid={`source-knowledge-evidence-${file.id}`}
+      className="flex flex-col gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-100 sm:flex-row sm:items-center sm:justify-between"
+    >
+      <span className="flex items-center gap-2">
+        <CheckCircle className="h-4 w-4" />
+        {evidenceText}
+      </span>
+      <Link
+        className="font-medium underline-offset-4 hover:underline"
+        href={`/knowledge/graph?projectId=${projectId}&sourceFileId=${sourceFileId}`}
+      >
+        查看来源追溯
+      </Link>
+    </div>
+  )
 }
 
 export default function FilesPage({ params }: FilesPageProps) {
@@ -423,6 +463,8 @@ export default function FilesPage({ params }: FilesPageProps) {
                     <span className="font-medium">抽取摘要：</span>
                     {buildFileSummary(file)}
                   </div>
+
+                  <SourceKnowledgeEvidence projectId={projectId} file={file} />
 
                   <div className="flex flex-wrap gap-2">
                     {latestJob?.status === 'pending' && (
