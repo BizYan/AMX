@@ -79,22 +79,16 @@ jobs:
           RELEASE_CANDIDATE_BOOTSTRAP_ADMIN_EMAIL: ${{ secrets.RELEASE_CANDIDATE_BOOTSTRAP_ADMIN_EMAIL }}
           RELEASE_CANDIDATE_BOOTSTRAP_ADMIN_PASSWORD: ${{ secrets.RELEASE_CANDIDATE_BOOTSTRAP_ADMIN_PASSWORD }}
           RELEASE_CANDIDATE_LLM_API_KEY: ${{ secrets.RELEASE_CANDIDATE_LLM_API_KEY }}
-          RELEASE_CANDIDATE_GRAPHIFY_API_KEY: ${{ secrets.RELEASE_CANDIDATE_GRAPHIFY_API_KEY }}
-          RELEASE_CANDIDATE_GITNEXUS_SERVICE_KEY: ${{ secrets.RELEASE_CANDIDATE_GITNEXUS_SERVICE_KEY }}
         run: |
           set -euo pipefail
           test -n "$RELEASE_CANDIDATE_BOOTSTRAP_ADMIN_EMAIL"
           test -n "$RELEASE_CANDIDATE_BOOTSTRAP_ADMIN_PASSWORD"
           test -n "$RELEASE_CANDIDATE_LLM_API_KEY"
-          test -n "$RELEASE_CANDIDATE_GRAPHIFY_API_KEY"
-          test -n "$RELEASE_CANDIDATE_GITNEXUS_SERVICE_KEY"
           GENERATED_POSTGRES_PASSWORD="$(openssl rand -hex 24)"
           GENERATED_JWT_SECRET_KEY="$(openssl rand -hex 32)"
           echo "::add-mask::$RELEASE_CANDIDATE_BOOTSTRAP_ADMIN_EMAIL"
           echo "::add-mask::$RELEASE_CANDIDATE_BOOTSTRAP_ADMIN_PASSWORD"
           echo "::add-mask::$RELEASE_CANDIDATE_LLM_API_KEY"
-          echo "::add-mask::$RELEASE_CANDIDATE_GRAPHIFY_API_KEY"
-          echo "::add-mask::$RELEASE_CANDIDATE_GITNEXUS_SERVICE_KEY"
           echo "::add-mask::$GENERATED_POSTGRES_PASSWORD"
           echo "::add-mask::$GENERATED_JWT_SECRET_KEY"
           cat > "$CANDIDATE_ENV_FILE" <<EOF
@@ -121,8 +115,8 @@ jobs:
           BOOTSTRAP_ADMIN_EMAIL=$RELEASE_CANDIDATE_BOOTSTRAP_ADMIN_EMAIL
           BOOTSTRAP_ADMIN_PASSWORD=$RELEASE_CANDIDATE_BOOTSTRAP_ADMIN_PASSWORD
           AMX_CANDIDATE_LLM_API_KEY=$RELEASE_CANDIDATE_LLM_API_KEY
-          AMX_CANDIDATE_GRAPHIFY_API_KEY=$RELEASE_CANDIDATE_GRAPHIFY_API_KEY
-          AMX_CANDIDATE_GITNEXUS_SERVICE_KEY=$RELEASE_CANDIDATE_GITNEXUS_SERVICE_KEY
+          AMX_CANDIDATE_GRAPHIFY_READINESS_REF=internal-candidate-graphify-ready
+          AMX_CANDIDATE_GITNEXUS_READINESS_REF=internal-candidate-gitnexus-ready
           JWT_SECRET_KEY=$GENERATED_JWT_SECRET_KEY
           EOF
           chmod 600 "$CANDIDATE_ENV_FILE"
@@ -323,7 +317,7 @@ jobs:
                   "name": "Release Graphify Provider",
                   "provider_type": "graphify",
                   "config": {
-                      "credential_ref": "env:AMX_CANDIDATE_GRAPHIFY_API_KEY",
+                      "credential_ref": "env:AMX_CANDIDATE_GRAPHIFY_READINESS_REF",
                       "base_url": "https://candidate-provider.local/graphify",
                       "last_test_status": "healthy",
                   },
@@ -333,7 +327,7 @@ jobs:
                   "name": "Release GitNexus Provider",
                   "provider_type": "gitnexus",
                   "config": {
-                      "credential_ref": "env:AMX_CANDIDATE_GITNEXUS_SERVICE_KEY",
+                      "credential_ref": "env:AMX_CANDIDATE_GITNEXUS_READINESS_REF",
                       "base_url": "https://candidate-provider.local/gitnexus",
                       "last_test_status": "healthy",
                   },
@@ -392,8 +386,6 @@ jobs:
                   "BOOTSTRAP_ADMIN_EMAIL",
                   "BOOTSTRAP_ADMIN_PASSWORD",
                   "AMX_CANDIDATE_LLM_API_KEY",
-                  "AMX_CANDIDATE_GRAPHIFY_API_KEY",
-                  "AMX_CANDIDATE_GITNEXUS_SERVICE_KEY",
                   "JWT_SECRET_KEY",
               } and value:
                   text = text.replace(value, f"[REDACTED_{key}]")
