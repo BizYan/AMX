@@ -2254,6 +2254,11 @@ class DocumentGenerationService:
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "prompt_sha256": hashlib.sha256((prompt or "").encode("utf-8")).hexdigest() if prompt else None,
         }
+        raw_response = getattr(response, "raw_response", None) or {}
+        if isinstance(raw_response, dict):
+            raw_artifact_ref = raw_response.get("id") or raw_response.get("response_id") or raw_response.get("artifact_id")
+            if raw_artifact_ref:
+                evidence["raw_artifact_ref"] = str(raw_artifact_ref)
         if error is not None:
             evidence["error_type"] = error.__class__.__name__
             evidence["error_message"] = sanitize_error_message(str(error))
