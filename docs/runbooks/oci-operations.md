@@ -83,6 +83,11 @@ bash infra/deploy/health-check.sh --base-url https://amx.yuanda.win
 Rollback also requires health, authenticated smoke, provenance, service status,
 and GitNexus verification when applicable.
 
+Before the first real client and after recovery-sensitive changes, run the
+non-production recovery drill in `docs/runbooks/recovery-drill.md`. That drill
+proves backup restore and application rollback without destructive database
+downgrade. It must not restore production data without explicit Owner Go.
+
 ## Logs
 
 ```bash
