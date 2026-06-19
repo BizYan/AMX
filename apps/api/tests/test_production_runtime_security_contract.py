@@ -115,6 +115,14 @@ def test_candidate_verification_workflow_is_manual_and_non_production():
     assert "AMX_CANDIDATE_GRAPHIFY_READINESS_REF=internal-candidate-graphify-ready" in workflow
     assert "AMX_CANDIDATE_GITNEXUS_READINESS_REF=internal-candidate-gitnexus-ready" in workflow
     assert "Commission candidate provider readiness" in workflow
+    assert "Activate candidate capability evidence" in workflow
+    assert "/api/v1/ops/capabilities/activation-run" in workflow
+    assert "candidate-capability-activation.json" in workflow
+    assert "Run candidate authenticated smoke" in workflow
+    assert workflow.index("Activate candidate capability evidence") < workflow.index(
+        "Run candidate authenticated smoke"
+    )
+    assert '"dry_run":false,"confirm":true' in workflow
     assert '"credential_ref": "env:AMX_CANDIDATE_LLM_API_KEY"' in workflow
     assert '"credential_ref": "env:AMX_CANDIDATE_GRAPHIFY_READINESS_REF"' in workflow
     assert '"credential_ref": "env:AMX_CANDIDATE_GITNEXUS_READINESS_REF"' in workflow

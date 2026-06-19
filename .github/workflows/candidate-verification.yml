@@ -353,6 +353,34 @@ jobs:
             | python3 -c 'import json,sys; data=json.load(sys.stdin); print("[candidate-provider] production_ready={} live_providers={} missing_required_types={}".format(data.get("production_ready"), data.get("live_providers"), data.get("missing_required_types")))' \
             | tee -a artifacts/candidate-provider-readiness.txt
 
+      - name: Activate candidate capability evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          set -a
+          # shellcheck disable=SC1090
+          source "$CANDIDATE_ENV_FILE"
+          set +a
+          login_payload="$(
+            python3 -c 'import json,os; print(json.dumps({"email": os.environ["BOOTSTRAP_ADMIN_EMAIL"], "password": os.environ["BOOTSTRAP_ADMIN_PASSWORD"]}))'
+          )"
+          login_response="$(
+            curl -fsS \
+              -H "Content-Type: application/json" \
+              -d "$login_payload" \
+              "http://127.0.0.1:$API_HOST_PORT/api/v1/identity/auth/login"
+          )"
+          ACCESS_TOKEN="$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("access_token", ""))' <<<"$login_response")"
+          test -n "$ACCESS_TOKEN"
+          activation_payload='{"dry_run":false,"confirm":true}'
+          curl -fsS \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$activation_payload" \
+            "http://127.0.0.1:$API_HOST_PORT/api/v1/ops/capabilities/activation-run" \
+            | tee artifacts/candidate-capability-activation.json \
+            | python3 -c 'import json,sys; data=json.load(sys.stdin); after=data.get("readiness_after") or {}; actions=data.get("actions") or []; completed=[item.get("key") for item in actions if item.get("status")=="completed"]; print("[candidate-capability] executed={} production_ready={} completed_actions={}".format(data.get("executed"), after.get("production_ready"), ",".join(completed))); sys.exit(0 if after.get("production_ready") is True else 1)'
+
       - name: Run candidate authenticated smoke
         shell: bash
         run: |
