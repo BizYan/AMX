@@ -350,7 +350,7 @@ jobs:
           curl -fsS \
             -H "Authorization: Bearer $ACCESS_TOKEN" \
             "http://127.0.0.1:$API_HOST_PORT/api/v1/providers/readiness" \
-            | python3 -c 'import json,sys; data=json.load(sys.stdin); print(f"[candidate-provider] production_ready={data.get(\"production_ready\")} live_providers={data.get(\"live_providers\")} missing_required_types={data.get(\"missing_required_types\")}")' \
+            | python3 -c 'import json,sys; data=json.load(sys.stdin); print("[candidate-provider] production_ready={} live_providers={} missing_required_types={}".format(data.get("production_ready"), data.get("live_providers"), data.get("missing_required_types")))' \
             | tee -a artifacts/candidate-provider-readiness.txt
 
       - name: Run candidate authenticated smoke
