@@ -66,6 +66,7 @@ class AgentTaskStatus(str, Enum):
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 class AgentSkill(Base, UuidMixin, TimestampMixin, TenantMixin, SoftDeleteMixin):
@@ -379,6 +380,7 @@ class AgentRun(Base, UuidMixin, TimestampMixin, TenantMixin):
             AgentTaskStatus.RUNNING.value: 0,
             AgentTaskStatus.COMPLETED.value: 0,
             AgentTaskStatus.FAILED.value: 0,
+            AgentTaskStatus.CANCELLED.value: 0,
         }
         for task in tasks:
             if task.status in counts:

@@ -4795,6 +4795,72 @@ export async function setupApiMocks(page: Page, options: SetupApiMockOptions = {
       created_at: createdAt,
     }
     agentRuns = [run, ...agentRuns]
+    agentTasks = [
+      {
+        id: 'task-run-e2e-new-export',
+        agent_run_id: run.id,
+        tenant_id: 'tenant-e2e-001',
+        node_id: 'export_package',
+        skill_name: null,
+        tool_name: 'document_export',
+        input_data: {
+          workflow_input: payload.input_data || {},
+          node_type: 'tool',
+        },
+        output_data: {
+          status: 'completed',
+          node_id: 'export_package',
+          artifact_refs: [
+            {
+              kind: 'export_artifact',
+              tool_name: 'document_export',
+              artifact_id: 'artifact-e2e-new',
+              filename: 'workflow-runtime-package.md',
+              content_type: 'text/markdown',
+              file_size: 4096,
+            },
+          ],
+          execution: {
+            adapter_ref: 'tool:document_export',
+            tool_name: 'document_export',
+            duration_ms: 42,
+          },
+        },
+        status: 'completed',
+        retries: 0,
+        max_retries: 3,
+        error_message: null,
+        started_at: createdAt,
+        completed_at: createdAt,
+        created_at: createdAt,
+      },
+      ...agentTasks,
+    ]
+    agentEvents = [
+      {
+        id: 'event-run-e2e-new-tool-ref',
+        agent_run_id: run.id,
+        tenant_id: 'tenant-e2e-001',
+        event_type: 'node_provider_or_tool_reference',
+        event_data: {
+          node_id: 'export_package',
+          tool_name: 'document_export',
+          adapter_ref: 'tool:document_export',
+          artifact_refs: [
+            {
+              kind: 'export_artifact',
+              tool_name: 'document_export',
+              artifact_id: 'artifact-e2e-new',
+              filename: 'workflow-runtime-package.md',
+              content_type: 'text/markdown',
+              file_size: 4096,
+            },
+          ],
+        },
+        created_at: createdAt,
+      },
+      ...agentEvents,
+    ]
     await route.fulfill({
       status: 200,
       contentType: 'application/json',

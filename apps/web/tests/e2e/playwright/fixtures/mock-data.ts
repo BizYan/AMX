@@ -2935,6 +2935,28 @@ MOCK_AGENT_EVENTS.splice(0, MOCK_AGENT_EVENTS.length, ...[
     created_at: '2026-05-21T09:05:00Z',
   },
   {
+    id: 'event-e2e-003',
+    agent_run_id: 'run-e2e-001',
+    tenant_id: 'tenant-e2e-001',
+    event_type: 'node_provider_or_tool_reference',
+    event_data: {
+      node_id: 'export_package',
+      tool_name: 'document_export',
+      adapter_ref: 'tool:document_export',
+      artifact_refs: [
+        {
+          kind: 'export_artifact',
+          tool_name: 'document_export',
+          artifact_id: 'artifact-e2e-001',
+          filename: 'prd-package.md',
+          content_type: 'text/markdown',
+          file_size: 2048,
+        },
+      ],
+    },
+    created_at: '2026-05-21T09:05:10Z',
+  },
+  {
     id: 'event-e2e-approval-001',
     agent_run_id: 'run-e2e-approval',
     tenant_id: 'tenant-e2e-001',

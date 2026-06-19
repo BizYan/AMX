@@ -102,6 +102,77 @@ def _node_tool_name(node: dict[str, Any]) -> str | None:
     return str(tool_name).strip() if tool_name is not None and str(tool_name).strip() else None
 
 
+SENSITIVE_RUNTIME_KEYS = {
+    "api_key",
+    "apikey",
+    "authorization",
+    "credential",
+    "credential_ref",
+    "password",
+    "secret",
+    "token",
+}
+
+
+def _runtime_key_is_sensitive(key: Any) -> bool:
+    normalized = str(key).strip().lower()
+    return any(marker in normalized for marker in SENSITIVE_RUNTIME_KEYS)
+
+
+def _sanitize_runtime_value(value: Any) -> Any:
+    """Create a runtime evidence copy without raw credentials or tokens."""
+    if isinstance(value, dict):
+        sanitized: dict[str, Any] = {}
+        for key, item in value.items():
+            if _runtime_key_is_sensitive(key):
+                continue
+            sanitized[str(key)] = _sanitize_runtime_value(item)
+        return sanitized
+    if isinstance(value, list):
+        return [_sanitize_runtime_value(item) for item in value]
+    if isinstance(value, tuple):
+        return [_sanitize_runtime_value(item) for item in value]
+    return value
+
+
+def _runtime_snapshot(value: dict[str, Any] | None) -> dict[str, Any]:
+    """Deep-copy JSON-compatible runtime input into sanitized metadata."""
+    return _sanitize_runtime_value(json.loads(json.dumps(value or {}, default=str)))
+
+
+def _artifact_refs_from_tool_result(tool_name: str, tool_result: dict[str, Any]) -> list[dict[str, Any]]:
+    """Extract stable artifact references from tool output without embedding raw payloads."""
+    refs: list[dict[str, Any]] = []
+    data = tool_result.get("data") if isinstance(tool_result.get("data"), dict) else {}
+    artifacts = data.get("artifacts") if isinstance(data.get("artifacts"), list) else []
+    for artifact in artifacts:
+        if not isinstance(artifact, dict):
+            continue
+        artifact_id = artifact.get("artifact_id") or artifact.get("id")
+        if not artifact_id:
+            continue
+        refs.append(
+            {
+                "kind": "export_artifact" if tool_name == "document_export" else "tool_artifact",
+                "tool_name": tool_name,
+                "artifact_id": str(artifact_id),
+                "filename": artifact.get("filename"),
+                "content_type": artifact.get("content_type"),
+                "file_size": artifact.get("file_size"),
+            }
+        )
+    job_id = data.get("job_id") or tool_result.get("job_id")
+    if job_id:
+        refs.append(
+            {
+                "kind": "export_job" if tool_name == "document_export" else "tool_job",
+                "tool_name": tool_name,
+                "job_id": str(job_id),
+            }
+        )
+    return refs
+
+
 def _condition_expression(node: dict[str, Any]) -> str | None:
     config = _node_config(node)
     data = _node_data(node)
@@ -2698,6 +2769,15 @@ class AgentRunService:
             Created AgentRun
         """
         merged_metadata = {**(metadata_json or {"execution_kind": run_type})}
+        input_snapshot = _runtime_snapshot(input_data or {})
+        merged_metadata.setdefault("input_snapshot", input_snapshot)
+        merged_metadata.setdefault("input_snapshot_keys", sorted(input_snapshot.keys()))
+        if workflow_version_id is not None:
+            version = await self._get_workflow_version_snapshot(workflow_version_id, tenant_id)
+            merged_metadata["workflow_version_id"] = str(workflow_version_id)
+            if version is not None:
+                merged_metadata["workflow_definition_id"] = str(version.workflow_definition_id)
+                merged_metadata["workflow_version"] = version.version
         if created_by is not None:
             merged_metadata["created_by"] = str(created_by)
         run = AgentRun(
@@ -2714,6 +2794,21 @@ class AgentRunService:
         await self.db.flush()
         await self.db.refresh(run)
         return run
+
+    async def _get_workflow_version_snapshot(
+        self,
+        workflow_version_id: UUID,
+        tenant_id: UUID | None,
+    ) -> WorkflowVersion | None:
+        """Load workflow version identity for immutable run metadata."""
+        query = select(WorkflowVersion).where(WorkflowVersion.id == workflow_version_id)
+        if tenant_id is not None:
+            query = query.join(WorkflowDefinition).where(
+                WorkflowDefinition.tenant_id == tenant_id,
+                WorkflowDefinition.deleted_at.is_(None),
+            )
+        result = await self.db.execute(query)
+        return result.scalar_one_or_none()
 
     async def merge_run_metadata(
         self,
@@ -3646,20 +3741,30 @@ class AgentRunService:
         run.completed_at = datetime.now(timezone.utc)
         run.error_message = reason
 
+        cancelled_task_ids: list[str] = []
         for task in run.tasks:
             if task.status in [
                 AgentTaskStatus.PENDING.value,
                 AgentTaskStatus.RUNNING.value,
             ]:
-                task.status = AgentTaskStatus.FAILED.value
+                task.status = AgentTaskStatus.CANCELLED.value
                 task.completed_at = datetime.now(timezone.utc)
                 task.error_message = reason
+                cancelled_task_ids.append(str(task.id))
+
+        run.metadata_json = {
+            **(run.metadata_json or {}),
+            "status": AgentRunStatus.CANCELLED.value,
+            "cancelled_task_ids": cancelled_task_ids,
+            "status_hint": "cancelled",
+            "can_resume": True,
+        }
 
         await self.log_event(
             run_id=run.id,
             tenant_id=tenant_id,
             event_type="run_cancelled",
-            event_data={"reason": reason},
+            event_data={"reason": reason, "cancelled_task_ids": cancelled_task_ids},
         )
         await self.db.flush()
         await self.db.refresh(run)
@@ -3785,13 +3890,24 @@ class AgentRunService:
         ]:
             raise ValueError(f"Run cannot be retried from status '{run.status}'")
 
+        previous_status = run.status
+        previous_error = run.error_message
+        retry_attempt = int((run.metadata_json or {}).get("retry_attempt") or 0) + 1
         await self.db.execute(delete(AgentTask).where(AgentTask.agent_run_id == run.id))
-        await self.db.execute(delete(AgentEvent).where(AgentEvent.agent_run_id == run.id))
 
         run.status = AgentRunStatus.PENDING.value
         run.started_at = None
         run.completed_at = None
         run.error_message = None
+        run.metadata_json = {
+            **(run.metadata_json or {}),
+            "status": AgentRunStatus.PENDING.value,
+            "retry_attempt": retry_attempt,
+            "previous_status": previous_status,
+            "previous_error": previous_error,
+            "status_hint": "retry_queued",
+            "can_resume": False,
+        }
 
         dag_json = {}
         if run.workflow_version is not None:
@@ -3806,7 +3922,12 @@ class AgentRunService:
             run_id=run.id,
             tenant_id=tenant_id,
             event_type="run_retry_queued",
-            event_data={"input_data": run.input_data or {}},
+            event_data={
+                "attempt": retry_attempt,
+                "previous_status": previous_status,
+                "previous_error": previous_error,
+                "input_snapshot": _runtime_snapshot(run.input_data or {}),
+            },
         )
         await self.db.flush()
         await self.db.refresh(run)
@@ -5991,10 +6112,25 @@ class DAGExecutor:
                 )
                 duration_ms = round((time.perf_counter() - started) * 1000, 2)
                 result["tool_output"] = tool_result
+                artifact_refs = _artifact_refs_from_tool_result(tool_name, tool_result)
+                result["artifact_refs"] = artifact_refs
                 result["execution"] = {
                     "duration_ms": duration_ms,
                     "tool_name": tool_name,
+                    "adapter_ref": f"tool:{tool_name}",
                 }
+                if artifact_refs:
+                    await self.agent_run_service.log_event(
+                        run_id=run_id,
+                        tenant_id=tenant_id,
+                        event_type="node_provider_or_tool_reference",
+                        event_data={
+                            "node_id": node_id,
+                            "tool_name": tool_name,
+                            "adapter_ref": f"tool:{tool_name}",
+                            "artifact_refs": artifact_refs,
+                        },
+                    )
             except Exception as e:
                 duration_ms = round((time.perf_counter() - started) * 1000, 2)
                 result = {
@@ -6021,7 +6157,19 @@ class DAGExecutor:
                 result["execution"] = {
                     "duration_ms": duration_ms,
                     "skill_name": skill_name,
+                    "adapter_ref": f"skill:{skill_name}",
                 }
+                await self.agent_run_service.log_event(
+                    run_id=run_id,
+                    tenant_id=tenant_id,
+                    event_type="node_provider_or_tool_reference",
+                    event_data={
+                        "node_id": node_id,
+                        "skill_name": skill_name,
+                        "adapter_ref": f"skill:{skill_name}",
+                        "artifact_refs": [],
+                    },
+                )
             except Exception as e:
                 duration_ms = round((time.perf_counter() - started) * 1000, 2)
                 result = {
