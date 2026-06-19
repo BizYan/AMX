@@ -2,6 +2,7 @@
 set -euo pipefail
 
 SOURCE_REPO="${SOURCE_REPO:-/home/ubuntu/amx/production/AMX}"
+REF="${REF:-main}"
 TARGET_DIR="${TARGET_DIR:-/home/ubuntu/amx/gitnexus}"
 WORKSPACE_DIR="${WORKSPACE_DIR:-/home/ubuntu/amx/gitnexus/workspace}"
 REPOSITORY_URL="${REPOSITORY_URL:-git@github.com:BizYan/AMX.git}"
@@ -35,8 +36,8 @@ fi
 
 git -C "$WORKSPACE_REPO_DIR" remote set-url origin "$REPOSITORY_URL"
 git -C "$WORKSPACE_REPO_DIR" fetch origin --prune --tags
-git -C "$WORKSPACE_REPO_DIR" checkout --force main
-git -C "$WORKSPACE_REPO_DIR" reset --hard origin/main
+git -C "$WORKSPACE_REPO_DIR" checkout --force "$REF"
+git -C "$WORKSPACE_REPO_DIR" reset --hard "$REF"
 
 if grep -q '^GITNEXUS_REPOSITORY_PATH=' "$TARGET_DIR/.env"; then
   sed -i "s|^GITNEXUS_REPOSITORY_PATH=.*|GITNEXUS_REPOSITORY_PATH=$CONTAINER_REPO_PATH|" "$TARGET_DIR/.env"

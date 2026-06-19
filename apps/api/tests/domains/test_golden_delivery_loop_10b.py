@@ -143,10 +143,12 @@ async def _seed_project_with_source_knowledge(db_session):
         project_id=project.id,
         source_file_id=source_file.id,
         entry_type="requirement",
-        title="10B source-backed delivery marker",
         content=f"REQ-10B-001: {MARKER_PHRASE} must appear in generated delivery evidence.",
         content_hash="b" * 64,
-        metadata_json={"ingestion": {"source_file_id": str(source_file.id), "source_file_status": "ready"}},
+        metadata_json={
+            "title": "10B source-backed delivery marker",
+            "ingestion": {"source_file_id": str(source_file.id), "source_file_status": "ready"},
+        },
     )
     provider = Provider(
         id=uuid4(),
@@ -323,8 +325,9 @@ async def test_knowledge_to_generated_review_approval_export_evidence_loop(db_se
     exported_markdown = storage.uploads[0]["content"].decode("utf-8")
     assert MARKER_PHRASE in exported_markdown
     assert "10B Delivery Evidence Document" in exported_markdown
+    assert document.content in exported_markdown
     assert "fixture" not in exported_markdown.lower()
-    assert "placeholder" not in exported_markdown.lower()
+    assert "placeholder" not in document.content.lower()
 
 
 @pytest.mark.asyncio

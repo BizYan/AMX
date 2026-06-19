@@ -31,8 +31,12 @@ def test_gitnexus_deployment_migrates_existing_clone_to_public_amx():
     env_example = (REPO_ROOT / "infra/gitnexus/env.example").read_text(encoding="utf-8")
 
     assert 'SOURCE_REPO="${SOURCE_REPO:-/home/ubuntu/amx/production/AMX}"' in deploy_script
+    assert 'REF="${REF:-main}"' in deploy_script
     assert 'WORKSPACE_REPO_NAME="${WORKSPACE_REPO_NAME:-AMX}"' in deploy_script
     assert 'git -C "$WORKSPACE_REPO_DIR" remote set-url origin "$REPOSITORY_URL"' in deploy_script
+    assert 'git -C "$WORKSPACE_REPO_DIR" checkout --force "$REF"' in deploy_script
+    assert 'git -C "$WORKSPACE_REPO_DIR" reset --hard "$REF"' in deploy_script
+    assert 'git -C "$WORKSPACE_REPO_DIR" reset --hard origin/main' not in deploy_script
     assert 'gitnexus remove "$legacy_repo_path"' in refresh_script
     assert "GITNEXUS_REPOSITORY_PATH=/workspace/AMX" in env_example
 
@@ -68,3 +72,4 @@ def test_production_workflow_requires_canonical_public_amx_path():
 
     assert 'EXPECTED_PRODUCTION_PATH: /home/ubuntu/amx/production/AMX' in workflow
     assert 'if [ "$AMX_PRODUCTION_PATH" != "$EXPECTED_PRODUCTION_PATH" ]; then' in workflow
+    assert 'REF=\\"$REF\\" bash infra/deploy/deploy-gitnexus.sh' in workflow
