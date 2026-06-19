@@ -76,10 +76,11 @@ jobs:
         env:
           OCI_HOST: ${{ secrets.OCI_HOST }}
           OCI_USER: ${{ secrets.OCI_USER }}
+          REF: ${{ github.event.inputs.ref }}
           AMX_PRODUCTION_PATH: ${{ secrets.AMX_PRODUCTION_PATH }}
         run: |
           ssh -i ~/.ssh/amx_oci "$OCI_USER@$OCI_HOST" \
-            "bash -lc 'cd \"$AMX_PRODUCTION_PATH\" && bash infra/deploy/deploy-gitnexus.sh'"
+            "bash -lc 'cd \"$AMX_PRODUCTION_PATH\" && REF=\"$REF\" bash infra/deploy/deploy-gitnexus.sh'"
 
       - name: Verify deployment provenance
         env:
