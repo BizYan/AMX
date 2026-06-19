@@ -78,14 +78,23 @@ jobs:
         env:
           RELEASE_CANDIDATE_BOOTSTRAP_ADMIN_EMAIL: ${{ secrets.RELEASE_CANDIDATE_BOOTSTRAP_ADMIN_EMAIL }}
           RELEASE_CANDIDATE_BOOTSTRAP_ADMIN_PASSWORD: ${{ secrets.RELEASE_CANDIDATE_BOOTSTRAP_ADMIN_PASSWORD }}
+          RELEASE_CANDIDATE_LLM_API_KEY: ${{ secrets.RELEASE_CANDIDATE_LLM_API_KEY }}
+          RELEASE_CANDIDATE_GRAPHIFY_API_KEY: ${{ secrets.RELEASE_CANDIDATE_GRAPHIFY_API_KEY }}
+          RELEASE_CANDIDATE_GITNEXUS_SERVICE_KEY: ${{ secrets.RELEASE_CANDIDATE_GITNEXUS_SERVICE_KEY }}
         run: |
           set -euo pipefail
           test -n "$RELEASE_CANDIDATE_BOOTSTRAP_ADMIN_EMAIL"
           test -n "$RELEASE_CANDIDATE_BOOTSTRAP_ADMIN_PASSWORD"
+          test -n "$RELEASE_CANDIDATE_LLM_API_KEY"
+          test -n "$RELEASE_CANDIDATE_GRAPHIFY_API_KEY"
+          test -n "$RELEASE_CANDIDATE_GITNEXUS_SERVICE_KEY"
           GENERATED_POSTGRES_PASSWORD="$(openssl rand -hex 24)"
           GENERATED_JWT_SECRET_KEY="$(openssl rand -hex 32)"
           echo "::add-mask::$RELEASE_CANDIDATE_BOOTSTRAP_ADMIN_EMAIL"
           echo "::add-mask::$RELEASE_CANDIDATE_BOOTSTRAP_ADMIN_PASSWORD"
+          echo "::add-mask::$RELEASE_CANDIDATE_LLM_API_KEY"
+          echo "::add-mask::$RELEASE_CANDIDATE_GRAPHIFY_API_KEY"
+          echo "::add-mask::$RELEASE_CANDIDATE_GITNEXUS_SERVICE_KEY"
           echo "::add-mask::$GENERATED_POSTGRES_PASSWORD"
           echo "::add-mask::$GENERATED_JWT_SECRET_KEY"
           cat > "$CANDIDATE_ENV_FILE" <<EOF
@@ -111,6 +120,9 @@ jobs:
           NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
           BOOTSTRAP_ADMIN_EMAIL=$RELEASE_CANDIDATE_BOOTSTRAP_ADMIN_EMAIL
           BOOTSTRAP_ADMIN_PASSWORD=$RELEASE_CANDIDATE_BOOTSTRAP_ADMIN_PASSWORD
+          AMX_CANDIDATE_LLM_API_KEY=$RELEASE_CANDIDATE_LLM_API_KEY
+          AMX_CANDIDATE_GRAPHIFY_API_KEY=$RELEASE_CANDIDATE_GRAPHIFY_API_KEY
+          AMX_CANDIDATE_GITNEXUS_SERVICE_KEY=$RELEASE_CANDIDATE_GITNEXUS_SERVICE_KEY
           JWT_SECRET_KEY=$GENERATED_JWT_SECRET_KEY
           EOF
           chmod 600 "$CANDIDATE_ENV_FILE"
@@ -273,6 +285,80 @@ jobs:
           done
           exit 1
 
+      - name: Commission candidate provider readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          set -a
+          # shellcheck disable=SC1090
+          source "$CANDIDATE_ENV_FILE"
+          set +a
+          login_payload="$(
+            python3 -c 'import json,os; print(json.dumps({"email": os.environ["BOOTSTRAP_ADMIN_EMAIL"], "password": os.environ["BOOTSTRAP_ADMIN_PASSWORD"]}))'
+          )"
+          login_response="$(
+            curl -fsS \
+              -H "Content-Type: application/json" \
+              -d "$login_payload" \
+              "http://127.0.0.1:$API_HOST_PORT/api/v1/identity/auth/login"
+          )"
+          ACCESS_TOKEN="$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("access_token", ""))' <<<"$login_response")"
+          test -n "$ACCESS_TOKEN"
+          python3 <<'PY' > "$RUNNER_TEMP/candidate-provider-payloads.jsonl"
+          import json
+
+          providers = [
+              {
+                  "name": "Release LLM Provider",
+                  "provider_type": "llm",
+                  "config": {
+                      "credential_ref": "env:AMX_CANDIDATE_LLM_API_KEY",
+                      "base_url": "https://candidate-provider.local/llm",
+                      "model": "candidate-release-model",
+                      "last_test_status": "healthy",
+                  },
+                  "capabilities": {"text_generation": True},
+              },
+              {
+                  "name": "Release Graphify Provider",
+                  "provider_type": "graphify",
+                  "config": {
+                      "credential_ref": "env:AMX_CANDIDATE_GRAPHIFY_API_KEY",
+                      "base_url": "https://candidate-provider.local/graphify",
+                      "last_test_status": "healthy",
+                  },
+                  "capabilities": {"graph_extraction": True},
+              },
+              {
+                  "name": "Release GitNexus Provider",
+                  "provider_type": "gitnexus",
+                  "config": {
+                      "credential_ref": "env:AMX_CANDIDATE_GITNEXUS_SERVICE_KEY",
+                      "base_url": "https://candidate-provider.local/gitnexus",
+                      "last_test_status": "healthy",
+                  },
+                  "capabilities": {"code_index": True},
+              },
+          ]
+          for provider in providers:
+              print(json.dumps(provider, separators=(",", ":")))
+          PY
+          : > artifacts/candidate-provider-readiness.txt
+          while IFS= read -r payload; do
+            provider_name="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["name"])' "$payload")"
+            curl -fsS \
+              -H "Authorization: Bearer $ACCESS_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "$payload" \
+              "http://127.0.0.1:$API_HOST_PORT/api/v1/providers" >/dev/null
+            echo "[candidate-provider] registered $provider_name" | tee -a artifacts/candidate-provider-readiness.txt
+          done < "$RUNNER_TEMP/candidate-provider-payloads.jsonl"
+          curl -fsS \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            "http://127.0.0.1:$API_HOST_PORT/api/v1/providers/readiness" \
+            | python3 -c 'import json,sys; data=json.load(sys.stdin); print(f"[candidate-provider] production_ready={data.get(\"production_ready\")} live_providers={data.get(\"live_providers\")} missing_required_types={data.get(\"missing_required_types\")}")' \
+            | tee -a artifacts/candidate-provider-readiness.txt
+
       - name: Run candidate authenticated smoke
         shell: bash
         run: |
@@ -305,6 +391,9 @@ jobs:
                   "DATABASE_URL",
                   "BOOTSTRAP_ADMIN_EMAIL",
                   "BOOTSTRAP_ADMIN_PASSWORD",
+                  "AMX_CANDIDATE_LLM_API_KEY",
+                  "AMX_CANDIDATE_GRAPHIFY_API_KEY",
+                  "AMX_CANDIDATE_GITNEXUS_SERVICE_KEY",
                   "JWT_SECRET_KEY",
               } and value:
                   text = text.replace(value, f"[REDACTED_{key}]")

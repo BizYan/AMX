@@ -110,6 +110,16 @@ def test_candidate_verification_workflow_is_manual_and_non_production():
     assert "concurrency:" in workflow
     assert "secrets.RELEASE_CANDIDATE_BOOTSTRAP_ADMIN_EMAIL" in workflow
     assert "secrets.RELEASE_CANDIDATE_BOOTSTRAP_ADMIN_PASSWORD" in workflow
+    assert "secrets.RELEASE_CANDIDATE_LLM_API_KEY" in workflow
+    assert "secrets.RELEASE_CANDIDATE_GRAPHIFY_API_KEY" in workflow
+    assert "secrets.RELEASE_CANDIDATE_GITNEXUS_SERVICE_KEY" in workflow
+    assert "AMX_CANDIDATE_LLM_API_KEY=$RELEASE_CANDIDATE_LLM_API_KEY" in workflow
+    assert "AMX_CANDIDATE_GRAPHIFY_API_KEY=$RELEASE_CANDIDATE_GRAPHIFY_API_KEY" in workflow
+    assert "AMX_CANDIDATE_GITNEXUS_SERVICE_KEY=$RELEASE_CANDIDATE_GITNEXUS_SERVICE_KEY" in workflow
+    assert "Commission candidate provider readiness" in workflow
+    assert '"credential_ref": "env:AMX_CANDIDATE_LLM_API_KEY"' in workflow
+    assert '"credential_ref": "env:AMX_CANDIDATE_GRAPHIFY_API_KEY"' in workflow
+    assert '"credential_ref": "env:AMX_CANDIDATE_GITNEXUS_SERVICE_KEY"' in workflow
     assert "secrets.PRODUCTION" not in workflow
     assert "OCI_" not in workflow
     assert "gh release" not in workflow
