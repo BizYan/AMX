@@ -2347,7 +2347,18 @@ export async function setupApiMocks(page: Page, options: SetupApiMockOptions = {
     )
     const job = sourceIngestionJobs.find((item) => item.id === jobId)
     if (url.endsWith('/execute') && job) {
-      sourceFiles = sourceFiles.map((file) => file.id === job.source_file_id ? { ...file, status: 'ready' } : file)
+      sourceFiles = sourceFiles.map((file) =>
+        file.id === job.source_file_id
+          ? {
+              ...file,
+              status: 'ready',
+              ingestion_stage: 'knowledge_ready',
+              ingestion_summary: '已完成真实文件摄取回归路径，来源知识可检索并可追溯。',
+              extracted_knowledge_count: Math.max(Number(file.extracted_knowledge_count || 0), 1),
+              required_action: '',
+            }
+          : file
+      )
     }
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(job) })
   })
@@ -3211,6 +3222,51 @@ export async function setupApiMocks(page: Page, options: SetupApiMockOptions = {
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({ results }),
+    })
+  })
+
+  await page.route('**/api/v1/knowledge/entries*', async (route) => {
+    const url = new URL(route.request().url())
+    const sourceFileId = url.searchParams.get('source_file_id')
+    const projectId = url.searchParams.get('project_id')
+    let entries = knowledgeGraphNodes
+      .filter((node) => (!sourceFileId || node.source_file_id === sourceFileId) && (!projectId || node.project_id === projectId))
+      .map((node) => ({
+        id: node.id,
+        tenant_id: 'tenant-e2e-001',
+        project_id: node.project_id,
+        source_file_id: node.source_file_id,
+        entry_type: node.type,
+        content: node.summary,
+        content_hash: node.id,
+        metadata: node.metadata,
+        confidence_score: 0.95,
+        created_at: node.created_at,
+        updated_at: node.updated_at,
+      }))
+    if (entries.length === 0 && sourceFileId) {
+      const sourceFile = sourceFiles.find((file) => file.id === sourceFileId)
+      const extractedCount = Number(sourceFile?.extracted_knowledge_count || 0)
+      if (sourceFile && extractedCount > 0) {
+        entries = [{
+          id: `knowledge-entry-${sourceFileId}`,
+          tenant_id: 'tenant-e2e-001',
+          project_id: sourceFile.project_id || 'project-e2e-001',
+          source_file_id: sourceFileId,
+          entry_type: 'text',
+          content: sourceFile.ingestion_summary || '来源文件已形成可检索知识。',
+          content_hash: `hash-${sourceFileId}`,
+          metadata: { source_file_name: sourceFile.original_filename || sourceFile.name },
+          confidence_score: 0.95,
+          created_at: sourceFile.created_at || new Date().toISOString(),
+          updated_at: sourceFile.updated_at || new Date().toISOString(),
+        }]
+      }
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ items: entries, total: entries.length }),
     })
   })
 

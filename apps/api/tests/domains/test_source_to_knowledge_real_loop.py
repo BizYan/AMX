@@ -30,7 +30,7 @@ import app.domains.projects.models  # noqa: F401
 from app.db.base import Base
 from app.db.init_schema import deduplicate_indexes
 from app.domains.knowledge import router as knowledge_router
-from app.domains.knowledge.models import KnowledgeEntry, ProvenanceRecord
+from app.domains.knowledge.models import KnowledgeEntry, KnowledgeLink, ProvenanceRecord
 from app.domains.projects import router as projects_router
 from app.domains.projects.models import SourceFile, SourceIngestionJob
 from app.models.identity import Tenant, User
@@ -278,3 +278,40 @@ async def test_source_to_knowledge_blocks_cross_project_access_and_recovers_from
     assert await api_client.db.scalar(
         select(ProvenanceRecord).where(ProvenanceRecord.entry_id == active_entries[0].id)
     )
+
+    linked_entry = KnowledgeEntry(
+        id=uuid4(),
+        tenant_id=api_client.tenant.id,
+        project_id=api_client.project.id,
+        source_file_id=source_file.id,
+        entry_type="text",
+        content="REQ-10A-004: deletion must retire source-derived links.",
+        content_hash="4" * 64,
+    )
+    source_link = KnowledgeLink(
+        id=uuid4(),
+        tenant_id=api_client.tenant.id,
+        source_entry_id=active_entries[0].id,
+        target_entry_id=linked_entry.id,
+        link_type="supports",
+    )
+    api_client.db.add_all([linked_entry, source_link])
+    await api_client.db.flush()
+
+    delete_response = await api_client.client.delete(f"/api/v1/projects/{api_client.project.id}/files/{source_file.id}")
+    assert delete_response.status_code == 204
+    assert not stored_path.exists()
+
+    await api_client.db.refresh(source_file)
+    await api_client.db.refresh(source_link)
+    await api_client.db.refresh(linked_entry)
+    assert source_file.deleted_at is not None
+    assert linked_entry.deleted_at is not None
+    assert source_link.deleted_at is not None
+
+    retired_search_response = await api_client.client.get(
+        "/api/v1/knowledge/search",
+        params={"q": MARKER_PHRASE, "type": "fulltext", "project_id": str(api_client.project.id)},
+    )
+    assert retired_search_response.status_code == 200
+    assert retired_search_response.json()["total"] == 0
