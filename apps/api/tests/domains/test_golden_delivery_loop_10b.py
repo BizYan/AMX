@@ -29,7 +29,7 @@ import app.domains.providers.models  # noqa: F401
 from app.db.base import Base
 from app.db.init_schema import deduplicate_indexes
 from app.domains.collaboration.models import DocumentComment
-from app.domains.documents.models import Document, DocumentStatus, DocumentType, DocumentVersion
+from app.domains.documents.models import Document, DocumentStatus, DocumentType, DocumentVersion, QualityResult, QualityType
 from app.domains.documents.schemas import DocumentStatusUpdate
 from app.domains.documents.service import DocumentGenerationService, DocumentService
 from app.domains.export.models import ExportStatus
@@ -226,6 +226,12 @@ async def test_knowledge_to_generated_review_approval_export_evidence_loop(db_se
     assert evidence["provider"] == "candidate-real-llm"
     assert evidence["model"] == "amx-candidate-model"
     assert evidence["usage"]["total_tokens"] == 168
+    assert evidence["provider_run_id"]
+    assert evidence["raw_artifact_ref"] == "synthetic-provider-run-10b"
+    serialized_evidence = str(document.metadata_json)
+    assert "api_key" not in serialized_evidence.lower()
+    assert "secret" not in serialized_evidence.lower()
+    assert "password" not in serialized_evidence.lower()
     assert document.metadata_json["source_grounding"]["knowledge_entry_ids"] == [str(fixture.knowledge.id)]
     assert document.metadata_json["source_grounding"]["source_file_ids"] == [str(fixture.source_file.id)]
     assert MARKER_PHRASE in document.content
@@ -242,6 +248,7 @@ async def test_knowledge_to_generated_review_approval_export_evidence_loop(db_se
     assert provider_run.status == RunStatus.SUCCESS.value
     assert provider_run.input_tokens == 120
     assert provider_run.output_tokens == 48
+    assert "api_key" not in str(provider_run.error_message).lower()
 
     reviewed = await DocumentService(db_session).transition_status(
         document_id=document.id,
@@ -328,6 +335,63 @@ async def test_knowledge_to_generated_review_approval_export_evidence_loop(db_se
     assert document.content in exported_markdown
     assert "fixture" not in exported_markdown.lower()
     assert "placeholder" not in document.content.lower()
+
+
+@pytest.mark.asyncio
+async def test_10b_export_readiness_blocks_open_comments_and_failed_quality_checks(db_session):
+    fixture = await _seed_project_with_source_knowledge(db_session)
+    document = Document(
+        tenant_id=fixture.tenant.id,
+        project_id=fixture.project.id,
+        title="10B Quality Gate BRD",
+        doc_type=DocumentType.BRD.value,
+        content=f"# Quality Gate\n\n{MARKER_PHRASE} generated package content.",
+        status=DocumentStatus.PUBLISHED.value,
+        created_by=fixture.owner.id,
+        metadata_json={"generation_status": "generated"},
+    )
+    db_session.add(document)
+    await db_session.flush()
+
+    comment = DocumentComment(
+        tenant_id=fixture.tenant.id,
+        document_id=document.id,
+        user_id=fixture.owner.id,
+        content="Resolve this before delivery.",
+    )
+    failed_quality = QualityResult(
+        tenant_id=fixture.tenant.id,
+        document_id=document.id,
+        quality_type=QualityType.COMPLETENESS.value,
+        score=45,
+        issues_json={"status": "failed", "blockers": ["source citation missing"]},
+    )
+    db_session.add_all([comment, failed_quality])
+    await db_session.flush()
+
+    readiness = await ExportService(db_session).get_project_export_readiness(fixture.project.id, fixture.tenant.id)
+    reasons = [item.reason for item in readiness.blockers]
+    assert any("unresolved comments" in reason for reason in reasons)
+    assert any("quality check failed" in reason for reason in reasons)
+    assert readiness.exportable_documents == 0
+
+    with pytest.raises(ValueError, match="unresolved comments"):
+        await ExportService(db_session).export_project_package(
+            project_id=fixture.project.id,
+            tenant_id=fixture.tenant.id,
+            document_ids=[document.id],
+            created_by=fixture.owner.id,
+        )
+
+    comment.resolved = True
+    await db_session.flush()
+    with pytest.raises(ValueError, match="quality checks"):
+        await ExportService(db_session).export_project_package(
+            project_id=fixture.project.id,
+            tenant_id=fixture.tenant.id,
+            document_ids=[document.id],
+            created_by=fixture.owner.id,
+        )
 
 
 @pytest.mark.asyncio

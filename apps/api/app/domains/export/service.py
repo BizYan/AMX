@@ -96,6 +96,7 @@ class ExportService:
         blockers: list[ExportReadinessDocumentBlocker] = []
         ready_by_type: dict[str, int] = {}
         blocked_by_type: dict[str, int] = {}
+        blocked_document_ids: set[UUID] = set()
 
         for document in documents:
             metadata = document.metadata_json or {}
@@ -113,34 +114,58 @@ class ExportService:
             )
             empty_content = not (document.content or "").strip()
             not_formal = document.status not in production_statuses
-            reason = ""
-            recommended_action = ""
+            document_blockers: list[tuple[str, str]] = []
 
             if has_placeholder:
-                reason = "文档仍包含占位内容"
-                recommended_action = "回到项目文档工作台补齐内容或重新生成后再发布。"
-            elif has_delivery_readiness_failure:
-                reason = "Document delivery readiness failed"
-                recommended_action = "Resolve document delivery readiness blockers before export."
-            elif empty_content:
-                reason = "文档内容为空"
-                recommended_action = "补齐正文并生成版本快照后再纳入交付包。"
-            elif not_formal:
-                reason = "文档尚未批准或发布"
-                recommended_action = "完成评审、批准或发布流程后再用于正式交付。"
-
-            if reason:
-                blocked_by_type[document.doc_type] = blocked_by_type.get(document.doc_type, 0) + 1
-                blockers.append(
-                    ExportReadinessDocumentBlocker(
-                        document_id=document.id,
-                        title=document.title,
-                        doc_type=document.doc_type,
-                        status=document.status,
-                        reason=reason,
-                        recommended_action=recommended_action,
+                document_blockers.append(
+                    ("文档仍包含占位内容", "回到项目文档工作台补齐内容或重新生成后再发布。")
+                )
+            if has_delivery_readiness_failure:
+                document_blockers.append(
+                    (
+                        "Document delivery readiness failed",
+                        "Resolve document delivery readiness blockers before export.",
                     )
                 )
+            unresolved_comments = await self._count_unresolved_document_comments(document.id, tenant_id)
+            if unresolved_comments:
+                document_blockers.append(
+                    (
+                        f"Document has {unresolved_comments} unresolved comments",
+                        "Resolve all review comments before exporting the delivery package.",
+                    )
+                )
+            failed_quality_checks = await self._count_failed_document_quality_checks(document.id, tenant_id)
+            if failed_quality_checks:
+                document_blockers.append(
+                    (
+                        f"Document quality check failed ({failed_quality_checks})",
+                        "Rerun quality review and resolve failed quality findings before export.",
+                    )
+                )
+            if empty_content:
+                document_blockers.append(
+                    ("文档内容为空", "补齐正文并生成版本快照后再纳入交付包。")
+                )
+            if not_formal:
+                document_blockers.append(
+                    ("文档尚未批准或发布", "完成评审、批准或发布流程后再用于正式交付。")
+                )
+
+            if document_blockers:
+                blocked_document_ids.add(document.id)
+                blocked_by_type[document.doc_type] = blocked_by_type.get(document.doc_type, 0) + 1
+                for reason, recommended_action in document_blockers:
+                    blockers.append(
+                        ExportReadinessDocumentBlocker(
+                            document_id=document.id,
+                            title=document.title,
+                            doc_type=document.doc_type,
+                            status=document.status,
+                            reason=reason,
+                            recommended_action=recommended_action,
+                        )
+                    )
             else:
                 ready_by_type[document.doc_type] = ready_by_type.get(document.doc_type, 0) + 1
 
@@ -191,7 +216,7 @@ class ExportService:
             project_id=project_id,
             total_documents=len(documents),
             exportable_documents=exportable_documents,
-            blocked_documents=len(blockers),
+            blocked_documents=len(blocked_document_ids),
             readiness_score=readiness_score,
             can_export_production=(
                 exportable_documents > 0 and not missing_required_types and not blockers
@@ -404,6 +429,44 @@ class ExportService:
         readiness = delivery.get("delivery_readiness") if isinstance(delivery, dict) else None
         return isinstance(readiness, dict) and readiness.get("ready") is False
 
+    async def _count_unresolved_document_comments(
+        self,
+        document_id: UUID,
+        tenant_id: UUID,
+    ) -> int:
+        from app.domains.collaboration.models import DocumentComment
+
+        count = await self.db.scalar(
+            select(func.count(DocumentComment.id)).where(
+                DocumentComment.document_id == document_id,
+                DocumentComment.tenant_id == tenant_id,
+                DocumentComment.resolved.is_(False),
+                DocumentComment.deleted_at.is_(None),
+            )
+        )
+        return int(count or 0)
+
+    async def _count_failed_document_quality_checks(
+        self,
+        document_id: UUID,
+        tenant_id: UUID,
+    ) -> int:
+        from app.domains.documents.models import QualityResult
+
+        result = await self.db.execute(
+            select(QualityResult).where(
+                QualityResult.document_id == document_id,
+                QualityResult.tenant_id == tenant_id,
+            )
+        )
+        failed_count = 0
+        for quality_result in result.scalars().all():
+            issues = quality_result.issues_json or {}
+            status = str(issues.get("status") or "").lower() if isinstance(issues, dict) else ""
+            if quality_result.score < 70 or status in {"blocked", "error", "fail", "failed"}:
+                failed_count += 1
+        return failed_count
+
     async def create_export_job(
         self,
         tenant_id: UUID,
@@ -568,6 +631,20 @@ class ExportService:
         if readiness_blocked_documents:
             names = ", ".join(doc.title for doc in readiness_blocked_documents)
             raise ValueError(f"Cannot export documents with export readiness blockers: {names}")
+
+        unresolved_comment_documents: list[Any] = []
+        failed_quality_documents: list[Any] = []
+        for document in documents:
+            if await self._count_unresolved_document_comments(document.id, tenant_id):
+                unresolved_comment_documents.append(document)
+            if await self._count_failed_document_quality_checks(document.id, tenant_id):
+                failed_quality_documents.append(document)
+        if unresolved_comment_documents:
+            names = ", ".join(doc.title for doc in unresolved_comment_documents)
+            raise ValueError(f"Cannot export documents with unresolved comments: {names}")
+        if failed_quality_documents:
+            names = ", ".join(doc.title for doc in failed_quality_documents)
+            raise ValueError(f"Cannot export documents with failed quality checks: {names}")
 
         if not documents:
             raise ValueError("No exportable project documents found")
