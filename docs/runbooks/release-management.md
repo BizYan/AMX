@@ -113,3 +113,35 @@ Rollback immediately if:
 - web returns a client-side exception on dashboard, projects, documents, or settings;
 - worker exits repeatedly;
 - migration fails or leaves API restarting.
+
+## Repeated Gate Failure Forward Fix
+
+Rollback remains mandatory for unrelated catastrophic failures, including data
+corruption risk, public exposure, persistent outage, unsafe runtime state, or an
+unknown failure that leaves production unhealthy.
+
+If a rollback, redeploy, or rollback verification repeats the same production
+gate failure after evidence has been preserved, stop additional rollback loops.
+Do not keep re-running rollback or deployment commands against the same known
+blocker.
+
+Use this bounded recovery path:
+
+1. Preserve the failing workflow URL, job logs, `/health` output, authenticated
+   smoke output, deployment provenance output, OCI service status, deployed ref,
+   deployed SHA, rollback target, and any migration or readiness errors.
+2. Compare the exact candidate verification gates with the production gates that
+   failed. Identify whether the candidate path did not exercise the production
+   condition or whether production state drifted after candidate verification.
+3. Classify the failure as schema compatibility, runtime configuration,
+   workflow/provenance, secret/environment, infrastructure, or application
+   behavior.
+4. Create the smallest forward compatibility or workflow fix that closes the
+   failed gate without changing unrelated product behavior.
+5. Run focused local checks and required CI for that fix.
+6. Retry deployment only after CI passes and the human owner grants Owner Go for
+   the new approved ref.
+
+The release report must state that a repeated gate failure path was used, list
+the preserved evidence, explain why further rollback loops were stopped, and
+name the forward-fix PR or owner-approved waiver.

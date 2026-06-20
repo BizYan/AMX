@@ -192,7 +192,7 @@
       "title": "Prefer bounded forward diagnosis over repeated rollback loops",
       "category": "production-recovery",
       "priority": "P0",
-      "status": "candidate",
+      "status": "adopted",
       "recurrence": 3,
       "summary": "Repeated production deployment failures were initially handled with repeated rollback attempts even after evidence showed the same readiness blocker persisted. The effective path was bounded diagnosis, schema compatibility fixes, and aligning production deployment gates with candidate gates.",
       "evidence": [
@@ -211,11 +211,16 @@
       ],
       "proposed_change": "When a production rollback or redeploy repeats the same gate failure, stop additional rollback loops, preserve evidence, compare candidate and production gates, and create the smallest forward compatibility or workflow fix before retrying deployment.",
       "destinations": [
-        "C:/Users/dajid/.codex/skills/pr-merge-release-deployment/SKILL.md",
+        "AGENTS.md",
         "docs/runbooks/release-management.md",
-        "docs/runbooks/oci-operations.md"
+        "docs/runbooks/oci-operations.md",
+        ".github/pull_request_template.md"
       ],
-      "validation": {},
+      "validation": {
+        "result": "passed",
+        "reference": "docs/runbooks/release-management.md",
+        "summary": "Forward-fix governance now requires stopping repeated rollback loops for the same production gate failure, preserving evidence, comparing candidate and production gates, classifying the failure, and retrying only after CI and Owner Go while preserving normal rollback for unrelated catastrophic failures."
+      },
       "next_review": "2026-07-20"
     }
   ]
