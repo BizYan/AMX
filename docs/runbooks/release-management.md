@@ -32,7 +32,7 @@ No release or production deployment may bypass these gates:
 2. Run `pwsh infra/scripts/test-delivery-readiness.ps1` and resolve every reported blocker.
 3. Run CI on the release ref, including deterministic Playwright E2E.
 4. Deploy staging when the slice changes release-critical flows or infrastructure.
-5. Run smoke tests against staging or the release-critical local route set. Real API smoke evidence is mandatory for a production release and must come from `bash infra/deploy/authenticated-smoke.sh` with configured credentials; deterministic mock E2E is not a substitute. The real API smoke must fail closed when credentials are missing, login fails, provider readiness is sandbox/mock/test-only, quota evidence is malformed, or capability readiness relies on placeholder-only evidence.
+5. Run smoke tests against staging or the release-critical local route set. Real API smoke evidence is mandatory for a production release and must come from `bash infra/deploy/authenticated-smoke.sh` with configured credentials; deterministic mock E2E is not a substitute. The real API smoke must fail closed when credentials are missing, login fails, required provider readiness is sandbox/mock/test-only, quota evidence is malformed, or capability readiness relies on placeholder-only evidence. The default required provider type is `llm`; add `graphify` or `gitnexus` to `AMX_REQUIRED_PROVIDER_TYPES` only after those live integrations are commissioned.
 6. Create release tag when cutting a versioned release. Pushing the tag triggers
    the Release workflow, which validates the release and publishes the GitHub
    Release entry after all quality gates pass:

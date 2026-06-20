@@ -16,8 +16,9 @@ def make_provider(name, provider_type, status="active", config=None):
     )
 
 
-def test_provider_readiness_summary_flags_live_sandbox_and_missing_core_types(monkeypatch):
+def test_provider_readiness_summary_defaults_to_required_llm_only(monkeypatch):
     monkeypatch.setenv("AMX_TEST_LLM_API_KEY", "live-secret")
+    monkeypatch.delenv("AMX_REQUIRED_PROVIDER_TYPES", raising=False)
     tenant_id = uuid4()
     providers = [
         make_provider(
@@ -47,9 +48,8 @@ def test_provider_readiness_summary_flags_live_sandbox_and_missing_core_types(mo
     assert summary.live_providers == 1
     assert summary.sandbox_providers == 1
     assert summary.unconfigured_providers == 1
-    assert summary.production_ready is False
-    assert "gitnexus" in summary.missing_required_types
-    assert "graphify" in summary.missing_required_types
+    assert summary.production_ready is True
+    assert summary.missing_required_types == []
     assert summary.required_types[0].provider_type == "llm"
     assert summary.required_types[0].status == "ready"
     assert any(item.provider_type == "gitnexus" and item.readiness == "sandbox" for item in summary.items)
@@ -61,6 +61,7 @@ def test_provider_readiness_distinguishes_live_mock_degraded_and_failed_states(m
     monkeypatch.setenv("AMX_TEST_MOCK_LLM_API_KEY", "sk-test-123456")
     monkeypatch.setenv("AMX_TEST_GRAPHIFY_API_KEY", "prod-graphify-secret")
     monkeypatch.setenv("AMX_TEST_GITNEXUS_API_KEY", "prod-gitnexus-secret")
+    monkeypatch.setenv("AMX_REQUIRED_PROVIDER_TYPES", "llm,graphify,gitnexus")
     tenant_id = uuid4()
     providers = [
         make_provider("Live LLM", "llm", config={"credential_ref": "env:AMX_TEST_LLM_API_KEY"}),

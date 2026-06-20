@@ -19,6 +19,7 @@ import app.db.init_schema  # noqa: F401
 from app.core.security import hash_password, verify_password, create_access_token, decode_token
 from app.db.base import Base
 from app.db.init_schema import deduplicate_indexes
+from app.domains.providers.models import Provider, ProviderVersion
 from app.models.identity import Role, Tenant, User, UserRole
 
 
@@ -218,6 +219,41 @@ class TestBootstrapIdempotency:
                 select(UserRole).where(UserRole.user_id == admin.id, UserRole.role_id == role.id)
             )
             assert user_role is not None
+
+    @pytest.mark.asyncio
+    async def test_bootstrap_seeds_runtime_llm_provider_from_env_reference(self, db_session):
+        """Runtime LLM readiness bootstrap stores only an env credential reference."""
+        from app.db.bootstrap import create_bootstrap_admin
+
+        with patch("app.db.bootstrap.settings") as mock_settings:
+            mock_settings.ENVIRONMENT = "production"
+            mock_settings.BOOTSTRAP_ADMIN_EMAIL = "provider-admin@example.com"
+            mock_settings.BOOTSTRAP_ADMIN_PASSWORD = "secure-provider-password"
+            mock_settings.BOOTSTRAP_ADMIN_NAME = "Provider Admin"
+            mock_settings.OPENAI_API_KEY = "prod-live-key-123456"
+            mock_settings.OPENAI_BASE_URL = "https://api.minimax.chat/v1"
+            mock_settings.OPENAI_MODEL = "MiniMax-Text-01"
+
+            await create_bootstrap_admin(db_session)
+
+            admin = await db_session.scalar(select(User).where(User.email == "provider-admin@example.com"))
+            provider = await db_session.scalar(select(Provider).where(Provider.tenant_id == admin.tenant_id))
+            assert provider is not None
+            assert provider.name == "Runtime LLM Provider"
+            assert provider.provider_type == "llm"
+            assert provider.config_json["credential_ref"] == "env:OPENAI_API_KEY"
+            assert "prod-live-key-123456" not in str(provider.config_json)
+
+            version = await db_session.scalar(
+                select(ProviderVersion).where(ProviderVersion.provider_id == provider.id)
+            )
+            assert version is not None
+            assert version.config_json["credential_ref"] == "env:OPENAI_API_KEY"
+            assert "prod-live-key-123456" not in str(version.config_json)
+
+            await create_bootstrap_admin(db_session)
+            providers = list((await db_session.scalars(select(Provider))).all())
+            assert len(providers) == 1
 
     @pytest.mark.asyncio
     async def test_bootstrap_rejects_placeholder_admin_password_in_production(self, db_session):
