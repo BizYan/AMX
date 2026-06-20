@@ -92,19 +92,22 @@ import sys
 
 data = json.load(sys.stdin)
 after = data.get("readiness_after") or {}
+before = data.get("readiness_before") or {}
+readiness = after or before
 actions = data.get("actions") or []
 completed = [str(item.get("key")) for item in actions if item.get("status") == "completed"]
 skipped = [str(item.get("key")) for item in actions if item.get("status") == "skipped"]
 failed = [str(item.get("key")) for item in actions if item.get("status") == "failed"]
 print(
-    "[capability-activation] executed={} production_ready={} completed_actions={} skipped_actions={} failed_actions={}".format(
+    "[capability-activation] executed={} production_ready={} readiness_source={} completed_actions={} skipped_actions={} failed_actions={}".format(
         data.get("executed"),
-        after.get("production_ready"),
+        readiness.get("production_ready"),
+        "after" if after else "before",
         ",".join(completed),
         ",".join(skipped),
         ",".join(failed),
     )
 )
-if after.get("production_ready") is not True:
+if readiness.get("production_ready") is not True:
     sys.exit(1)
 ' <<<"$activation_response"

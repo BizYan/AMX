@@ -102,6 +102,8 @@ case "$url" in
   */api/v1/ops/capabilities/activation-run)
     if [[ "{scenario}" == "activation-not-ready" ]]; then
       printf '{{"executed":true,"readiness_after":{{"production_ready":false}},"actions":[{{"key":"knowledge_graph","status":"failed"}}]}}'
+    elif [[ "{scenario}" == "activation-already-ready" ]]; then
+      printf '{{"executed":false,"readiness_before":{{"production_ready":true}},"readiness_after":null,"actions":[]}}'
     else
       printf '{{"executed":true,"readiness_after":{{"production_ready":true}},"actions":[{{"key":"knowledge_graph","status":"completed"}}]}}'
     fi
@@ -225,6 +227,19 @@ def test_capability_activation_succeeds_before_production_smoke(tmp_path: Path) 
 
     assert result.returncode == 0, result.stderr
     assert "production_ready=True" in result.stdout
+
+
+def test_capability_activation_succeeds_when_production_is_already_ready(tmp_path: Path) -> None:
+    result = _run_activation(
+        tmp_path,
+        "BOOTSTRAP_ADMIN_EMAIL=admin@example.com\nBOOTSTRAP_ADMIN_PASSWORD=correct-password\n",
+        scenario="activation-already-ready",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "executed=False" in result.stdout
+    assert "production_ready=True" in result.stdout
+    assert "readiness_source=before" in result.stdout
 
 
 def test_release_docs_require_real_api_smoke_separate_from_mock_e2e() -> None:
