@@ -78,7 +78,7 @@ class Provider(Base, UuidMixin, TimestampMixin, TenantMixin, SoftDeleteMixin):
     # Relations
     versions = relationship("ProviderVersion", back_populates="provider", lazy="selectin", cascade="all, delete-orphan")
     capabilities = relationship("ProviderCapability", back_populates="provider", lazy="selectin", cascade="all, delete-orphan")
-    runs = relationship("ProviderRun", back_populates="provider", lazy="selectin", cascade="all, delete-orphan")
+    runs = relationship("ProviderRun", back_populates="provider", lazy="noload", cascade="all, delete-orphan")
     health_records = relationship("ProviderHealth", back_populates="provider", lazy="selectin", cascade="all, delete-orphan")
 
     __table_args__ = (
