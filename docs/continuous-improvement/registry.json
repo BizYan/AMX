@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-06-19",
+  "updated_at": "2026-06-20",
   "entries": [
     {
       "id": "IMP-001",
@@ -186,6 +186,37 @@
       ],
       "validation": {},
       "next_review": "2026-07-19"
+    },
+    {
+      "id": "IMP-007",
+      "title": "Prefer bounded forward diagnosis over repeated rollback loops",
+      "category": "production-recovery",
+      "priority": "P0",
+      "status": "candidate",
+      "recurrence": 3,
+      "summary": "Repeated production deployment failures were initially handled with repeated rollback attempts even after evidence showed the same readiness blocker persisted. The effective path was bounded diagnosis, schema compatibility fixes, and aligning production deployment gates with candidate gates.",
+      "evidence": [
+        {
+          "kind": "pull-request",
+          "reference": "https://github.com/BizYan/AMX/pull/153"
+        },
+        {
+          "kind": "pull-request",
+          "reference": "https://github.com/BizYan/AMX/pull/154"
+        },
+        {
+          "kind": "workflow-run",
+          "reference": "https://github.com/BizYan/AMX/actions/runs/27859794863"
+        }
+      ],
+      "proposed_change": "When a production rollback or redeploy repeats the same gate failure, stop additional rollback loops, preserve evidence, compare candidate and production gates, and create the smallest forward compatibility or workflow fix before retrying deployment.",
+      "destinations": [
+        "C:/Users/dajid/.codex/skills/pr-merge-release-deployment/SKILL.md",
+        "docs/runbooks/release-management.md",
+        "docs/runbooks/oci-operations.md"
+      ],
+      "validation": {},
+      "next_review": "2026-07-20"
     }
   ]
 }
