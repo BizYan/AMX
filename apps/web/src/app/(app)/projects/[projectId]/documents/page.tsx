@@ -930,6 +930,7 @@ export default function DocumentsPage({ params }: DocumentsPageProps) {
                 <Link
                   key={doc.id}
                   href={`/projects/${projectId}/documents/${doc.id}`}
+                  data-testid={`project-document-card-${doc.id}`}
                   className="rounded-lg border border-slate-200 p-4 transition hover:border-indigo-300 hover:shadow-sm dark:border-slate-800 dark:hover:border-indigo-700"
                 >
                   <div className="flex items-start justify-between gap-3">
