@@ -114,6 +114,10 @@ def test_provider_runtime_config_resolves_candidate_env_without_persisting_raw_s
     }
 
 
+def test_provider_runs_are_not_loaded_with_provider_readiness_queries():
+    assert Provider.runs.property.lazy == "noload"
+
+
 def test_error_redaction_covers_api_key_bearer_and_response_models():
     raw = "HTTP 401 for api_key=abc123 with Authorization: Bearer sk-live-secret"
     sanitized = sanitize_error_message(raw)
