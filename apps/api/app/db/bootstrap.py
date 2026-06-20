@@ -119,12 +119,21 @@ async def _ensure_runtime_llm_provider(db: AsyncSession, tenant_id) -> None:
         await db.flush()
         return
 
-    await registry.register_provider(
+    provider = Provider(
         tenant_id=tenant_id,
         name="Runtime LLM Provider",
-        provider_type=ProviderType.LLM,
+        provider_type=ProviderType.LLM.value,
+        config_json=config,
+        capabilities_json=capabilities,
+        status=ProviderStatus.ACTIVE.value,
+    )
+    db.add(provider)
+    await db.flush()
+    await registry.create_version(
+        provider_id=provider.id,
         config=config,
         capabilities=capabilities,
+        set_active=True,
     )
 
 

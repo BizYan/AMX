@@ -234,7 +234,10 @@ class TestBootstrapIdempotency:
             mock_settings.OPENAI_BASE_URL = "https://api.minimax.chat/v1"
             mock_settings.OPENAI_MODEL = "MiniMax-Text-01"
 
-            await create_bootstrap_admin(db_session)
+            with patch("app.db.bootstrap.ProviderRegistry.register_provider", new_callable=AsyncMock) as register_provider:
+                await create_bootstrap_admin(db_session)
+
+            register_provider.assert_not_called()
 
             admin = await db_session.scalar(select(User).where(User.email == "provider-admin@example.com"))
             provider = await db_session.scalar(select(Provider).where(Provider.tenant_id == admin.tenant_id))
