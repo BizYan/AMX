@@ -6,16 +6,16 @@ Status: proposed current-main release evidence package. Owner Go is required
 before this document is treated as release authority for any future promotion.
 
 This document replaces the stale post-PR-155 evidence package. It reconciles PR
-#156 through #168, compares the requested `v1.0.13` baseline with current main,
+#156 through #169, compares the requested `v1.0.13` baseline with current main,
 and records the newer verified production release evidence that now exists.
 
 ## Current Main
 
-- Current `origin/main` SHA after PR #165:
-  `24446cd40ad96936cef477b93d53c6a7516c84ba`
-- Current main includes PR #156 through PR #168.
+- Current `origin/main` SHA after PR #169:
+  `50e2d5ee4405a31797297cf13a78f70bd196d2c6`
+- Current main includes PR #156 through PR #169.
 - Current main is ahead of latest verified production by PR #164 through PR
-  #168.
+  #169.
 - Latest verified production remains `v1.0.15` /
   `3cadf5d0e3f4e3402e02cc5eaf1053277ae901b9`.
 - No tag or deployment was created by this documentation task.
@@ -66,7 +66,7 @@ gitnexus_healthy: true
 gitnexus_indexed_sha: 3cadf5d0e3f4e3402e02cc5eaf1053277ae901b9
 ```
 
-## PR Reconciliation: #156 Through #168
+## PR Reconciliation: #156 Through #169
 
 | PR | Merge SHA | Classification | Runtime impact | Notes |
 | --- | --- | --- | --- | --- |
@@ -83,13 +83,14 @@ gitnexus_indexed_sha: 3cadf5d0e3f4e3402e02cc5eaf1053277ae901b9
 | [#166](https://github.com/BizYan/AMX/pull/166) | `a9ddf26dcf9a3810c2fdada72cfb62ae0657a995` | Dependency maintenance | Dev/test dependency only | Updated `@playwright/test` from `1.60.0` to `1.61.0`. |
 | [#168](https://github.com/BizYan/AMX/pull/168) | `b3294447ed90b4854aa0ed5e3034acc59ab1f808` | Release/candidate gate hardening | Test governance only | Allowed same-major bcrypt maintenance upper-bound updates while preserving explicit upper-bound enforcement. |
 | [#165](https://github.com/BizYan/AMX/pull/165) | `24446cd40ad96936cef477b93d53c6a7516c84ba` | Dependency maintenance | API dependency range | Updated `bcrypt` requirement from `<4.1` to `<4.3`; full PR CI passed before merge. |
+| [#169](https://github.com/BizYan/AMX/pull/169) | `50e2d5ee4405a31797297cf13a78f70bd196d2c6` | Documentation/process improvement | None | Refreshed current-main release evidence after dependency merges. |
 
 ## Post-v1.0.15 Main Delta
 
 Comparison range:
 
 ```text
-3cadf5d0e3f4e3402e02cc5eaf1053277ae901b9..24446cd40ad96936cef477b93d53c6a7516c84ba
+3cadf5d0e3f4e3402e02cc5eaf1053277ae901b9..50e2d5ee4405a31797297cf13a78f70bd196d2c6
 ```
 
 Changed files:
@@ -111,14 +112,14 @@ Impact:
   merges.
 - Deployment impact: none yet. No candidate verification, tag, release, or
   production deployment has been run for
-  `24446cd40ad96936cef477b93d53c6a7516c84ba`.
+  `50e2d5ee4405a31797297cf13a78f70bd196d2c6`.
 
 ## Post-v1.0.13 Release Delta
 
 Comparison range:
 
 ```text
-c45f56c6a1f6681f92eafba7f94fced12ef17d4b..24446cd40ad96936cef477b93d53c6a7516c84ba
+c45f56c6a1f6681f92eafba7f94fced12ef17d4b..50e2d5ee4405a31797297cf13a78f70bd196d2c6
 ```
 
 ### Runtime Impact
@@ -176,14 +177,14 @@ c45f56c6a1f6681f92eafba7f94fced12ef17d4b..24446cd40ad96936cef477b93d53c6a7516c84
   verification path; it does not alter production deployment behavior.
 - Production deployment has already been completed for latest verified
   production `v1.0.15` in run `27876577603`.
-- Current main after PR #165 has not yet been candidate verified, tagged,
+- Current main after PR #169 has not yet been candidate verified, tagged,
   released, or deployed.
 
 ## Evidence By Boundary
 
 ### CI Evidence
 
-Each PR #156 through #168 passed required PR checks before merge. Release
+Each PR #156 through #169 passed required PR checks before merge. Release
 workflow `27876474255` for latest verified production `v1.0.15` also passed:
 
 - Validate release tag;
@@ -252,6 +253,17 @@ PR #159 added the gated real-backend Playwright path. It has not yet produced a
 successful real candidate or production browser journey. Deterministic
 Playwright E2E remains regression evidence, not commercial-delivery proof.
 
+Latest attempt:
+
+- Evidence boundary:
+  `docs/programs/browser-commercial-delivery-evidence-latest.md`.
+- Command attempted with `RUN_REAL_BROWSER_DELIVERY_TEST=true`:
+  `pnpm --dir apps/web exec playwright test tests/e2e/playwright/real-browser-commercial-delivery.spec.ts --reporter=list`.
+- Result: failed closed before live execution because `E2E_WEB_URL`,
+  `E2E_API_URL`, `E2E_USER_EMAIL`, and `E2E_PASSWORD` were not present in the
+  local execution environment.
+- No production browser readiness is claimed.
+
 ### Historical Release Evidence
 
 `docs/releases/v1.0.0.md` remains historical release evidence tied to earlier
@@ -282,7 +294,7 @@ Important current-state correction:
 - `v1.0.14` already exists and points to
   `337b41635580e60e6d72e6f208711617738da8b7`.
 - Main after PR #163 was released and deployed as `v1.0.15`.
-- Current main after PR #165 is ahead of `v1.0.15` and has not yet been
+- Current main after PR #169 is ahead of `v1.0.15` and has not yet been
   candidate verified, tagged, released, or deployed.
 - Do not create or reuse `v1.0.14` for current main.
 - The forward-looking recommendation is: keep `v1.0.15` as the verified
@@ -299,8 +311,8 @@ Current status:
 | Live Jira success drill | Not yet produced | PR #161 added the candidate-safe script and runbook; live Jira credentials/environment evidence is still pending. |
 | Live agent workflow provider/tool run | Not yet produced | PR #160 added synthetic provider/tool evidence and UI; live candidate/staging provider/tool run remains pending. |
 | Ops dashboard populated runtime evidence | Partially produced | PR #162 added the dashboard; production deployment/smoke/GitNexus evidence exists, but a recorded dashboard export from production is not yet attached as release evidence. |
-| Candidate verification for current main after PR #165 | Not yet produced | Current main is `24446cd40ad96936cef477b93d53c6a7516c84ba`; no candidate run is recorded for this SHA. |
-| Production deployment for current main after PR #165 | Not yet produced | Latest deployment remains `v1.0.15` / `3cadf5d0e3f4e3402e02cc5eaf1053277ae901b9`. |
+| Candidate verification for current main after PR #169 | Not yet produced | Current main is `50e2d5ee4405a31797297cf13a78f70bd196d2c6`; no candidate run is recorded for this SHA. |
+| Production deployment for current main after PR #169 | Not yet produced | Latest deployment remains `v1.0.15` / `3cadf5d0e3f4e3402e02cc5eaf1053277ae901b9`. |
 | Production deployment for post-PR-163 ref | Produced | Run `27876577603` deployed `v1.0.15` / `3cadf5d0e3f4e3402e02cc5eaf1053277ae901b9`. |
 
 ## Rollback Target
@@ -327,16 +339,18 @@ Current fact:
 - Runtime `/health` still reports application version `1.0.0`; deployment
   provenance verifies the actual tag/SHA separately.
 - No successful real browser commercial-delivery run is recorded.
+- Latest real browser attempt failed closed because the target environment and
+  required `E2E_*` runtime inputs were not available.
 - No successful live Jira drill is recorded.
 - No successful live agent workflow provider/tool run is recorded.
 - No production ops dashboard export artifact is attached to this release
   evidence package.
 - No candidate verification, tag, release, or production deployment is recorded
   for current main
-  `24446cd40ad96936cef477b93d53c6a7516c84ba`.
+  `50e2d5ee4405a31797297cf13a78f70bd196d2c6`.
 
 ## Decision
 
 This document is ready for Owner review as the post-PR-163 current-main release
-evidence package, refreshed after PR #165. It should not be treated as release
+evidence package, refreshed after PR #169. It should not be treated as release
 authority until Owner Go is explicitly granted.
