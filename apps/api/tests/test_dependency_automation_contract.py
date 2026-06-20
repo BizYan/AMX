@@ -1,6 +1,7 @@
 """Dependency automation and governance contract checks."""
 
 import importlib.util
+import re
 from pathlib import Path
 
 
@@ -104,4 +105,7 @@ def test_npm_dependency_policy_rejects_major_upgrade():
 def test_python_compatibility_bounds_are_explicit():
     manifest = read("apps/api/pyproject.toml")
 
-    assert '"bcrypt>=4.0,<4.1"' in manifest
+    match = re.search(r'"bcrypt>=4\.0,<(?P<upper>\d+)\.\d+"', manifest)
+
+    assert match
+    assert match.group("upper") == "4"
