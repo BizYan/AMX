@@ -9,6 +9,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.domains.providers.schemas import ProviderReadinessSummary
+
 
 # =============================================================================
 # Health Schemas
@@ -552,3 +554,34 @@ class ProductionOpsCommandCenterResponse(BaseModel):
     readiness: CapabilityReadinessResponse
     commissioning: CapabilityCommissioningResponse
     next_steps: list[str] = Field(default_factory=list)
+
+
+class OpsReadinessCriticalFailure(BaseModel):
+    """Sanitized critical operations failure for dashboard display."""
+
+    source: str
+    severity: str
+    summary: str
+    occurred_at: datetime | None = None
+    status: str | None = None
+    action_href: str | None = None
+
+
+class OpsReadinessDashboardResponse(BaseModel):
+    """One sanitized operations readiness evidence snapshot."""
+
+    generated_at: datetime
+    tenant_id: UUID | None
+    health: dict[str, Any]
+    provider_readiness: ProviderReadinessSummary
+    capability_readiness: CapabilityReadinessResponse
+    capability_commissioning: CapabilityCommissioningResponse
+    quota: dict[str, Any]
+    metrics: dict[str, Any]
+    alerts: dict[str, Any]
+    deployment: dict[str, Any]
+    latest_smoke: dict[str, Any]
+    gitnexus: dict[str, Any]
+    agent_run_health: dict[str, Any]
+    latest_critical_failures: list[OpsReadinessCriticalFailure] = Field(default_factory=list)
+    evidence_export: dict[str, Any]

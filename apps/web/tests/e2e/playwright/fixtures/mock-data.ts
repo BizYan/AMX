@@ -1634,7 +1634,101 @@ export const MOCK_OPS_DATA = {
     successful_requests: 5842,
     failed_requests: 278,
     average_latency_ms: 188.4,
-  }
+  },
+  readiness_dashboard: {
+    generated_at: '2026-05-21T09:00:00Z',
+    tenant_id: 'tenant-e2e-001',
+    health: {
+      status: 'healthy',
+      version: '1.0.0',
+    },
+    provider_readiness: {
+      tenant_id: 'tenant-e2e-001',
+      total_providers: 3,
+      live_providers: 1,
+      sandbox_providers: 1,
+      mock_providers: 0,
+      unconfigured_providers: 0,
+      inactive_providers: 0,
+      degraded_providers: 1,
+      failed_providers: 1,
+      readiness_score: 67,
+      production_ready: false,
+      missing_required_types: [],
+      required_types: [],
+      items: [],
+      recommended_actions: ['Replace sandbox provider evidence before production readiness claim.'],
+    },
+    capability_readiness: null as any,
+    capability_commissioning: null as any,
+    quota: {
+      status: 'attention',
+      used: 8420,
+      limit: 10000,
+      remaining: 1580,
+      usage_percent: 84.2,
+      reset_at: '2026-06-01T00:00:00Z',
+    },
+    metrics: {
+      window: '24h',
+      total_events: 1284,
+      error_events: 3,
+      error_rate_percent: 0.23,
+      avg_latency_ms: 42.8,
+    },
+    alerts: {
+      active_rules: 2,
+      failed_notifications: 0,
+      pending_notifications: 1,
+    },
+    deployment: {
+      status: 'recorded',
+      ref: 'v1.0.1',
+      sha: '337b41635580e60e6d72e6f208711617738da8b7',
+      deployed_at: '2026-06-20T08:00:00Z',
+      source: 'runtime_environment',
+    },
+    latest_smoke: {
+      status: 'passed',
+      run_url: 'https://github.com/BizYan/AMX/actions/runs/123456789',
+      checked_at: '2026-06-20T08:06:00Z',
+      source: 'runtime_environment',
+    },
+    gitnexus: {
+      refresh_status: 'passed',
+      indexed_sha: '337b41635580e60e6d72e6f208711617738da8b7',
+      checked_at: '2026-06-20T08:07:00Z',
+      source: 'runtime_environment',
+    },
+    agent_run_health: {
+      status: 'healthy',
+      running: 1,
+      failed_24h: 0,
+      completed_24h: 4,
+    },
+    latest_critical_failures: [
+      {
+        source: 'metric',
+        severity: 'high',
+        summary: 'error:provider_timeout',
+        occurred_at: '2026-06-20T07:50:00Z',
+        status: 'recorded',
+        action_href: '/system-health',
+      },
+    ],
+    evidence_export: {
+      format: 'json',
+      sanitized: true,
+      generated_at: '2026-05-21T09:00:00Z',
+      included_sections: ['health', 'provider_readiness', 'deployment', 'latest_smoke', 'gitnexus'],
+    },
+  },
+}
+
+MOCK_OPS_DATA.readiness_dashboard.capability_readiness = MOCK_OPS_DATA.capability_readiness
+MOCK_OPS_DATA.readiness_dashboard.capability_commissioning = {
+  ...MOCK_OPS_DATA.capability_commissioning,
+  readiness: MOCK_OPS_DATA.capability_readiness,
 }
 
 export const MOCK_EXPORTS = [
