@@ -24,7 +24,7 @@ def _columns(table_name: str) -> set[str]:
     return {column["name"] for column in inspector.get_columns(table_name)}
 
 
-def _relax_if_present(table_name: str, column_name: str, column_type: sa.TypeEngine) -> None:
+def _relax_if_present(table_name: str, column_name: str, column_type) -> None:
     if _table_exists(table_name) and column_name in _columns(table_name):
         op.alter_column(table_name, column_name, existing_type=column_type, nullable=True)
 
