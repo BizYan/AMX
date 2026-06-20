@@ -110,6 +110,18 @@ test.describe('智能编排 / Agent 配置中心', () => {
     await expect(dialog).toContainText('node_failed')
   })
 
+  test('agent ops page surfaces provider and tool interaction evidence refs', async ({ page }) => {
+    await gotoAppPage(page, '/agent-ops')
+
+    await page.getByTestId('agent-run-view-run-e2e-001').click()
+    const evidence = page.getByTestId('agent-run-interaction-evidence')
+    await expect(evidence).toBeVisible()
+    await expect(evidence).toContainText('document_export')
+    await expect(evidence).toContainText('tool:document_export')
+    await expect(evidence).toContainText('artifact-e2e-001')
+    await expect(evidence).toContainText('secret_ref_only')
+  })
+
   test('agent ops retry and cancel actions call APIs and refresh state', async ({ page }) => {
     await gotoAppPage(page, '/agent-ops')
 

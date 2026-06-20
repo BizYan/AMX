@@ -17,6 +17,7 @@ from sqlalchemy import String, delete, or_, select, func, and_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.domains.providers.credential_boundary import redact_secrets, sanitize_error_message
 from app.domains.agent.models import (
     WorkflowDefinition,
     WorkflowVersion,
@@ -116,11 +117,17 @@ SENSITIVE_RUNTIME_KEYS = {
 
 def _runtime_key_is_sensitive(key: Any) -> bool:
     normalized = str(key).strip().lower()
+    if normalized in {"credential_boundary", "credential_policy"}:
+        return False
     return any(marker in normalized for marker in SENSITIVE_RUNTIME_KEYS)
 
 
 def _sanitize_runtime_value(value: Any) -> Any:
     """Create a runtime evidence copy without raw credentials or tokens."""
+    value = redact_secrets(value)
+    if isinstance(value, str):
+        sanitized = re.sub(r"\b(sk-[A-Za-z0-9._-]{6,})\b", "[REDACTED]", value)
+        return re.sub(r"\b(amx_[A-Za-z0-9._-]{12,})\b", "[REDACTED]", sanitized)
     if isinstance(value, dict):
         sanitized: dict[str, Any] = {}
         for key, item in value.items():
@@ -138,6 +145,42 @@ def _sanitize_runtime_value(value: Any) -> Any:
 def _runtime_snapshot(value: dict[str, Any] | None) -> dict[str, Any]:
     """Deep-copy JSON-compatible runtime input into sanitized metadata."""
     return _sanitize_runtime_value(json.loads(json.dumps(value or {}, default=str)))
+
+
+def _runtime_error(message: Any) -> str:
+    """Return a credential-redacted error string for runtime evidence."""
+    sanitized = sanitize_error_message(str(message)) or "Runtime interaction failed"
+    sanitized = re.sub(r"\b(sk-[A-Za-z0-9._-]{6,})\b", "[REDACTED]", sanitized)
+    sanitized = re.sub(r"\b(amx_[A-Za-z0-9._-]{12,})\b", "[REDACTED]", sanitized)
+    return sanitized
+
+
+def _interaction_evidence(
+    *,
+    node_id: str | None,
+    status: str,
+    adapter_ref: str,
+    skill_name: str | None = None,
+    tool_name: str | None = None,
+    artifact_refs: list[dict[str, Any]] | None = None,
+    duration_ms: float | None = None,
+    error: str | None = None,
+) -> dict[str, Any]:
+    """Stable non-secret provider/tool interaction evidence envelope."""
+    evidence: dict[str, Any] = {
+        "node_id": node_id,
+        "status": status,
+        "adapter_ref": adapter_ref,
+        "skill_name": skill_name,
+        "tool_name": tool_name,
+        "artifact_refs": artifact_refs or [],
+        "credential_boundary": "secret_ref_only",
+    }
+    if duration_ms is not None:
+        evidence["duration_ms"] = duration_ms
+    if error:
+        evidence["error"] = _runtime_error(error)
+    return _sanitize_runtime_value(evidence)
 
 
 def _artifact_refs_from_tool_result(tool_name: str, tool_result: dict[str, Any]) -> list[dict[str, Any]]:
@@ -2786,8 +2829,8 @@ class AgentRunService:
             agent_profile_id=agent_profile_id,
             workflow_version_id=workflow_version_id,
             run_type=run_type,
-            input_data=input_data or {},
-            metadata_json=merged_metadata,
+            input_data=input_snapshot,
+            metadata_json=_sanitize_runtime_value(merged_metadata),
             status=AgentRunStatus.PENDING.value,
         )
         self.db.add(run)
@@ -2820,7 +2863,7 @@ class AgentRunService:
         run = await self.get_run(run_id, tenant_id)
         if not run:
             return None
-        run.metadata_json = {**(run.metadata_json or {}), **metadata}
+        run.metadata_json = _sanitize_runtime_value({**(run.metadata_json or {}), **metadata})
         await self.db.flush()
         await self.db.refresh(run)
         return run
@@ -3206,7 +3249,7 @@ class AgentRunService:
             run.completed_at = datetime.now(timezone.utc)
 
         if error_message:
-            run.error_message = error_message
+            run.error_message = _runtime_error(error_message)
 
         await self.db.flush()
         await self.db.refresh(run)
@@ -3267,7 +3310,7 @@ class AgentRunService:
             node_id=node_id,
             skill_name=skill_name,
             tool_name=tool_name,
-            input_data=input_data or {},
+            input_data=_runtime_snapshot(input_data or {}),
             status=AgentTaskStatus.PENDING.value,
             retries=0,
             max_retries=max_retries,
@@ -3421,9 +3464,9 @@ class AgentRunService:
             task.completed_at = datetime.now(timezone.utc)
 
         if output_data is not None:
-            task.output_data = output_data
+            task.output_data = _sanitize_runtime_value(output_data)
         if error_message:
-            task.error_message = error_message
+            task.error_message = _runtime_error(error_message)
 
         await self.db.flush()
         await self.db.refresh(task)
@@ -3679,7 +3722,7 @@ class AgentRunService:
             agent_run_id=run_id,
             tenant_id=tenant_id,
             event_type=event_type,
-            event_data=event_data or {},
+            event_data=_sanitize_runtime_value(event_data or {}),
         )
         self.db.add(event)
         await self.db.flush()
@@ -3749,7 +3792,7 @@ class AgentRunService:
             ]:
                 task.status = AgentTaskStatus.CANCELLED.value
                 task.completed_at = datetime.now(timezone.utc)
-                task.error_message = reason
+                task.error_message = _runtime_error(reason)
                 cancelled_task_ids.append(str(task.id))
 
         run.metadata_json = {
@@ -3764,7 +3807,11 @@ class AgentRunService:
             run_id=run.id,
             tenant_id=tenant_id,
             event_type="run_cancelled",
-            event_data={"reason": reason, "cancelled_task_ids": cancelled_task_ids},
+            event_data={
+                "reason": _runtime_error(reason),
+                "cancelled_task_ids": cancelled_task_ids,
+                "prevents_further_task_execution": True,
+            },
         )
         await self.db.flush()
         await self.db.refresh(run)
@@ -3891,8 +3938,20 @@ class AgentRunService:
             raise ValueError(f"Run cannot be retried from status '{run.status}'")
 
         previous_status = run.status
-        previous_error = run.error_message
+        previous_error = _runtime_error(run.error_message) if run.error_message else None
         retry_attempt = int((run.metadata_json or {}).get("retry_attempt") or 0) + 1
+        events = await self.get_run_events(run.id, tenant_id)
+        failure_events = [
+            event for event in events if event.event_type == "node_provider_or_tool_failed"
+        ] or [
+            event
+            for event in events
+            if event.event_type in {
+                "workflow_failed",
+                "agent_run_failed",
+            }
+        ]
+        last_failure_event_id = str(failure_events[-1].id) if failure_events else None
         await self.db.execute(delete(AgentTask).where(AgentTask.agent_run_id == run.id))
 
         run.status = AgentRunStatus.PENDING.value
@@ -3903,8 +3962,10 @@ class AgentRunService:
             **(run.metadata_json or {}),
             "status": AgentRunStatus.PENDING.value,
             "retry_attempt": retry_attempt,
+            "retry_of_run_id": str(run.id),
             "previous_status": previous_status,
             "previous_error": previous_error,
+            "last_failure_event_id": last_failure_event_id,
             "status_hint": "retry_queued",
             "can_resume": False,
         }
@@ -3924,6 +3985,8 @@ class AgentRunService:
             event_type="run_retry_queued",
             event_data={
                 "attempt": retry_attempt,
+                "retry_of_run_id": str(run.id),
+                "linked_failure_event_id": last_failure_event_id,
                 "previous_status": previous_status,
                 "previous_error": previous_error,
                 "input_snapshot": _runtime_snapshot(run.input_data or {}),
@@ -5806,7 +5869,9 @@ class DAGExecutor:
                     None,
                 )
                 if failed_branch:
-                    error_message = f"Parallel branch {failed_branch} failed: {branch_outputs[failed_branch].get('error')}"
+                    error_message = _runtime_error(
+                        f"Parallel branch {failed_branch} failed: {branch_outputs[failed_branch].get('error')}"
+                    )
                     await self.agent_run_service.merge_run_metadata(
                         run_id,
                         tenant_id,
@@ -5827,7 +5892,10 @@ class DAGExecutor:
                         run_id=run_id,
                         tenant_id=tenant_id,
                         event_type="workflow_failed",
-                        event_data={"failed_node": failed_branch, "error": branch_outputs[failed_branch].get("error")},
+                        event_data={
+                            "failed_node": failed_branch,
+                            "error": _runtime_error(branch_outputs[failed_branch].get("error")),
+                        },
                     )
                     return {
                         "success": False,
@@ -5838,7 +5906,7 @@ class DAGExecutor:
 
             # Check if this node failed
             if isinstance(result, dict) and result.get("status") == "failed":
-                error_message = f"Node {node_id} failed: {result.get('error')}"
+                error_message = _runtime_error(f"Node {node_id} failed: {result.get('error')}")
                 await self.agent_run_service.merge_run_metadata(
                     run_id,
                     tenant_id,
@@ -5859,7 +5927,7 @@ class DAGExecutor:
                     run_id=run_id,
                     tenant_id=tenant_id,
                     event_type="workflow_failed",
-                    event_data={"failed_node": node_id, "error": result.get("error")},
+                    event_data={"failed_node": node_id, "error": _runtime_error(result.get("error"))},
                 )
                 return {
                     "success": False,
@@ -6119,6 +6187,14 @@ class DAGExecutor:
                     "tool_name": tool_name,
                     "adapter_ref": f"tool:{tool_name}",
                 }
+                result["interaction_evidence"] = _interaction_evidence(
+                    node_id=node_id,
+                    status="completed",
+                    adapter_ref=f"tool:{tool_name}",
+                    tool_name=tool_name,
+                    artifact_refs=artifact_refs,
+                    duration_ms=duration_ms,
+                )
                 if artifact_refs:
                     await self.agent_run_service.log_event(
                         run_id=run_id,
@@ -6129,19 +6205,37 @@ class DAGExecutor:
                             "tool_name": tool_name,
                             "adapter_ref": f"tool:{tool_name}",
                             "artifact_refs": artifact_refs,
+                            "credential_boundary": "secret_ref_only",
                         },
                     )
             except Exception as e:
                 duration_ms = round((time.perf_counter() - started) * 1000, 2)
+                sanitized_error = _runtime_error(e)
+                evidence = _interaction_evidence(
+                    node_id=node_id,
+                    status="failed",
+                    adapter_ref=f"tool:{tool_name}",
+                    tool_name=tool_name,
+                    duration_ms=duration_ms,
+                    error=sanitized_error,
+                )
                 result = {
                     "status": "failed",
                     "node_id": node_id,
-                    "error": str(e),
+                    "error": sanitized_error,
                     "execution": {
                         "duration_ms": duration_ms,
                         "tool_name": tool_name,
+                        "adapter_ref": f"tool:{tool_name}",
                     },
+                    "interaction_evidence": evidence,
                 }
+                await self.agent_run_service.log_event(
+                    run_id=run_id,
+                    tenant_id=tenant_id,
+                    event_type="node_provider_or_tool_failed",
+                    event_data=evidence,
+                )
         elif skill_name:
             import time
 
@@ -6159,6 +6253,13 @@ class DAGExecutor:
                     "skill_name": skill_name,
                     "adapter_ref": f"skill:{skill_name}",
                 }
+                result["interaction_evidence"] = _interaction_evidence(
+                    node_id=node_id,
+                    status="completed",
+                    adapter_ref=f"skill:{skill_name}",
+                    skill_name=skill_name,
+                    duration_ms=duration_ms,
+                )
                 await self.agent_run_service.log_event(
                     run_id=run_id,
                     tenant_id=tenant_id,
@@ -6168,19 +6269,37 @@ class DAGExecutor:
                         "skill_name": skill_name,
                         "adapter_ref": f"skill:{skill_name}",
                         "artifact_refs": [],
+                        "credential_boundary": "secret_ref_only",
                     },
                 )
             except Exception as e:
                 duration_ms = round((time.perf_counter() - started) * 1000, 2)
+                sanitized_error = _runtime_error(e)
+                evidence = _interaction_evidence(
+                    node_id=node_id,
+                    status="failed",
+                    adapter_ref=f"skill:{skill_name}",
+                    skill_name=skill_name,
+                    duration_ms=duration_ms,
+                    error=sanitized_error,
+                )
                 result = {
                     "status": "failed",
                     "node_id": node_id,
-                    "error": str(e),
+                    "error": sanitized_error,
                     "execution": {
                         "duration_ms": duration_ms,
                         "skill_name": skill_name,
+                        "adapter_ref": f"skill:{skill_name}",
                     },
+                    "interaction_evidence": evidence,
                 }
+                await self.agent_run_service.log_event(
+                    run_id=run_id,
+                    tenant_id=tenant_id,
+                    event_type="node_provider_or_tool_failed",
+                    event_data=evidence,
+                )
 
         # Log node completion
         if task:
@@ -6198,7 +6317,7 @@ class DAGExecutor:
                         if result.get("status") == "failed"
                         else AgentTaskStatus.COMPLETED.value
                     ),
-                    output_data=result if result.get("status") != "failed" else None,
+                    output_data=result,
                     error_message=result.get("error"),
                 )
 

@@ -163,6 +163,57 @@ function controlTaskLabel(task: AgentTask | null | undefined) {
   return nodeType
 }
 
+function collectInteractionEvidence(tasks: AgentTask[], events: AgentEvent[]) {
+  const evidence: Array<Record<string, any>> = []
+  const pushEvidence = (item: Record<string, any>) => {
+    const nodeId = String(item.node_id || '')
+    const adapterRef = String(item.adapter_ref || item.execution?.adapter_ref || '')
+    const toolName = item.tool_name || item.execution?.tool_name || null
+    const skillName = item.skill_name || item.execution?.skill_name || null
+    const artifactRefs = Array.isArray(item.artifact_refs) ? item.artifact_refs : []
+    const key = `${nodeId}:${adapterRef}:${toolName || skillName}:${artifactRefs.map((ref: any) => ref.artifact_id || ref.job_id || ref.id).join(',')}`
+    if (!adapterRef && !toolName && !skillName && artifactRefs.length === 0) return
+    if (evidence.some((existing) => existing.__key === key)) return
+    evidence.push({
+      __key: key,
+      node_id: nodeId,
+      adapter_ref: adapterRef,
+      tool_name: toolName,
+      skill_name: skillName,
+      status: item.status || 'completed',
+      artifact_refs: artifactRefs,
+      credential_boundary: item.credential_boundary || 'secret_ref_only',
+      error: item.error || null,
+    })
+  }
+
+  tasks.forEach((task) => {
+    const output = task.output_data || {}
+    if (output.interaction_evidence) pushEvidence(output.interaction_evidence)
+    if (output.execution || output.artifact_refs) {
+      pushEvidence({
+        node_id: task.node_id,
+        status: output.status || task.status,
+        adapter_ref: output.execution?.adapter_ref,
+        tool_name: output.execution?.tool_name || task.tool_name,
+        skill_name: output.execution?.skill_name || task.skill_name,
+        artifact_refs: output.artifact_refs || [],
+        credential_boundary: output.interaction_evidence?.credential_boundary,
+        error: task.error_message || output.error,
+      })
+    }
+  })
+
+  events
+    .filter((event) => ['node_provider_or_tool_reference', 'node_provider_or_tool_failed'].includes(event.event_type))
+    .forEach((event) => pushEvidence({
+      ...(event.event_data || {}),
+      status: event.event_type === 'node_provider_or_tool_failed' ? 'failed' : (event.event_data?.status || 'completed'),
+    }))
+
+  return evidence
+}
+
 function EmptyState({ searchQuery }: { searchQuery: string }) {
   return (
     <Card data-testid="agent-ops-empty-state">
@@ -283,8 +334,12 @@ export default function AgentOpsPage() {
 
   const runs = useMemo(() => runsQuery.data?.items || [], [runsQuery.data])
   const selectedRun = selectedRunQuery.data || runs.find((run) => run.id === selectedRunId) || null
-  const selectedTasks = selectedTasksQuery.data?.items || []
-  const selectedEvents = selectedEventsQuery.data?.items || []
+  const selectedTasks = useMemo(() => selectedTasksQuery.data?.items || [], [selectedTasksQuery.data])
+  const selectedEvents = useMemo(() => selectedEventsQuery.data?.items || [], [selectedEventsQuery.data])
+  const selectedInteractionEvidence = useMemo(
+    () => collectInteractionEvidence(selectedTasks, selectedEvents),
+    [selectedTasks, selectedEvents],
+  )
   const selectedControlTask = selectedTasks.find((task) => isControlTask(task) && task.status !== 'completed') || selectedTasks.find(isControlTask) || null
 
   const applyControlAction = (action: 'approve' | 'reject' | 'resume' | 'skip') => {
@@ -629,6 +684,50 @@ export default function AgentOpsPage() {
                         </Button>
                       )}
                     </div>
+                  </div>
+                </section>
+              )}
+
+              {selectedInteractionEvidence.length > 0 && (
+                <section data-testid="agent-run-interaction-evidence" className="space-y-2">
+                  <h3 className="text-sm font-medium text-slate-900 dark:text-white">Provider / Tool interaction evidence</h3>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {selectedInteractionEvidence.map((item) => {
+                      const artifactRefs = Array.isArray(item.artifact_refs) ? item.artifact_refs : []
+                      return (
+                        <div
+                          key={item.__key}
+                          data-testid={`agent-run-interaction-${item.node_id || item.adapter_ref || item.__key}`}
+                          className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-900"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="font-medium text-slate-900 dark:text-white">
+                              {item.tool_name || item.skill_name || item.adapter_ref || 'interaction'}
+                            </span>
+                            <Badge className={statusBadgeClass(String(item.status || 'completed'))}>
+                              {String(item.status || 'completed')}
+                            </Badge>
+                          </div>
+                          <div className="mt-2 space-y-1 text-xs text-slate-500">
+                            <p>node: {item.node_id || 'unrecorded'}</p>
+                            <p>adapter: {item.adapter_ref || 'unrecorded'}</p>
+                            <p>credential boundary: {item.credential_boundary || 'secret_ref_only'}</p>
+                          </div>
+                          {artifactRefs.length > 0 ? (
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {artifactRefs.map((ref: Record<string, any>, index: number) => (
+                                <Badge key={`${item.__key}-ref-${index}`} variant="outline">
+                                  {String(ref.artifact_id || ref.job_id || ref.id || ref.filename || `ref-${index + 1}`)}
+                                </Badge>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="mt-2 text-xs text-slate-500">No artifact refs recorded.</p>
+                          )}
+                          {item.error && <p className="mt-2 text-xs text-red-600">{String(item.error)}</p>}
+                        </div>
+                      )
+                    })}
                   </div>
                 </section>
               )}
