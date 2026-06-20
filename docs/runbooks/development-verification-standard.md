@@ -173,6 +173,10 @@ registration and provider versions may contain only non-secret metadata plus
 `credential_ref` / `secret_ref`. The runtime may resolve a candidate-only
 environment secret for the live call, but raw provider API keys must not appear
 in persisted config, API responses, logs, audit records, exports, or artifacts.
+Production readiness requires a live LLM provider by default. Graphify and
+GitNexus are optional integration providers unless `AMX_REQUIRED_PROVIDER_TYPES`
+explicitly includes them; optional provider records must not be used as
+substitutes for the required LLM readiness evidence.
 
 Required coverage:
 

@@ -79,8 +79,10 @@ case "$url" in
   */api/v1/providers/readiness)
     if [[ "{scenario}" == "sandbox-provider" ]]; then
       printf '{{"production_ready":false,"live_providers":0,"sandbox_providers":1,"mock_providers":0,"missing_required_types":["llm"],"items":[{{"readiness":"sandbox","name":"Sandbox LLM"}}]}}'
+    elif [[ "{scenario}" == "optional-sandbox-provider" ]]; then
+      printf '{{"production_ready":true,"live_providers":1,"sandbox_providers":1,"mock_providers":0,"missing_required_types":[],"required_types":[{{"provider_type":"llm","status":"ready","live_count":1,"sandbox_count":0,"unconfigured_count":0}}],"items":[{{"readiness":"live","provider_type":"llm","name":"Live LLM"}},{{"readiness":"sandbox","provider_type":"graphify","name":"Graphify Sandbox"}}]}}'
     else
-      printf '{{"production_ready":true,"live_providers":3,"sandbox_providers":0,"mock_providers":0,"missing_required_types":[],"items":[{{"readiness":"live","name":"Live LLM"}}]}}'
+      printf '{{"production_ready":true,"live_providers":1,"sandbox_providers":0,"mock_providers":0,"missing_required_types":[],"required_types":[{{"provider_type":"llm","status":"ready","live_count":1,"sandbox_count":0,"unconfigured_count":0}}],"items":[{{"readiness":"live","provider_type":"llm","name":"Live LLM"}}]}}'
     fi
     ;;
   */api/v1/ops/quota)
@@ -203,6 +205,17 @@ def test_authenticated_smoke_rejects_sandbox_provider_readiness(tmp_path: Path) 
     assert result.returncode == 1
     assert "provider readiness is not production-ready" in result.stderr
     assert "sandbox/mock/test provider evidence cannot satisfy real API smoke" in result.stderr
+
+
+def test_authenticated_smoke_allows_optional_sandbox_provider_when_required_llm_is_live(tmp_path: Path) -> None:
+    result = _run_smoke(
+        tmp_path,
+        "BOOTSTRAP_ADMIN_EMAIL=admin@example.com\nBOOTSTRAP_ADMIN_PASSWORD=correct-password\n",
+        scenario="optional-sandbox-provider",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "all authenticated production checks passed" in result.stdout
 
 
 def test_authenticated_smoke_rejects_placeholder_capability_evidence(tmp_path: Path) -> None:

@@ -95,19 +95,23 @@ import sys
 
 data = json.load(sys.stdin)
 production_ready = data.get("production_ready") is True
-sandbox_count = int(data.get("sandbox_providers") or 0)
-mock_count = int(data.get("mock_providers") or 0)
-bad_items = [
+required_states = data.get("required_types") or []
+required_bad_states = {"sandbox", "mock", "test", "test-only"}
+bad_required = [
     item
-    for item in data.get("items", [])
-    if str(item.get("readiness", "")).lower() in {"sandbox", "mock", "unconfigured", "inactive", "failed"}
+    for item in required_states
+    if str(item.get("status", "")).strip().lower() in required_bad_states
 ]
+if not required_states:
+    sandbox_count = int(data.get("sandbox_providers") or 0)
+    mock_count = int(data.get("mock_providers") or 0)
+    bad_required = [{"status": "sandbox/mock"}] if sandbox_count or mock_count else []
 
 failed = False
 if not production_ready:
     print("[authenticated-smoke] provider readiness is not production-ready", file=sys.stderr)
     failed = True
-if sandbox_count or mock_count or bad_items:
+if bad_required:
     print(
         "[authenticated-smoke] sandbox/mock/test provider evidence cannot satisfy real API smoke",
         file=sys.stderr,

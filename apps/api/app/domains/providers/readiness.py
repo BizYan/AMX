@@ -1,6 +1,7 @@
 """Provider production readiness aggregation."""
 
 from collections.abc import Iterable
+import os
 from uuid import UUID
 
 from app.domains.providers.capability import (
@@ -16,11 +17,35 @@ from app.domains.providers.schemas import (
 )
 
 
-REQUIRED_PROVIDER_TYPES = [
+DEFAULT_REQUIRED_PROVIDER_TYPES = [
     ("llm", "LLM generation"),
+]
+
+OPTIONAL_PROVIDER_TYPES = [
     ("graphify", "Graphify graph extraction"),
     ("gitnexus", "GitNexus code index"),
 ]
+PROVIDER_TYPE_LABELS = dict(DEFAULT_REQUIRED_PROVIDER_TYPES + OPTIONAL_PROVIDER_TYPES)
+
+
+def required_provider_types() -> list[tuple[str, str]]:
+    """Return production-required provider types.
+
+    AMX production currently depends on a real LLM for generation. Graphify and
+    GitNexus are optional operational integrations unless explicitly required
+    by deployment configuration.
+    """
+    configured = os.getenv("AMX_REQUIRED_PROVIDER_TYPES", "").strip()
+    if not configured:
+        return DEFAULT_REQUIRED_PROVIDER_TYPES
+
+    required: list[tuple[str, str]] = []
+    for raw_item in configured.split(","):
+        provider_type = raw_item.strip().lower()
+        if not provider_type:
+            continue
+        required.append((provider_type, PROVIDER_TYPE_LABELS.get(provider_type, provider_type)))
+    return required or DEFAULT_REQUIRED_PROVIDER_TYPES
 
 
 def _provider_id(provider) -> UUID:
@@ -141,7 +166,7 @@ def build_provider_readiness_summary(
 
     required_type_states: list[ProviderRequiredTypeReadiness] = []
     missing_required_types: list[str] = []
-    for provider_type, label in REQUIRED_PROVIDER_TYPES:
+    for provider_type, label in required_provider_types():
         live_count = live_by_type.get(provider_type, 0)
         sandbox_count = sandbox_by_type.get(provider_type, 0)
         mock_count = mock_by_type.get(provider_type, 0)
