@@ -141,6 +141,18 @@ deployment authority for Product/API/security/migration/Docker/workflow/release/
 deployment/production changes without explicit Owner Go. Approved hotfixes and
 urgent security fixes still require the documented production gates.
 
+When a rollback, redeploy, or rollback verification repeats the same production
+gate failure, stop additional rollback loops. Preserve the failing run logs,
+health/smoke/provenance output, OCI service status, and deployed ref/SHA
+evidence; compare candidate gates with production gates; classify whether the
+failure is schema compatibility, runtime configuration, workflow/provenance,
+secret/environment, infrastructure, or application behavior; then create the
+smallest forward compatibility or workflow fix. Retry deployment only after the
+fix passes CI and the human owner grants Owner Go. This rule does not weaken the
+normal requirement to rollback immediately for unrelated catastrophic failures
+such as data corruption, public exposure, persistent outage, or unsafe runtime
+state.
+
 ## Continuous Improvement Rules
 
 Use `docs/runbooks/continuous-improvement.md` and `docs/continuous-improvement/registry.json` when the same failure or user correction occurs twice, after a P0/P1 delivery incident, after a major release, or when the human owner requests a process review.

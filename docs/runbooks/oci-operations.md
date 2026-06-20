@@ -83,6 +83,16 @@ bash infra/deploy/health-check.sh --base-url https://amx.yuanda.win
 Rollback also requires health, authenticated smoke, provenance, service status,
 and GitNexus verification when applicable.
 
+If rollback, redeploy, or rollback verification repeats the same gate failure,
+stop additional rollback loops. Preserve the workflow URL, OCI command output,
+service status, container logs, health/smoke/provenance output, deployed ref/SHA,
+and rollback target evidence. Compare the candidate verification gates with the
+production gates, classify the failure, and open the smallest forward
+compatibility or workflow fix. Retry production deployment only after the fix
+passes CI and the owner grants Owner Go. This does not change break-glass
+rollback behavior for unrelated catastrophic failures that leave production
+unsafe or unavailable.
+
 Before the first real client and after recovery-sensitive changes, run the
 non-production recovery drill in `docs/runbooks/recovery-drill.md`. That drill
 proves backup restore and application rollback without destructive database

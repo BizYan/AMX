@@ -49,6 +49,12 @@ verification will be satisfied. A successful API candidate gate must not be
 described as full frontend commercial-delivery validation unless a real
 browser/user journey is also verified.
 
+If this PR is a forward fix after a repeated production gate failure, identify
+the preserved failing evidence, compare candidate and production gates, classify
+the failure, explain why additional rollback loops were stopped, and state the
+Owner Go required before retrying deployment. This does not weaken normal
+rollback for unrelated catastrophic failures.
+
 ## Agent Attribution
 
 State whether Codex, Antigravity, Claude, or a human authored the change. Include branch names for any agent side branches and summarize any temporary agent handoff.
