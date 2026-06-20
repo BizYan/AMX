@@ -73,3 +73,14 @@ def test_production_workflow_requires_canonical_public_amx_path():
     assert 'EXPECTED_PRODUCTION_PATH: /home/ubuntu/amx/production/AMX' in workflow
     assert 'if [ "$AMX_PRODUCTION_PATH" != "$EXPECTED_PRODUCTION_PATH" ]; then' in workflow
     assert 'REF=\\"$REF\\" bash infra/deploy/deploy-gitnexus.sh' in workflow
+
+
+def test_production_workflow_activates_capability_evidence_before_smoke():
+    workflow = (REPO_ROOT / ".github/workflows/deploy-production.yml").read_text(encoding="utf-8")
+
+    assert "Activate production capability evidence" in workflow
+    assert "bash infra/deploy/activate-capability-evidence.sh" in workflow
+    assert "bash infra/deploy/authenticated-smoke.sh" in workflow
+    assert workflow.index("Activate production capability evidence") < workflow.index(
+        "Authenticated production smoke"
+    )
