@@ -20,6 +20,7 @@ import {
   type CapabilityReadinessItem,
   type PlatformMetrics,
   type NotificationDelivery,
+  type OpsReadinessDashboard,
   type QuotaUsage,
   type RateLimitsResult,
   type TenantMetrics,
@@ -150,6 +151,12 @@ export default function HealthDashboardPage() {
     enabled: Boolean(tenantId),
   })
 
+  const { data: opsReadinessDashboardData, refetch: refetchOpsReadinessDashboard, error: opsReadinessDashboardError } = useQuery<OpsReadinessDashboard>({
+    queryKey: ['ops-readiness-dashboard'],
+    queryFn: () => opsApi.getReadinessDashboard(),
+    enabled: Boolean(tenantId),
+  })
+
   const {
     data: activationPlanData,
     isLoading: activationPlanLoading,
@@ -204,6 +211,7 @@ export default function HealthDashboardPage() {
     rateLimitsError,
     notificationDeliveriesError,
     productionOpsError,
+    opsReadinessDashboardError,
   ].filter(Boolean)
   const opsAccessLimited = opsDataErrors.length > 0
   const opsAccessMessage = opsDataErrors[0] instanceof Error ? opsDataErrors[0].message : 'Ops permission required'
@@ -424,6 +432,26 @@ export default function HealthDashboardPage() {
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`
   }
 
+  const formatEvidenceValue = (value: unknown) => {
+    if (value === null || value === undefined || value === '') return 'not recorded'
+    return String(value)
+  }
+
+  const downloadOpsEvidence = () => {
+    if (!opsReadinessDashboardData) return
+    const blob = new Blob([JSON.stringify(opsReadinessDashboardData, null, 2)], {
+      type: 'application/json',
+    })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `ops-readiness-evidence-${opsReadinessDashboardData.generated_at}.json`.replace(/[:.]/g, '-')
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -445,6 +473,7 @@ export default function HealthDashboardPage() {
             refetchAuditLogs()
             refetchReadiness()
             refetchProductionOps()
+            refetchOpsReadinessDashboard()
             refetchNotificationDeliveries()
             if (activationPlanData || activationRunData) {
               setActivationRunData(null)
@@ -500,6 +529,125 @@ export default function HealthDashboardPage() {
               <ShieldCheck className="mr-2 h-4 w-4" />
               检查团队权限
             </Link>
+          </CardContent>
+        </Card>
+      )}
+
+      {opsReadinessDashboardData && (
+        <Card data-testid="ops-readiness-dashboard" className="border-emerald-200 dark:border-emerald-900">
+          <CardHeader>
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <ShieldCheck className="h-5 w-5" />
+                  Ops readiness evidence
+                </CardTitle>
+                <CardDescription>
+                  Sanitized operations snapshot from real runtime surfaces. Mock E2E data is regression evidence only.
+                </CardDescription>
+              </div>
+              <Button variant="outline" onClick={downloadOpsEvidence}>
+                <FileText className="mr-2 h-4 w-4" />
+                Export sanitized evidence
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-md border border-slate-200 p-4 dark:border-slate-800">
+                <p className="text-xs text-slate-500">Provider readiness</p>
+                <p className="mt-2 text-2xl font-semibold">{opsReadinessDashboardData.provider_readiness.readiness_score}%</p>
+                <p className="mt-1 text-sm text-slate-500">
+                  {opsReadinessDashboardData.provider_readiness.production_ready ? 'production ready' : 'not production ready'}
+                </p>
+              </div>
+              <div className="rounded-md border border-slate-200 p-4 dark:border-slate-800">
+                <p className="text-xs text-slate-500">Capability readiness</p>
+                <p className="mt-2 text-2xl font-semibold">{opsReadinessDashboardData.capability_readiness.overall_score}%</p>
+                <p className="mt-1 text-sm text-slate-500">{opsReadinessDashboardData.capability_readiness.overall_status}</p>
+              </div>
+              <div className="rounded-md border border-slate-200 p-4 dark:border-slate-800">
+                <p className="text-xs text-slate-500">Quota</p>
+                <p className="mt-2 text-2xl font-semibold">{formatEvidenceValue(opsReadinessDashboardData.quota.usage_percent)}%</p>
+                <p className="mt-1 text-sm text-slate-500">
+                  {formatEvidenceValue(opsReadinessDashboardData.quota.used)} / {formatEvidenceValue(opsReadinessDashboardData.quota.limit)}
+                </p>
+              </div>
+              <div className="rounded-md border border-slate-200 p-4 dark:border-slate-800">
+                <p className="text-xs text-slate-500">Agent health</p>
+                <p className="mt-2 text-2xl font-semibold">{formatEvidenceValue(opsReadinessDashboardData.agent_run_health.status)}</p>
+                <p className="mt-1 text-sm text-slate-500">
+                  {formatEvidenceValue(opsReadinessDashboardData.agent_run_health.running)} running, {formatEvidenceValue(opsReadinessDashboardData.agent_run_health.failed_24h)} failed 24h
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="rounded-md border border-slate-200 p-4 dark:border-slate-800">
+                <p className="text-xs text-slate-500">Latest deployment ref</p>
+                <p className="mt-2 font-medium">{formatEvidenceValue(opsReadinessDashboardData.deployment.ref)}</p>
+                <p className="mt-1 truncate text-xs text-slate-500">{formatEvidenceValue(opsReadinessDashboardData.deployment.sha)}</p>
+              </div>
+              <div className="rounded-md border border-slate-200 p-4 dark:border-slate-800">
+                <p className="text-xs text-slate-500">Smoke</p>
+                <p className="mt-2 font-medium">{formatEvidenceValue(opsReadinessDashboardData.latest_smoke.status)}</p>
+                <p className="mt-1 text-xs text-slate-500">{formatEvidenceValue(opsReadinessDashboardData.latest_smoke.checked_at)}</p>
+              </div>
+              <div className="rounded-md border border-slate-200 p-4 dark:border-slate-800">
+                <p className="text-xs text-slate-500">GitNexus</p>
+                <p className="mt-2 font-medium">{formatEvidenceValue(opsReadinessDashboardData.gitnexus.refresh_status)}</p>
+                <p className="mt-1 truncate text-xs text-slate-500">{formatEvidenceValue(opsReadinessDashboardData.gitnexus.indexed_sha)}</p>
+              </div>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="rounded-md border border-slate-200 p-4 dark:border-slate-800">
+                <p className="text-xs text-slate-500">Metrics</p>
+                <p className="mt-2 font-medium">{formatEvidenceValue(opsReadinessDashboardData.metrics.total_events)} events</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  error rate {formatEvidenceValue(opsReadinessDashboardData.metrics.error_rate_percent)}%, latency {formatEvidenceValue(opsReadinessDashboardData.metrics.avg_latency_ms)}ms
+                </p>
+              </div>
+              <div className="rounded-md border border-slate-200 p-4 dark:border-slate-800">
+                <p className="text-xs text-slate-500">Alerts</p>
+                <p className="mt-2 font-medium">{formatEvidenceValue(opsReadinessDashboardData.alerts.active_rules)} active rules</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {formatEvidenceValue(opsReadinessDashboardData.alerts.failed_notifications)} failed, {formatEvidenceValue(opsReadinessDashboardData.alerts.pending_notifications)} pending
+                </p>
+              </div>
+              <div className="rounded-md border border-slate-200 p-4 dark:border-slate-800">
+                <p className="text-xs text-slate-500">Evidence export</p>
+                <p className="mt-2 font-medium">{formatEvidenceValue(opsReadinessDashboardData.evidence_export.format)}</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {opsReadinessDashboardData.evidence_export.sanitized ? 'sanitized' : 'not sanitized'}
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-md border border-slate-200 p-4 dark:border-slate-800">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h3 className="font-medium text-slate-900 dark:text-white">Latest critical failures</h3>
+                <Badge variant={opsReadinessDashboardData.latest_critical_failures.length ? 'destructive' : 'secondary'}>
+                  {opsReadinessDashboardData.latest_critical_failures.length}
+                </Badge>
+              </div>
+              {opsReadinessDashboardData.latest_critical_failures.length === 0 ? (
+                <p className="text-sm text-slate-500">No critical failures recorded in the dashboard snapshot.</p>
+              ) : (
+                <div className="space-y-2">
+                  {opsReadinessDashboardData.latest_critical_failures.map((failure, index) => (
+                    <div key={`${failure.source}-${failure.summary}-${index}`} className="rounded border border-slate-200 p-3 text-sm dark:border-slate-800">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant="outline">{failure.source}</Badge>
+                        <Badge variant={failure.severity === 'critical' ? 'destructive' : 'secondary'}>{failure.severity}</Badge>
+                        <span className="font-medium">{failure.summary}</span>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-500">{formatEvidenceValue(failure.occurred_at)}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
       )}

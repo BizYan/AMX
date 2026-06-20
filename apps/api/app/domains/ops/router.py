@@ -42,6 +42,7 @@ from app.domains.ops.schemas import (
     CapabilityCommissioningResponse,
     NotificationDeliveryListResponse,
     NotificationDeliveryResponse,
+    OpsReadinessDashboardResponse,
     ProductionOpsCommandCenterResponse,
 )
 from app.services.cache_service import CacheService
@@ -298,6 +299,22 @@ async def get_production_command_center(
     from app.domains.ops.production_command_center import ProductionOpsCommandCenterService
 
     service = ProductionOpsCommandCenterService(db)
+    return await service.build(admin.tenant_id)
+
+
+@router.get(
+    "/readiness-dashboard",
+    response_model=OpsReadinessDashboardResponse,
+    tags=["health"],
+)
+async def get_ops_readiness_dashboard(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(require_ops_reader)],
+) -> OpsReadinessDashboardResponse:
+    """Get the sanitized operational readiness dashboard evidence snapshot."""
+    from app.domains.ops.readiness_dashboard import OpsReadinessDashboardService
+
+    service = OpsReadinessDashboardService(db)
     return await service.build(admin.tenant_id)
 
 

@@ -3728,6 +3728,14 @@ export async function setupApiMocks(page: Page, options: SetupApiMockOptions = {
     })
   })
 
+  await page.route('**/api/v1/ops/readiness-dashboard*', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(MOCK.MOCK_OPS_DATA.readiness_dashboard),
+    })
+  })
+
   await page.route('**/api/v1/ops/production-command-center*', async (route) => {
     const readiness = MOCK.MOCK_OPS_DATA.capability_readiness
     const commissioning = {

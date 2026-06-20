@@ -991,6 +991,7 @@ export const notificationsApi = {
 
 export const opsApi = {
   getHealth: () => apiClient.get<HealthStatus>('/ops/health'),
+  getReadinessDashboard: () => apiClient.get<OpsReadinessDashboard>('/ops/readiness-dashboard'),
   getProductionCommandCenter: () => apiClient.get<ProductionOpsCommandCenter>('/ops/production-command-center'),
   getCapabilityReadiness: () => apiClient.get<CapabilityReadiness>('/ops/capabilities/readiness'),
   getCapabilityActivationPlan: () => apiClient.get<CapabilityActivationResponse>('/ops/capabilities/activation-plan'),
@@ -2555,6 +2556,33 @@ export interface ProductionOpsCommandCenter {
   readiness: CapabilityReadiness
   commissioning: CapabilityCommissioningResponse
   next_steps: string[]
+}
+
+export interface OpsReadinessCriticalFailure {
+  source: string
+  severity: string
+  summary: string
+  occurred_at: string | null
+  status?: string | null
+  action_href?: string | null
+}
+
+export interface OpsReadinessDashboard {
+  generated_at: string
+  tenant_id: string | null
+  health: Record<string, any>
+  provider_readiness: ProviderReadinessSummary
+  capability_readiness: CapabilityReadiness
+  capability_commissioning: CapabilityCommissioningResponse
+  quota: Record<string, any>
+  metrics: Record<string, any>
+  alerts: Record<string, any>
+  deployment: Record<string, any>
+  latest_smoke: Record<string, any>
+  gitnexus: Record<string, any>
+  agent_run_health: Record<string, any>
+  latest_critical_failures: OpsReadinessCriticalFailure[]
+  evidence_export: Record<string, any>
 }
 
 export interface QuotaCommandCenterGate {
