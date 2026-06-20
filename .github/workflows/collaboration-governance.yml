@@ -40,6 +40,7 @@ jobs:
           if [[ "$author" == "dependabot[bot]" ]]; then
             base_sha="$(jq -r '.pull_request.base.sha' "$GITHUB_EVENT_PATH")"
             head_sha="$(jq -r '.pull_request.head.sha' "$GITHUB_EVENT_PATH")"
+            delta_base="$(git merge-base "$base_sha" "$head_sha")"
             allowed_paths=(
               "apps/web/package.json"
               "apps/web/pnpm-lock.yaml"
@@ -59,10 +60,10 @@ jobs:
                 echo "Dependabot PR changed a non-dependency file: $path" >&2
                 exit 1
               fi
-            done < <(git diff --name-only "$base_sha" "$head_sha")
+            done < <(git diff --name-only "$delta_base" "$head_sha")
 
             python infra/scripts/check_dependency_update_policy.py \
-              --base "$base_sha" \
+              --base "$delta_base" \
               --head "$head_sha"
 
             echo "Dependabot dependency-only PR accepted; normal CI remains required."

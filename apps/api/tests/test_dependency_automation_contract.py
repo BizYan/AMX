@@ -32,6 +32,9 @@ def test_dependabot_governance_allows_only_dependency_files():
         assert path in workflow
 
     assert "Dependabot PR changed a non-dependency file" in workflow
+    assert 'delta_base="$(git merge-base "$base_sha" "$head_sha")"' in workflow
+    assert 'git diff --name-only "$delta_base" "$head_sha"' in workflow
+    assert '--base "$delta_base"' in workflow
     assert "check_dependency_update_policy.py" in workflow
 
 
