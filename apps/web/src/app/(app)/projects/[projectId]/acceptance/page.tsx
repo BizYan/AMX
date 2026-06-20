@@ -174,7 +174,7 @@ export default function ProjectAcceptancePage({ params }: { params: Promise<{ pr
         <CardContent className="grid gap-4 md:grid-cols-2">
           <Input data-testid="acceptance-customer-name" placeholder="客户名称" value={form.customer_name} onChange={(event) => setForm({ ...form, customer_name: event.target.value })} />
           <Input data-testid="acceptance-contact-name" placeholder="签署联系人" value={form.contact_name} onChange={(event) => setForm({ ...form, contact_name: event.target.value })} />
-          <Input placeholder="联系人邮箱" value={form.contact_email} onChange={(event) => setForm({ ...form, contact_email: event.target.value })} />
+          <Input data-testid="acceptance-contact-email" placeholder="联系人邮箱" value={form.contact_email} onChange={(event) => setForm({ ...form, contact_email: event.target.value })} />
           <select data-testid="acceptance-decision" className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-900" value={form.decision} onChange={(event) => setForm({ ...form, decision: event.target.value as ProjectAcceptanceUpdate['decision'] })}>
             <option value="pending">待验收</option>
             <option value="accepted">通过验收</option>
@@ -210,7 +210,7 @@ export default function ProjectAcceptancePage({ params }: { params: Promise<{ pr
             <div className="rounded-md border border-emerald-300 bg-emerald-50 p-3 text-sm dark:border-emerald-800 dark:bg-emerald-950/30">
               <p className="font-medium">一次性可见门户地址</p>
               <div className="mt-2 flex items-center gap-2">
-                <code className="min-w-0 flex-1 break-all">{`${window.location.origin}${createdPortal.portal_path}`}</code>
+                <code data-testid="created-customer-portal-url" className="min-w-0 flex-1 break-all">{`${window.location.origin}${createdPortal.portal_path}`}</code>
                 <Button
                   size="sm"
                   variant="outline"
@@ -249,7 +249,7 @@ export default function ProjectAcceptancePage({ params }: { params: Promise<{ pr
 
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between"><div><CardTitle>逐项验收证据</CardTitle><CardDescription>每项均保留状态和证据说明。</CardDescription></div><Button variant="outline" onClick={() => setForm({ ...form, items: [...form.items, emptyItem()] })}><Plus className="mr-2 h-4 w-4" />添加验收项</Button></div>
+          <div className="flex items-center justify-between"><div><CardTitle>逐项验收证据</CardTitle><CardDescription>每项均保留状态和证据说明。</CardDescription></div><Button data-testid="add-acceptance-item" variant="outline" onClick={() => setForm({ ...form, items: [...form.items, emptyItem()] })}><Plus className="mr-2 h-4 w-4" />添加验收项</Button></div>
         </CardHeader>
         <CardContent className="space-y-3" data-testid="acceptance-items">
           {form.items.map((item, index) => (

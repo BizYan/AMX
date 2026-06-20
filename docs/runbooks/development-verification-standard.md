@@ -194,6 +194,38 @@ for the exact SHA under test. They do not prove a full frontend/browser
 commercial-delivery journey unless that journey is separately exercised through
 browser or Playwright evidence.
 
+## Real Browser Commercial Delivery Policy
+
+Real browser commercial delivery validation is the user-visible proof that the
+web UI can drive the core delivery journey against a real backend. It is
+separate from both deterministic mock E2E and API-only candidate verification.
+
+Run it only with explicit real-runtime inputs:
+
+```bash
+RUN_REAL_BROWSER_DELIVERY_TEST=true \
+E2E_WEB_URL="$E2E_WEB_URL" \
+E2E_API_URL="$E2E_API_URL" \
+E2E_USER_EMAIL="$E2E_USER_EMAIL" \
+E2E_PASSWORD="$E2E_PASSWORD" \
+pnpm --dir apps/web exec playwright test tests/e2e/playwright/real-browser-commercial-delivery.spec.ts
+```
+
+This path must not use `setupApiMocks`, fake JWTs, intercepted API responses,
+or fixture-only provider state as readiness evidence. It must fail closed when
+the required runtime inputs are missing or the browser login cannot obtain a
+real token.
+
+The required journey covers browser login, project access, source upload,
+ingestion, knowledge/provenance evidence, provider-generated document evidence,
+review, approval/publish where supported, export package creation, customer
+portal download, customer acceptance, and internal closeout.
+
+Production browser readiness may be claimed only after this spec runs against
+production with Owner Go. A local, staging, or candidate run proves only that
+environment. Deterministic mock E2E remains regression evidence and must be
+labeled separately from real browser commercial-delivery evidence.
+
 ## E2E Policy
 
 Use focused Playwright specs for:

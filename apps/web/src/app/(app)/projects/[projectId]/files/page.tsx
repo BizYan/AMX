@@ -300,7 +300,7 @@ export default function FilesPage({ params }: FilesPageProps) {
             上传项目资料后，跟踪解析队列、知识抽取结果、缺口提示，并把可用资料推进到文档生成和知识图谱。
           </p>
         </div>
-        <Button onClick={() => setIsUploadOpen(true)} className="bg-indigo-600 text-white hover:bg-indigo-500">
+        <Button data-testid="open-source-upload" onClick={() => setIsUploadOpen(true)} className="bg-indigo-600 text-white hover:bg-indigo-500">
           <Upload className="mr-2 h-4 w-4" />
           上传资料
         </Button>
@@ -349,6 +349,7 @@ export default function FilesPage({ params }: FilesPageProps) {
           </Button>
           <input
             ref={fileInputRef}
+            data-testid="source-file-input"
             type="file"
             multiple
             className="hidden"
@@ -575,6 +576,7 @@ export default function FilesPage({ params }: FilesPageProps) {
             <span className="mt-1 text-xs text-slate-500">单次可上传多个文件</span>
             <input
               ref={dialogFileInputRef}
+              data-testid="source-file-dialog-input"
               type="file"
               multiple
               className="hidden"

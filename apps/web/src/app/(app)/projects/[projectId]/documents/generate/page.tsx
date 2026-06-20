@@ -2126,6 +2126,7 @@ export default function GenerateDocumentPage({ params }: GenerateDocumentPagePro
                     <Button
                       variant={supportsInteractiveGeneration ? 'outline' : 'default'}
                       size="lg"
+                      data-testid="direct-generate-document-action"
                       onClick={() => generateMutation.mutate()}
                       disabled={!selectedType || !context.trim() || generateMutation.isPending}
                     >

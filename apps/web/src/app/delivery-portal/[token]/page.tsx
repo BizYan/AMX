@@ -63,7 +63,7 @@ export default function CustomerDeliveryPortalPage({ params }: { params: Promise
         <Card><CardContent className="pt-5"><ShieldCheck className="h-5 w-5" /><p className="mt-3 text-sm text-slate-500">交付门禁</p><p className="font-semibold">{portal.gate.label}</p></CardContent></Card>
       </section>
 
-      <Card>
+      <Card data-testid="portal-acceptance-criteria">
         <CardHeader><CardTitle>验收标准与证据</CardTitle><CardDescription>逐项确认状态，拒绝项会阻止正式交付关闭。</CardDescription></CardHeader>
         <CardContent className="space-y-3">
           {form.items.map((item, index) => (
@@ -89,7 +89,12 @@ export default function CustomerDeliveryPortalPage({ params }: { params: Promise
                 <p className="text-xs text-slate-500">{Math.ceil(artifact.file_size / 1024)} KB · {artifact.content_type} · SHA-256 {artifact.file_hash || '未提供'}</p>
               </div>
               <Button variant="outline" asChild>
-                <a href={customerPortalApi.downloadArtifact(token, artifact.id)} target="_blank" rel="noreferrer">
+                <a
+                  data-testid={`portal-download-artifact-${artifact.id}`}
+                  href={customerPortalApi.downloadArtifact(token, artifact.id)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
                   <Download className="mr-2 h-4 w-4" />下载
                 </a>
               </Button>
