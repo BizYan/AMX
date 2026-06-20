@@ -89,6 +89,11 @@ jobs:
           uv run alembic downgrade 0021_invitation_delivery
           uv run alembic upgrade head
 
+      - name: Verify production-like schema compatibility
+        env:
+          AMX_SCHEMA_COMPAT_ADMIN_DSN: postgresql://postgres:postgres@localhost:5432/postgres
+        run: uv run --extra dev python -m pytest tests/test_production_schema_compatibility.py -q
+
       - name: Run API tests
         env:
           JWT_SECRET_KEY: ci-jwt-secret-for-tests
