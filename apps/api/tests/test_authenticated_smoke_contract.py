@@ -13,6 +13,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SMOKE_SCRIPT = REPO_ROOT / "infra" / "deploy" / "authenticated-smoke.sh"
+ACTIVATION_SCRIPT = REPO_ROOT / "infra" / "deploy" / "activate-capability-evidence.sh"
 
 
 def read(relative_path: str) -> str:
@@ -98,6 +99,13 @@ case "$url" in
   */api/v1/ops/capabilities/commissioning)
     printf '{{"production_usable":true,"overall_status":"ready","overall_score":90,"executed":false,"checks":[]}}'
     ;;
+  */api/v1/ops/capabilities/activation-run)
+    if [[ "{scenario}" == "activation-not-ready" ]]; then
+      printf '{{"executed":true,"readiness_after":{{"production_ready":false}},"actions":[{{"key":"knowledge_graph","status":"failed"}}]}}'
+    else
+      printf '{{"executed":true,"readiness_after":{{"production_ready":true}},"actions":[{{"key":"knowledge_graph","status":"completed"}}]}}'
+    fi
+    ;;
   *)
     printf '{{"error":"unexpected url","url":"%s"}}' "$url"
     exit 22
@@ -110,6 +118,18 @@ esac
 
 
 def _run_smoke(tmp_path: Path, env_text: str, *, scenario: str = "success") -> subprocess.CompletedProcess[str]:
+    return _run_deploy_script(SMOKE_SCRIPT, tmp_path, env_text, scenario=scenario)
+
+
+def _run_activation(
+    tmp_path: Path, env_text: str, *, scenario: str = "success"
+) -> subprocess.CompletedProcess[str]:
+    return _run_deploy_script(ACTIVATION_SCRIPT, tmp_path, env_text, scenario=scenario)
+
+
+def _run_deploy_script(
+    script: Path, tmp_path: Path, env_text: str, *, scenario: str = "success"
+) -> subprocess.CompletedProcess[str]:
     bash = _bash_executable()
     if bash is None:
         pytest.skip("bash is required for shell smoke contract tests")
@@ -126,7 +146,7 @@ def _run_smoke(tmp_path: Path, env_text: str, *, scenario: str = "success") -> s
     return subprocess.run(
         [
             bash,
-            str(SMOKE_SCRIPT),
+            str(script),
             "--base-url",
             "https://amx.example.test",
             "--env-file",
@@ -158,6 +178,18 @@ def test_authenticated_smoke_covers_real_api_release_endpoints() -> None:
     assert "assert_capability_readiness" in script
 
 
+def test_capability_activation_covers_existing_production_endpoint() -> None:
+    script = read("infra/deploy/activate-capability-evidence.sh")
+
+    assert "/api/v1/identity/auth/login" in script
+    assert "/api/v1/ops/capabilities/activation-run" in script
+    assert '{"dry_run":false,"confirm":true}' in script
+    assert "setupApiMocks" not in script
+    assert "test_api_key" not in script
+    assert "ACCESS_TOKEN" in script
+    assert "production_ready" in script
+
+
 def test_real_api_smoke_requires_real_credentials_without_fake_pass() -> None:
     script = read("infra/deploy/authenticated-smoke.sh")
 
@@ -165,6 +197,34 @@ def test_real_api_smoke_requires_real_credentials_without_fake_pass() -> None:
     assert "login did not return an access token" in script
     assert "mock-jwt-token" not in script
     assert "test_api_key" not in script
+
+
+def test_capability_activation_fails_closed_when_credentials_are_missing(tmp_path: Path) -> None:
+    result = _run_activation(tmp_path, "BOOTSTRAP_ADMIN_EMAIL=\n")
+
+    assert result.returncode == 1
+    assert "BOOTSTRAP_ADMIN_EMAIL and BOOTSTRAP_ADMIN_PASSWORD are required" in result.stderr
+
+
+def test_capability_activation_fails_when_readiness_remains_blocked(tmp_path: Path) -> None:
+    result = _run_activation(
+        tmp_path,
+        "BOOTSTRAP_ADMIN_EMAIL=admin@example.com\nBOOTSTRAP_ADMIN_PASSWORD=correct-password\n",
+        scenario="activation-not-ready",
+    )
+
+    assert result.returncode == 1
+    assert "production_ready=False" in result.stdout
+
+
+def test_capability_activation_succeeds_before_production_smoke(tmp_path: Path) -> None:
+    result = _run_activation(
+        tmp_path,
+        "BOOTSTRAP_ADMIN_EMAIL=admin@example.com\nBOOTSTRAP_ADMIN_PASSWORD=correct-password\n",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "production_ready=True" in result.stdout
 
 
 def test_release_docs_require_real_api_smoke_separate_from_mock_e2e() -> None:

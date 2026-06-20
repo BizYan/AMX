@@ -62,6 +62,16 @@ jobs:
           ssh -i ~/.ssh/amx_oci "$OCI_USER@$OCI_HOST" \
             "bash -lc 'cd \"$AMX_PRODUCTION_PATH\" && bash infra/deploy/health-check.sh --base-url \"$PRODUCTION_BASE_URL\"'"
 
+      - name: Activate production capability evidence
+        env:
+          OCI_HOST: ${{ secrets.OCI_HOST }}
+          OCI_USER: ${{ secrets.OCI_USER }}
+          AMX_PRODUCTION_PATH: ${{ secrets.AMX_PRODUCTION_PATH }}
+          PRODUCTION_BASE_URL: ${{ secrets.PRODUCTION_BASE_URL }}
+        run: |
+          ssh -i ~/.ssh/amx_oci "$OCI_USER@$OCI_HOST" \
+            "bash -lc 'cd \"$AMX_PRODUCTION_PATH\" && bash infra/deploy/activate-capability-evidence.sh --base-url \"$PRODUCTION_BASE_URL\"'"
+
       - name: Authenticated production smoke
         env:
           OCI_HOST: ${{ secrets.OCI_HOST }}
