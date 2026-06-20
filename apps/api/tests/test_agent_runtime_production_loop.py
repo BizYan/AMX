@@ -488,7 +488,10 @@ async def test_workflow_run_binds_immutable_version_input_snapshot_retry_and_saf
     export_task = next(task for task in tasks if task.node_id == "export")
     assert export_task.output_data["artifact_refs"]
     assert export_task.output_data["artifact_refs"][0]["kind"] == "export_artifact"
-    assert "credential" not in str(export_task.output_data).lower()
+    assert export_task.output_data["interaction_evidence"]["credential_boundary"] == "secret_ref_only"
+    assert "sk-should-not-persist-in-runtime-evidence" not in str(export_task.output_data)
+    assert "credential_ref" not in str(export_task.output_data).lower()
+    assert "api_key" not in str(export_task.output_data).lower()
     assert "sk-should-not" not in str(export_task.output_data)
 
     events = await run_service.get_run_events(run.id, tenant_id)
@@ -509,6 +512,115 @@ async def test_workflow_run_binds_immutable_version_input_snapshot_retry_and_saf
     assert [event.event_type for event in retry_events].count("run_retry_queued") == 1
     assert retry_events[-1].event_data["attempt"] == 1
     assert retry_events[-1].event_data["previous_status"] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_live_tool_interaction_failure_retry_and_cancel_evidence_boundary(db_session):
+    tenant_id = uuid4()
+    user_id = uuid4()
+    project_id = uuid4()
+
+    workflow_service = WorkflowService(db_session)
+    workflow = await workflow_service.create_workflow(
+        tenant_id=tenant_id,
+        name="Bounded live tool evidence workflow",
+        description="One bounded workflow with tool interaction evidence.",
+        category="export_orchestration",
+        created_by=user_id,
+    )
+    version = await workflow_service.create_version(
+        workflow_id=workflow.id,
+        tenant_id=tenant_id,
+        dag_json={
+            "nodes": [
+                {
+                    "id": "live_tool",
+                    "type": "tool",
+                    "tool": "document_export",
+                    "config": {
+                        "document_id": str(uuid4()),
+                        "format": "markdown",
+                        "credential_ref": "env:AMX_TEST_TOOL_SECRET",
+                    },
+                }
+            ]
+        },
+        skill_contracts=[],
+        tool_contracts=[],
+        created_by=user_id,
+    )
+    await workflow_service.activate_version(version.id, tenant_id)
+
+    run_service = AgentRunService(db_session)
+    run = await run_service.create_run(
+        tenant_id=tenant_id,
+        project_id=project_id,
+        workflow_version_id=version.id,
+        input_data={
+            "content": "synthetic live interaction evidence",
+            "credential_ref": "env:AMX_TEST_TOOL_SECRET",
+            "api_key": "sk-raw-secret-must-not-persist",
+        },
+        created_by=user_id,
+    )
+    await run_service.create_tasks_for_dag(run.id, tenant_id, version.dag_json, run.input_data)
+
+    executor = DAGExecutor(db_session)
+
+    async def failing_tool(tool_name, input_data, context):
+        raise RuntimeError("remote tool unavailable with sk-raw-secret-must-not-persist")
+
+    executor.skill_service.execute_tool = failing_tool
+    result = await executor.execute_workflow(
+        run.id,
+        version.dag_json,
+        run.input_data,
+        {"tenant_id": tenant_id, "created_by": user_id},
+    )
+
+    assert result["success"] is False
+    failed_run = await run_service.get_run(run.id, tenant_id)
+    assert failed_run.status == "failed"
+    assert "sk-raw-secret" not in str(failed_run.metadata_json)
+
+    task = (await run_service.get_run_tasks(run.id, tenant_id))[0]
+    assert task.status == "failed"
+    assert task.output_data is not None
+    assert task.output_data["execution"]["adapter_ref"] == "tool:document_export"
+    assert task.output_data["interaction_evidence"]["status"] == "failed"
+    assert task.output_data["interaction_evidence"]["credential_boundary"] == "secret_ref_only"
+    assert "sk-raw-secret" not in str(task.output_data)
+    assert "sk-raw-secret" not in str(task.error_message)
+
+    events = await run_service.get_run_events(run.id, tenant_id)
+    failed_events = [event for event in events if event.event_type == "node_provider_or_tool_failed"]
+    assert failed_events
+    assert failed_events[-1].event_data["node_id"] == "live_tool"
+    assert failed_events[-1].event_data["tool_name"] == "document_export"
+    assert failed_events[-1].event_data["adapter_ref"] == "tool:document_export"
+    assert failed_events[-1].event_data["credential_boundary"] == "secret_ref_only"
+    assert "sk-raw-secret" not in str([event.event_data for event in events])
+
+    retry = await run_service.prepare_run_retry(run.id, tenant_id)
+    assert retry.status == "pending"
+    assert retry.metadata_json["retry_attempt"] == 1
+    assert retry.metadata_json["retry_of_run_id"] == str(run.id)
+    assert retry.metadata_json["last_failure_event_id"] == str(failed_events[-1].id)
+    retry_events = await run_service.get_run_events(run.id, tenant_id)
+    retry_event = retry_events[-1]
+    assert retry_event.event_type == "run_retry_queued"
+    assert retry_event.event_data["linked_failure_event_id"] == str(failed_events[-1].id)
+    assert retry_event.event_data["attempt"] == 1
+    assert "sk-raw-secret" not in str(retry_event.event_data)
+
+    cancelled = await run_service.cancel_run(run.id, tenant_id, reason="Owner stopped retry before execution")
+    assert cancelled.status == "cancelled"
+    cancelled_task = (await run_service.get_run_tasks(run.id, tenant_id))[0]
+    assert cancelled_task.status == "cancelled"
+    cancel_events = await run_service.get_run_events(run.id, tenant_id)
+    assert cancel_events[-1].event_type == "run_cancelled"
+    assert cancel_events[-1].event_data["prevents_further_task_execution"] is True
+    assert cancel_events[-1].event_data["cancelled_task_ids"] == [str(cancelled_task.id)]
 
 
 @pytest.mark.asyncio
