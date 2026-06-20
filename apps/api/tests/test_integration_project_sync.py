@@ -1,5 +1,9 @@
 import os
+import shutil
+import subprocess
+import sys
 from datetime import datetime, timezone
+from pathlib import Path
 from uuid import uuid4
 
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
@@ -32,6 +36,83 @@ from app.domains.knowledge.models import KnowledgeEntry, LineageRecord, Provenan
 from app.domains.projects.models import SourceFile
 from app.models.identity import Tenant, User
 from app.models.projects import Project
+
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+LIVE_JIRA_SCRIPT = REPO_ROOT / "infra" / "deploy" / "live-jira-connector-verification.sh"
+LIVE_JIRA_RUNBOOK = REPO_ROOT / "docs" / "runbooks" / "live-jira-connector-verification.md"
+
+
+def _bash_executable() -> str | None:
+    bash = shutil.which("bash")
+    if bash and "windows\\system32\\bash.exe" not in bash.lower():
+        return bash
+    git_bash = Path("C:/Program Files/Git/bin/bash.exe")
+    if git_bash.exists():
+        return str(git_bash)
+    return bash
+
+
+def test_live_jira_connector_verification_fails_closed_without_candidate_inputs(tmp_path):
+    bash = _bash_executable()
+    if bash is None:
+        pytest.skip("bash is required for live Jira verification script contract")
+    env = os.environ.copy()
+    env["PYTHON_BIN"] = sys.executable
+    for key in (
+        "BOOTSTRAP_ADMIN_EMAIL",
+        "BOOTSTRAP_ADMIN_PASSWORD",
+        "AMX_CANDIDATE_JIRA_API_TOKEN",
+        "AMX_CANDIDATE_JIRA_BASE_URL",
+        "AMX_CANDIDATE_JIRA_PROJECT_KEY",
+    ):
+        env.pop(key, None)
+    env_file = tmp_path / ".env"
+    env_file.write_text("", encoding="utf-8")
+
+    result = subprocess.run(
+        [
+            bash,
+            str(LIVE_JIRA_SCRIPT),
+            "--base-url",
+            "https://amx.example.test",
+            "--env-file",
+            str(env_file),
+        ],
+        cwd=REPO_ROOT,
+        env=env,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "BOOTSTRAP_ADMIN_EMAIL and BOOTSTRAP_ADMIN_PASSWORD are required" in result.stderr
+    assert "AMX_CANDIDATE_JIRA_API_TOKEN" in LIVE_JIRA_SCRIPT.read_text(encoding="utf-8")
+    assert "AMX_CANDIDATE_JIRA_API_TOKEN=" not in result.stdout
+    assert "AMX_CANDIDATE_JIRA_API_TOKEN=" not in result.stderr
+
+
+def test_live_jira_connector_verification_runbook_and_script_define_candidate_boundary():
+    script = LIVE_JIRA_SCRIPT.read_text(encoding="utf-8")
+    runbook = LIVE_JIRA_RUNBOOK.read_text(encoding="utf-8")
+
+    for required in (
+        "AMX_CANDIDATE_JIRA_API_TOKEN",
+        "AMX_CANDIDATE_JIRA_BASE_URL",
+        "AMX_CANDIDATE_JIRA_PROJECT_KEY",
+        "credential_ref",
+        "jira_project_sync_v1",
+        "missing_credential",
+        "expired_credential",
+        "remote_error",
+        "integration.project_sync.completed",
+    ):
+        assert required in script
+        assert required in runbook
+    assert "api_token" not in script
+    assert "AMX_CANDIDATE_JIRA_API_TOKEN=" not in script
 
 
 @pytest.fixture
