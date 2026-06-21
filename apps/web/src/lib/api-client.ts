@@ -992,6 +992,7 @@ export const notificationsApi = {
 export const opsApi = {
   getHealth: () => apiClient.get<HealthStatus>('/ops/health'),
   getReadinessDashboard: () => apiClient.get<OpsReadinessDashboard>('/ops/readiness-dashboard'),
+  getReleaseEvidenceExport: () => apiClient.get<OpsReleaseEvidenceExport>('/ops/readiness-dashboard/evidence'),
   getProductionCommandCenter: () => apiClient.get<ProductionOpsCommandCenter>('/ops/production-command-center'),
   getCapabilityReadiness: () => apiClient.get<CapabilityReadiness>('/ops/capabilities/readiness'),
   getCapabilityActivationPlan: () => apiClient.get<CapabilityActivationResponse>('/ops/capabilities/activation-plan'),
@@ -2567,6 +2568,32 @@ export interface OpsReadinessCriticalFailure {
   action_href?: string | null
 }
 
+export interface OpsReleaseEvidenceBlocker {
+  code: string
+  severity: 'critical' | 'high' | 'medium' | 'low'
+  summary: string
+}
+
+export interface OpsReleaseEvidence {
+  status: 'ready' | 'attention' | 'blocked' | 'not_recorded'
+  environment: string | null
+  source: 'sanitized_manifest' | 'runtime_environment' | 'not_recorded'
+  deployed_ref: string | null
+  deployed_sha: string | null
+  expected_sha: string | null
+  sha_matches: boolean | null
+  release_tag: string | null
+  candidate_verification_run_url: string | null
+  production_deployment_run_url: string | null
+  authenticated_smoke_run_url: string | null
+  smoke_status: string
+  provenance_status: string
+  gitnexus_status: string
+  gitnexus_indexed_sha: string | null
+  latest_evidence_export_at: string
+  blockers: OpsReleaseEvidenceBlocker[]
+}
+
 export interface OpsReadinessDashboard {
   generated_at: string
   tenant_id: string | null
@@ -2582,7 +2609,24 @@ export interface OpsReadinessDashboard {
   gitnexus: Record<string, any>
   agent_run_health: Record<string, any>
   latest_critical_failures: OpsReadinessCriticalFailure[]
+  release_evidence: OpsReleaseEvidence
   evidence_export: Record<string, any>
+}
+
+export interface OpsReleaseEvidenceExport {
+  generated_at: string
+  sanitized: true
+  status: OpsReleaseEvidence['status']
+  release_evidence: OpsReleaseEvidence
+  health: Record<string, any>
+  provider_readiness: ProviderReadinessSummary
+  capability_readiness: CapabilityReadiness
+  capability_commissioning: CapabilityCommissioningResponse
+  quota: Record<string, any>
+  latest_smoke: Record<string, any>
+  gitnexus: Record<string, any>
+  agent_run_health: Record<string, any>
+  latest_critical_failures: OpsReadinessCriticalFailure[]
 }
 
 export interface QuotaCommandCenterGate {

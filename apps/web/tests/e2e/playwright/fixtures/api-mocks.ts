@@ -3736,6 +3736,32 @@ export async function setupApiMocks(page: Page, options: SetupApiMockOptions = {
     })
   })
 
+  await page.route('**/api/v1/ops/readiness-dashboard/evidence', async (route) => {
+    const dashboard = MOCK.MOCK_OPS_DATA.readiness_dashboard
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      headers: {
+        'Content-Disposition': 'attachment; filename="amx-release-evidence.json"',
+      },
+      body: JSON.stringify({
+        generated_at: dashboard.generated_at,
+        sanitized: true,
+        status: dashboard.release_evidence.status,
+        release_evidence: dashboard.release_evidence,
+        health: dashboard.health,
+        provider_readiness: dashboard.provider_readiness,
+        capability_readiness: dashboard.capability_readiness,
+        capability_commissioning: dashboard.capability_commissioning,
+        quota: dashboard.quota,
+        latest_smoke: dashboard.latest_smoke,
+        gitnexus: dashboard.gitnexus,
+        agent_run_health: dashboard.agent_run_health,
+        latest_critical_failures: dashboard.latest_critical_failures,
+      }),
+    })
+  })
+
   await page.route('**/api/v1/ops/production-command-center*', async (route) => {
     const readiness = MOCK.MOCK_OPS_DATA.capability_readiness
     const commissioning = {
