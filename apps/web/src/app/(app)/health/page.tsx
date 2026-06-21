@@ -78,6 +78,8 @@ export default function HealthDashboardPage() {
   const tenantId = currentUser?.tenant_id || currentUser?.tenantId
   const [activationRunData, setActivationRunData] = useState<CapabilityActivationResponse | null>(null)
   const [commissioningRunData, setCommissioningRunData] = useState<CapabilityCommissioningResponse | null>(null)
+  const [evidenceExporting, setEvidenceExporting] = useState(false)
+  const [evidenceExportError, setEvidenceExportError] = useState<string | null>(null)
 
   // Fetch provider health
   const { data: providersData, isLoading: providersLoading, refetch: refetchProviders } = useQuery({
@@ -437,19 +439,27 @@ export default function HealthDashboardPage() {
     return String(value)
   }
 
-  const downloadOpsEvidence = () => {
-    if (!opsReadinessDashboardData) return
-    const blob = new Blob([JSON.stringify(opsReadinessDashboardData, null, 2)], {
-      type: 'application/json',
-    })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `ops-readiness-evidence-${opsReadinessDashboardData.generated_at}.json`.replace(/[:.]/g, '-')
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
+  const downloadOpsEvidence = async () => {
+    setEvidenceExporting(true)
+    setEvidenceExportError(null)
+    try {
+      const evidence = await opsApi.getReleaseEvidenceExport()
+      const blob = new Blob([JSON.stringify(evidence, null, 2)], {
+        type: 'application/json',
+      })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = 'amx-release-evidence.json'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    } catch {
+      setEvidenceExportError('Release evidence export failed. Refresh the runtime evidence and retry.')
+    } finally {
+      setEvidenceExporting(false)
+    }
   }
 
   return (
@@ -540,19 +550,125 @@ export default function HealthDashboardPage() {
               <div>
                 <CardTitle className="flex items-center gap-2">
                   <ShieldCheck className="h-5 w-5" />
-                  Ops readiness evidence
+                  Release Evidence Console
                 </CardTitle>
                 <CardDescription>
-                  Sanitized operations snapshot from real runtime surfaces. Mock E2E data is regression evidence only.
+                  Single read-only runtime evidence boundary. Missing evidence never defaults to a passing release gate.
                 </CardDescription>
               </div>
-              <Button variant="outline" onClick={downloadOpsEvidence}>
+              <Button variant="outline" onClick={downloadOpsEvidence} disabled={evidenceExporting}>
                 <FileText className="mr-2 h-4 w-4" />
-                Export sanitized evidence
+                {evidenceExporting ? 'Exporting evidence...' : 'Export sanitized evidence'}
               </Button>
             </div>
           </CardHeader>
           <CardContent className="space-y-5">
+            <div className="flex flex-wrap items-center gap-3 rounded-md border border-slate-200 p-4 dark:border-slate-800">
+              <Badge
+                variant={opsReadinessDashboardData.release_evidence.status === 'blocked' ? 'destructive' : opsReadinessDashboardData.release_evidence.status === 'ready' ? 'default' : 'secondary'}
+              >
+                {opsReadinessDashboardData.release_evidence.status}
+              </Badge>
+              <span className="text-sm text-slate-600 dark:text-slate-300">
+                Environment: <strong>{formatEvidenceValue(opsReadinessDashboardData.release_evidence.environment)}</strong>
+              </span>
+              <span
+                data-testid="sha-match-indicator"
+                className="text-sm text-slate-600 dark:text-slate-300"
+              >
+                {opsReadinessDashboardData.release_evidence.sha_matches === true
+                  ? 'SHA match'
+                  : opsReadinessDashboardData.release_evidence.sha_matches === false
+                    ? 'SHA mismatch'
+                    : 'SHA comparison not recorded'}
+              </span>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-md border border-slate-200 p-4 dark:border-slate-800">
+                <p className="text-xs text-slate-500">Runtime SHA</p>
+                <p className="mt-2 break-all font-mono text-xs">{formatEvidenceValue(opsReadinessDashboardData.release_evidence.deployed_sha)}</p>
+              </div>
+              <div className="rounded-md border border-slate-200 p-4 dark:border-slate-800">
+                <p className="text-xs text-slate-500">Expected SHA</p>
+                <p className="mt-2 break-all font-mono text-xs">{formatEvidenceValue(opsReadinessDashboardData.release_evidence.expected_sha)}</p>
+              </div>
+              <div className="rounded-md border border-slate-200 p-4 dark:border-slate-800">
+                <p className="text-xs text-slate-500">Release tag / deployed ref</p>
+                <p className="mt-2 font-medium">{formatEvidenceValue(opsReadinessDashboardData.release_evidence.release_tag)}</p>
+                <p className="mt-1 text-xs text-slate-500">{formatEvidenceValue(opsReadinessDashboardData.release_evidence.deployed_ref)}</p>
+              </div>
+              <div className="rounded-md border border-slate-200 p-4 dark:border-slate-800">
+                <p className="text-xs text-slate-500">Latest evidence export</p>
+                <p className="mt-2 text-sm">{formatEvidenceValue(opsReadinessDashboardData.release_evidence.latest_evidence_export_at)}</p>
+                <p className="mt-1 text-xs text-slate-500">{opsReadinessDashboardData.release_evidence.source}</p>
+              </div>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-md border border-slate-200 p-4 dark:border-slate-800">
+                <p className="text-xs text-slate-500">Smoke</p>
+                <p className="mt-2 font-medium">{formatEvidenceValue(opsReadinessDashboardData.release_evidence.smoke_status)}</p>
+                {opsReadinessDashboardData.release_evidence.authenticated_smoke_run_url && (
+                  <a className="mt-2 inline-flex items-center text-xs text-blue-600 hover:underline" href={opsReadinessDashboardData.release_evidence.authenticated_smoke_run_url} target="_blank" rel="noreferrer">
+                    Authenticated smoke <ExternalLink className="ml-1 h-3 w-3" />
+                  </a>
+                )}
+              </div>
+              <div className="rounded-md border border-slate-200 p-4 dark:border-slate-800">
+                <p className="text-xs text-slate-500">Provenance</p>
+                <p className="mt-2 font-medium">{formatEvidenceValue(opsReadinessDashboardData.release_evidence.provenance_status)}</p>
+              </div>
+              <div className="rounded-md border border-slate-200 p-4 dark:border-slate-800">
+                <p className="text-xs text-slate-500">GitNexus</p>
+                <p className="mt-2 font-medium">{formatEvidenceValue(opsReadinessDashboardData.release_evidence.gitnexus_status)}</p>
+                <p className="mt-1 break-all font-mono text-xs text-slate-500">{formatEvidenceValue(opsReadinessDashboardData.release_evidence.gitnexus_indexed_sha)}</p>
+              </div>
+              <div className="rounded-md border border-slate-200 p-4 dark:border-slate-800">
+                <p className="text-xs text-slate-500">Workflow evidence</p>
+                <div className="mt-2 flex flex-col items-start gap-2 text-xs">
+                  {opsReadinessDashboardData.release_evidence.candidate_verification_run_url ? (
+                    <a className="inline-flex items-center text-blue-600 hover:underline" href={opsReadinessDashboardData.release_evidence.candidate_verification_run_url} target="_blank" rel="noreferrer">
+                      Candidate verification <ExternalLink className="ml-1 h-3 w-3" />
+                    </a>
+                  ) : <span className="text-slate-500">Candidate verification not recorded</span>}
+                  {opsReadinessDashboardData.release_evidence.production_deployment_run_url ? (
+                    <a className="inline-flex items-center text-blue-600 hover:underline" href={opsReadinessDashboardData.release_evidence.production_deployment_run_url} target="_blank" rel="noreferrer">
+                      Production deployment <ExternalLink className="ml-1 h-3 w-3" />
+                    </a>
+                  ) : <span className="text-slate-500">Production deployment not recorded</span>}
+                </div>
+              </div>
+            </div>
+
+            {evidenceExportError && (
+              <p role="alert" className="text-sm text-red-600">{evidenceExportError}</p>
+            )}
+
+            <div className="rounded-md border border-slate-200 p-4 dark:border-slate-800">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h3 className="font-medium text-slate-900 dark:text-white">Release evidence blockers</h3>
+                <Badge variant={opsReadinessDashboardData.release_evidence.blockers.length ? 'destructive' : 'secondary'}>
+                  {opsReadinessDashboardData.release_evidence.blockers.length}
+                </Badge>
+              </div>
+              {opsReadinessDashboardData.release_evidence.blockers.length === 0 ? (
+                <p className="text-sm text-slate-500">No release evidence blockers recorded.</p>
+              ) : (
+                <div className="space-y-2">
+                  {opsReadinessDashboardData.release_evidence.blockers.map((blocker) => (
+                    <div key={blocker.code} className="rounded border border-slate-200 p-3 text-sm dark:border-slate-800">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant={blocker.severity === 'critical' || blocker.severity === 'high' ? 'destructive' : 'secondary'}>{blocker.severity}</Badge>
+                        <span className="font-medium">{blocker.summary}</span>
+                      </div>
+                      <p className="mt-1 font-mono text-xs text-slate-500">{blocker.code}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <div className="rounded-md border border-slate-200 p-4 dark:border-slate-800">
                 <p className="text-xs text-slate-500">Provider readiness</p>
@@ -579,24 +695,6 @@ export default function HealthDashboardPage() {
                 <p className="mt-1 text-sm text-slate-500">
                   {formatEvidenceValue(opsReadinessDashboardData.agent_run_health.running)} running, {formatEvidenceValue(opsReadinessDashboardData.agent_run_health.failed_24h)} failed 24h
                 </p>
-              </div>
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-3">
-              <div className="rounded-md border border-slate-200 p-4 dark:border-slate-800">
-                <p className="text-xs text-slate-500">Latest deployment ref</p>
-                <p className="mt-2 font-medium">{formatEvidenceValue(opsReadinessDashboardData.deployment.ref)}</p>
-                <p className="mt-1 truncate text-xs text-slate-500">{formatEvidenceValue(opsReadinessDashboardData.deployment.sha)}</p>
-              </div>
-              <div className="rounded-md border border-slate-200 p-4 dark:border-slate-800">
-                <p className="text-xs text-slate-500">Smoke</p>
-                <p className="mt-2 font-medium">{formatEvidenceValue(opsReadinessDashboardData.latest_smoke.status)}</p>
-                <p className="mt-1 text-xs text-slate-500">{formatEvidenceValue(opsReadinessDashboardData.latest_smoke.checked_at)}</p>
-              </div>
-              <div className="rounded-md border border-slate-200 p-4 dark:border-slate-800">
-                <p className="text-xs text-slate-500">GitNexus</p>
-                <p className="mt-2 font-medium">{formatEvidenceValue(opsReadinessDashboardData.gitnexus.refresh_status)}</p>
-                <p className="mt-1 truncate text-xs text-slate-500">{formatEvidenceValue(opsReadinessDashboardData.gitnexus.indexed_sha)}</p>
               </div>
             </div>
 

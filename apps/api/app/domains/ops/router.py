@@ -43,6 +43,7 @@ from app.domains.ops.schemas import (
     NotificationDeliveryListResponse,
     NotificationDeliveryResponse,
     OpsReadinessDashboardResponse,
+    OpsReleaseEvidenceExportResponse,
     ProductionOpsCommandCenterResponse,
 )
 from app.services.cache_service import CacheService
@@ -316,6 +317,24 @@ async def get_ops_readiness_dashboard(
 
     service = OpsReadinessDashboardService(db)
     return await service.build(admin.tenant_id)
+
+
+@router.get(
+    "/readiness-dashboard/evidence",
+    response_model=OpsReleaseEvidenceExportResponse,
+    tags=["health"],
+)
+async def export_ops_release_evidence(
+    response: Response,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(require_ops_reader)],
+) -> OpsReleaseEvidenceExportResponse:
+    """Export one allowlisted, sanitized, read-only release evidence payload."""
+    from app.domains.ops.readiness_dashboard import OpsReadinessDashboardService
+
+    response.headers["Content-Disposition"] = 'attachment; filename="amx-release-evidence.json"'
+    response.headers["Cache-Control"] = "no-store"
+    return await OpsReadinessDashboardService(db).build_export(admin.tenant_id)
 
 
 # ============================================================================

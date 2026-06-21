@@ -22,11 +22,28 @@ test.describe('ops readiness dashboard evidence', () => {
     })
   })
 
-  test('shows sanitized production readiness evidence and export boundary', async ({ page }) => {
+  test('shows the read-only release evidence console and exports sanitized JSON', async ({ page }) => {
     await gotoAppPage(page, '/system-health')
 
     const dashboard = page.getByTestId('ops-readiness-dashboard')
     await expect(dashboard).toBeVisible()
+    await expect(dashboard.getByRole('heading', { name: 'Release Evidence Console' })).toBeVisible()
+    await expect(dashboard).toContainText('blocked')
+    await expect(dashboard).toContainText('production')
+    await expect(dashboard).toContainText('Runtime SHA')
+    await expect(dashboard).toContainText('Expected SHA')
+    await expect(dashboard).toContainText('SHA match')
+    await expect(dashboard.getByRole('link', { name: 'Candidate verification' })).toHaveAttribute(
+      'href',
+      'https://github.com/BizYan/AMX/actions/runs/123456780',
+    )
+    await expect(dashboard.getByRole('link', { name: 'Production deployment' })).toHaveAttribute(
+      'href',
+      'https://github.com/BizYan/AMX/actions/runs/123456789',
+    )
+    await expect(dashboard).toContainText('Provenance')
+    await expect(dashboard).toContainText('Latest evidence export')
+    await expect(dashboard).toContainText('Provider readiness is not production-ready.')
     await expect(dashboard).toContainText('Provider readiness')
     await expect(dashboard).toContainText('67%')
     await expect(dashboard).toContainText('Capability readiness')
@@ -37,8 +54,13 @@ test.describe('ops readiness dashboard evidence', () => {
     await expect(dashboard).toContainText('GitNexus')
     await expect(dashboard).toContainText('Agent health')
     await expect(dashboard).toContainText('Latest critical failures')
-    await expect(dashboard).toContainText('error:provider_timeout')
+    await expect(dashboard).toContainText('Operational metric failure recorded')
     await expect(dashboard).toContainText('sanitized')
     await expect(dashboard).not.toContainText(/api[_-]?key|token|secret/i)
+
+    const downloadPromise = page.waitForEvent('download')
+    await dashboard.getByRole('button', { name: 'Export sanitized evidence' }).click()
+    const download = await downloadPromise
+    expect(download.suggestedFilename()).toBe('amx-release-evidence.json')
   })
 })

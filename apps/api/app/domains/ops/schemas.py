@@ -4,7 +4,7 @@ Pydantic schemas for ops domain endpoints.
 """
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -567,6 +567,36 @@ class OpsReadinessCriticalFailure(BaseModel):
     action_href: str | None = None
 
 
+class OpsReleaseEvidenceBlocker(BaseModel):
+    """Sanitized release evidence gap or failed gate."""
+
+    code: str
+    severity: Literal["critical", "high", "medium", "low"]
+    summary: str
+
+
+class OpsReleaseEvidence(BaseModel):
+    """Allowlisted runtime release evidence used by the read-only console."""
+
+    status: Literal["ready", "attention", "blocked", "not_recorded"]
+    environment: str | None = None
+    source: Literal["sanitized_manifest", "runtime_environment", "not_recorded"]
+    deployed_ref: str | None = None
+    deployed_sha: str | None = None
+    expected_sha: str | None = None
+    sha_matches: bool | None = None
+    release_tag: str | None = None
+    candidate_verification_run_url: str | None = None
+    production_deployment_run_url: str | None = None
+    authenticated_smoke_run_url: str | None = None
+    smoke_status: str
+    provenance_status: str
+    gitnexus_status: str
+    gitnexus_indexed_sha: str | None = None
+    latest_evidence_export_at: datetime
+    blockers: list[OpsReleaseEvidenceBlocker] = Field(default_factory=list)
+
+
 class OpsReadinessDashboardResponse(BaseModel):
     """One sanitized operations readiness evidence snapshot."""
 
@@ -584,4 +614,23 @@ class OpsReadinessDashboardResponse(BaseModel):
     gitnexus: dict[str, Any]
     agent_run_health: dict[str, Any]
     latest_critical_failures: list[OpsReadinessCriticalFailure] = Field(default_factory=list)
+    release_evidence: OpsReleaseEvidence
     evidence_export: dict[str, Any]
+
+
+class OpsReleaseEvidenceExportResponse(BaseModel):
+    """Single sanitized JSON payload suitable for release evidence references."""
+
+    generated_at: datetime
+    sanitized: Literal[True] = True
+    status: Literal["ready", "attention", "blocked", "not_recorded"]
+    release_evidence: OpsReleaseEvidence
+    health: dict[str, Any]
+    provider_readiness: ProviderReadinessSummary
+    capability_readiness: CapabilityReadinessResponse
+    capability_commissioning: CapabilityCommissioningResponse
+    quota: dict[str, Any]
+    latest_smoke: dict[str, Any]
+    gitnexus: dict[str, Any]
+    agent_run_health: dict[str, Any]
+    latest_critical_failures: list[OpsReadinessCriticalFailure] = Field(default_factory=list)
