@@ -964,7 +964,13 @@ export default function DocumentDetailPage({ params }: DocumentDetailPageProps) 
               <Button variant="outline" size="sm" onClick={() => handleStatusChange('draft')} disabled={isArchived || !canTransitionTo('draft') || statusMutation.isPending}>
                 退回草稿
               </Button>
-              <Button variant="outline" size="sm" onClick={() => handleStatusChange('review')} disabled={isArchived || !canTransitionTo('review') || statusMutation.isPending}>
+              <Button
+                data-testid="document-submit-review-action"
+                variant="outline"
+                size="sm"
+                onClick={() => handleStatusChange('review')}
+                disabled={isArchived || !canTransitionTo('review') || statusMutation.isPending}
+              >
                 提交评审
               </Button>
               <Button
