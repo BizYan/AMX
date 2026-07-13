@@ -234,6 +234,89 @@ def test_candidate_workflow_derives_resources_from_verified_sha():
     assert 'PROJECT_NAME="amx_rc_${REQUESTED_CANDIDATE_SHA' not in workflow
 
 
+def test_staging_workflow_is_manual_exact_sha_only_and_shell_input_safe():
+    workflow = read(".github/workflows/deploy-staging.yml")
+    run_blocks = workflow_run_blocks(workflow)
+
+    assert "workflow_dispatch:" in workflow
+    assert "pull_request:" not in workflow
+    assert "push:" not in workflow
+    assert "REQUESTED_STAGING_SHA: ${{ inputs.ref }}" in workflow
+    assert "ref: ${{ inputs.ref }}" in workflow
+    assert '[[ "$REQUESTED_STAGING_SHA" =~ ^[0-9a-f]{40}$ ]]' in workflow
+    assert 'test "$CHECKED_OUT_SHA" = "$REQUESTED_STAGING_SHA"' in workflow
+    assert 'git merge-base --is-ancestor "$CHECKED_OUT_SHA" origin/main' in workflow
+
+    forbidden = ("${{ github.event.inputs.ref }}", "${{ inputs.ref }}")
+    assert [block for block in run_blocks if any(value in block for value in forbidden)] == []
+
+
+def test_staging_workflow_fails_closed_and_isolates_runtime_resources():
+    workflow = read(".github/workflows/deploy-staging.yml")
+
+    assert "environment: staging" in workflow
+    assert "environment: production" not in workflow
+    assert "STAGING_LLM_API_KEY: ${{ secrets.STAGING_LLM_API_KEY }}" in workflow
+    assert 'test -n "$STAGING_LLM_API_KEY"' in workflow
+    assert 'COMPOSE_PROJECT_NAME="amx_staging_${SLOT_KEY}_${SHORT_SHA}"' in workflow
+    assert 'echo "AMX_RUNTIME_NETWORK=${COMPOSE_PROJECT_NAME}_network"' in workflow
+    assert 'echo "POSTGRES_DB=$COMPOSE_PROJECT_NAME"' in workflow
+    assert "POSTGRES_HOST_PORT=$((30000 + PORT_OFFSET))" in workflow
+    assert "REDIS_HOST_PORT=$((31000 + PORT_OFFSET))" in workflow
+    assert "API_HOST_PORT=$((32000 + PORT_OFFSET))" in workflow
+    assert "WEB_HOST_PORT=$((33000 + PORT_OFFSET))" in workflow
+    assert "isolated staging port is already in use" in workflow
+    assert "staging root is outside the approved path" in workflow
+    assert 'ALLOWED_CORS_ORIGINS="http://127.0.0.1:23000"' in workflow
+    assert 'test -n "$STAGING_NEXT_PUBLIC_API_URL"' in workflow
+    assert "/home/ubuntu/amx/production" not in workflow
+
+
+def test_staging_real_browser_gate_uses_real_runtime_and_tears_down():
+    workflow = read(".github/workflows/deploy-staging.yml")
+
+    assert 'RUN_REAL_BROWSER_DELIVERY_TEST: "true"' in workflow
+    assert "E2E_TARGET: staging" in workflow
+    assert "real-browser-commercial-delivery.spec.ts" in workflow
+    assert "--trace=off" in workflow
+    assert "setupApiMocks" not in workflow
+    assert "page.route" not in workflow
+    assert "mock-jwt" not in workflow
+    assert "down -v --remove-orphans" in workflow
+    assert 'rm -f .env .env.pending' in workflow
+    assert 'test -z "$remaining_containers$remaining_networks$remaining_volumes"' in workflow
+    assert "staging-commercial-journey-evidence" in workflow
+
+
+def test_staging_workflow_does_not_interpolate_secrets_in_shell_blocks():
+    workflow = read(".github/workflows/deploy-staging.yml")
+
+    assert all("${{ secrets." not in block for block in workflow_run_blocks(workflow))
+
+
+def test_real_browser_commercial_journey_uses_ui_roles_and_sanitized_artifacts():
+    spec = read("apps/web/tests/e2e/playwright/real-browser-commercial-delivery.spec.ts")
+    config = read("apps/web/playwright.config.ts")
+
+    assert "setupApiMocks" not in spec
+    assert "page.route(" not in spec
+    assert "apiJson<any>(request, 'post', '/projects'" not in spec
+    assert "open-project-launch" in spec
+    assert "Project Lead" in spec
+    assert "Reviewer" in spec
+    assert "Approver" in spec
+    assert "document-submit-review-action" in spec
+    assert "create-baseline-action" in spec
+    assert "waitForEvent('download')" in spec
+    assert "portal-unavailable" in spec
+    assert "project.acceptance.close" in spec
+    assert "commercial-delivery-evidence.json" in spec
+    assert "portalUrl" not in spec.split("type JourneyEvidence", 1)[1].split("}", 1)[0]
+    assert "runRealBrowserDelivery ? 'off' : 'on-first-retry'" in config
+    assert "runRealBrowserDelivery ? 'off' : 'only-on-failure'" in config
+    assert "runRealBrowserDelivery ? 'off' : 'retain-on-failure'" in config
+
+
 def test_candidate_migration_gate_claim_matches_implementation_and_docs():
     workflow = read(".github/workflows/candidate-verification.yml")
     release_runbook = read("docs/runbooks/release-management.md")

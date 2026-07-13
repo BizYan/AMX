@@ -241,6 +241,7 @@ export default function KnowledgePage({ params }: KnowledgePageProps) {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <Input
+                data-testid="project-knowledge-search"
                 placeholder="搜索知识、来源、证据或结论"
                 className="pl-10"
                 value={searchQuery}
@@ -286,6 +287,8 @@ export default function KnowledgePage({ params }: KnowledgePageProps) {
                   return (
                     <div
                       key={node.id}
+                      data-testid={`knowledge-entry-${node.id}`}
+                      data-source-file-id={node.source_file_id || ''}
                       className={`rounded-lg border p-4 transition ${
                         selected
                           ? 'border-indigo-400 bg-indigo-50 dark:border-indigo-500 dark:bg-indigo-950/30'
@@ -303,7 +306,10 @@ export default function KnowledgePage({ params }: KnowledgePageProps) {
                           </div>
                           <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">{compactText(node.summary, 180)}</p>
                           <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">
-                            <span className="inline-flex items-center gap-1">
+                            <span
+                              className="inline-flex items-center gap-1"
+                              data-testid={`knowledge-entry-lineage-${node.id}`}
+                            >
                               <FileText className="h-3.5 w-3.5" />
                               来源：{node.source_label}
                             </span>

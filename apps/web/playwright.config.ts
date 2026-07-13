@@ -1,6 +1,8 @@
 /** Playwright E2E Configuration */
 import { defineConfig, devices } from '@playwright/test'
 
+const runRealBrowserDelivery = process.env.RUN_REAL_BROWSER_DELIVERY_TEST === 'true'
+
 export default defineConfig({
   testDir: './tests/e2e/playwright',
   fullyParallel: false,
@@ -12,9 +14,10 @@ export default defineConfig({
 
   use: {
     baseURL: process.env.E2E_BASE_URL || 'http://localhost:3000',
-    trace: 'on-first-retry',
-    screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
+    // Real-runtime credentials must never be captured in automatic login artifacts.
+    trace: runRealBrowserDelivery ? 'off' : 'on-first-retry',
+    screenshot: runRealBrowserDelivery ? 'off' : 'only-on-failure',
+    video: runRealBrowserDelivery ? 'off' : 'retain-on-failure',
   },
 
   projects: [

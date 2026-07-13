@@ -46,4 +46,14 @@ test.describe('Source ingestion production loop', () => {
     await expect(evidence).toContainText('知识可检索')
     await expect(evidence).toContainText('查看来源追溯')
   })
+
+  test('shows searchable source lineage in the normal project knowledge route', async ({ page }) => {
+    await gotoAppPage(page, '/projects/project-e2e-001/knowledge')
+    await page.getByTestId('project-knowledge-search').fill('仓储批次分配规则')
+
+    const entry = page.getByTestId('knowledge-entry-entry-source-ready-001')
+    await expect(entry).toBeVisible()
+    await expect(entry).toHaveAttribute('data-source-file-id', 'file-e2e-ready')
+    await expect(page.getByTestId('knowledge-entry-lineage-entry-source-ready-001')).toContainText('仓储升级招标文件.pdf')
+  })
 })

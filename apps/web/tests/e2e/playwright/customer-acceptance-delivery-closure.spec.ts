@@ -2,6 +2,47 @@ import { expect, test } from '@playwright/test'
 
 import { setupApiMocks } from './fixtures/api-mocks'
 
+test('blocks customer portal creation until the delivery package is ready', async ({ page }) => {
+  await setupApiMocks(page)
+  await page.route('**/api/v1/projects/project-e2e-001/acceptance', async (route) => {
+    if (route.request().method() !== 'GET') {
+      await route.fallback()
+      return
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        project_id: 'project-e2e-001',
+        customer_name: '',
+        contact_name: '',
+        contact_email: '',
+        decision: 'pending',
+        notes: '',
+        items: [],
+        updated_by: null,
+        accepted_at: null,
+        closed_at: null,
+        package_ready: false,
+        gate: {
+          status: 'blocked',
+          label: '关闭门禁未通过',
+          blockers: ['正式交付包尚未就绪'],
+          warnings: [],
+        },
+        follow_ups: [],
+      }),
+    })
+  })
+  await page.goto('/login', { waitUntil: 'domcontentloaded' })
+  await page.evaluate(() => localStorage.setItem('auth_token', 'mock-jwt-token-1234567890abcdef'))
+  await page.goto('/projects/project-e2e-001/acceptance', { waitUntil: 'domcontentloaded' })
+
+  await page.getByTestId('customer-portal-email').fill('customer@example.test')
+  await expect(page.getByTestId('customer-portal-package-blocker')).toBeVisible()
+  await expect(page.getByTestId('create-customer-portal')).toBeDisabled()
+})
+
 test('records customer acceptance and closes formal delivery', async ({ page }) => {
   await setupApiMocks(page)
   await page.goto('/login', { waitUntil: 'domcontentloaded' })
