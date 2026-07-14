@@ -570,6 +570,22 @@ test.describe('Real browser commercial delivery validation', () => {
       expect((await acceptanceSubmission).status()).toBe(200)
       await expect(customerPage.getByTestId('acceptance-receipt')).toBeVisible({ timeout: 30000 })
 
+      await page.goto(`${webUrl}/projects/${evidence.project_id}/plan`, { waitUntil: 'domcontentloaded' })
+      for (const milestoneKey of ['scope-readiness', 'core-authoring', 'review-traceability']) {
+        const milestone = page.getByTestId(`milestone-${milestoneKey}`)
+        await expect(milestone).toBeVisible({ timeout: 30000 })
+        const completeMilestone = milestone.getByRole('button').last()
+        const milestoneCompletion = page.waitForResponse((response) =>
+          response.request().method() === 'POST'
+          && response.url().includes(`/projects/${evidence.project_id}/milestones/`)
+          && response.url().endsWith('/complete')
+        )
+        await completeMilestone.click()
+        const milestoneCompletionResponse = await milestoneCompletion
+        expect(milestoneCompletionResponse.status()).toBe(200)
+        expect((await milestoneCompletionResponse.json()).status).toBe('completed')
+      }
+
       await page.goto(`${webUrl}/projects/${evidence.project_id}/acceptance`, { waitUntil: 'domcontentloaded' })
       await expect(page.getByTestId('close-formal-delivery')).toBeEnabled({ timeout: 30000 })
       const deliveryCloseout = page.waitForResponse((response) =>
