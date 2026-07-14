@@ -657,6 +657,42 @@ async def test_customer_portal_rejects_invalid_expired_and_cross_project_artifac
 
 
 @pytest.mark.asyncio
+async def test_revoking_second_portal_link_preserves_first_link_across_transactions(db_session):
+    owner, _, launched = await _seed(db_session)
+    service = ProjectDeliveryPlanService(db_session)
+    first = await service.create_customer_portal_link(
+        launched.project.id,
+        owner.tenant_id,
+        owner.id,
+        CustomerPortalLinkCreate(customer_email="first@example.com", expires_in_days=7),
+    )
+    second = await service.create_customer_portal_link(
+        launched.project.id,
+        owner.tenant_id,
+        owner.id,
+        CustomerPortalLinkCreate(customer_email="second@example.com", expires_in_days=7),
+    )
+    project_id = launched.project.id
+    project_name = launched.project.name
+    tenant_id = owner.tenant_id
+    owner_id = owner.id
+    await db_session.commit()
+    db_session.expire_all()
+
+    await service.revoke_customer_portal_link(project_id, tenant_id, owner_id, second.id)
+    await db_session.commit()
+    db_session.expire_all()
+
+    links = await service.list_customer_portal_links(project_id, tenant_id)
+    assert [link.id for link in links] == [first.id, second.id]
+    assert links[0].revoked_at is None
+    assert links[1].revoked_at is not None
+    assert (await service.get_customer_portal(first.token)).project_name == project_name
+    with pytest.raises(PermissionError, match="revoked"):
+        await service.get_customer_portal(second.token)
+
+
+@pytest.mark.asyncio
 async def test_customer_portal_access_download_and_submission_create_sanitized_audit_evidence(db_session):
     owner, _, launched = await _seed(db_session)
     service = ProjectDeliveryPlanService(db_session)

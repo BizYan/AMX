@@ -473,6 +473,8 @@ def test_real_browser_commercial_journey_uses_ui_roles_and_sanitized_artifacts()
     assert "document-submit-review-action" in spec
     assert "create-baseline-action" in spec
     assert "expect(portalCreationResponse.status()).toBe(201)" in spec
+    assert "`${webUrl}${createdPortal.portal_path}`" in spec
+    assert "`${webUrl}${revokedLink.portal_path}`" in spec
     assert "customer-portal-link-${createdPortal.id}" in spec
     assert "expect(portalRevocationResponse.status()).toBe(200)" in spec
     assert "expect((await acceptanceSubmission).status()).toBe(200)" in spec
