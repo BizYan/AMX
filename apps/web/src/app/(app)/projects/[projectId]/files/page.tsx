@@ -240,7 +240,7 @@ export default function FilesPage({ params }: FilesPageProps) {
       }
     }
 
-    queryClient.invalidateQueries({ queryKey: ['project-files', projectId] })
+    await refreshIngestionState()
 
     if (successCount > 0) {
       const description = `已保存 ${successCount} 个文件，资料将自动进入解析、抽取和知识入库流程。`

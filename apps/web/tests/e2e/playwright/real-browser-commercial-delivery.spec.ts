@@ -300,7 +300,9 @@ test.describe('Real browser commercial delivery validation', () => {
         (job) => Boolean(job.id && ['pending', 'running', 'completed'].includes(job.status)),
       )
       if (queuedJob.status === 'pending') {
-        await page.getByTestId(`execute-ingestion-${evidence.source_file_id}`).click()
+        const executeIngestion = page.getByTestId(`execute-ingestion-${evidence.source_file_id}`)
+        await expect(executeIngestion).toBeVisible({ timeout: 30000 })
+        await executeIngestion.click()
       }
       const completedJob = await pollFor<any>(
         'completed ingestion job',
