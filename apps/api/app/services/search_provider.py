@@ -9,6 +9,7 @@ import re
 from uuid import UUID
 
 from sqlalchemy import func, or_, select, text
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.knowledge.schemas import FTSearchResult
@@ -106,7 +107,7 @@ class PostgresFTSProvider(SearchProvider):
             content: Text content to index
             metadata: Optional metadata dict
         """
-        from app.domains.knowledge.models import KnowledgeEntry
+        from app.domains.knowledge.models import FTSDocument, KnowledgeEntry
 
         # Verify entry exists
         result = await self.session.execute(
@@ -118,8 +119,6 @@ class PostgresFTSProvider(SearchProvider):
             raise ValueError(f"KnowledgeEntry {entry_id} not found")
 
         if self._dialect_name() != "postgresql":
-            from app.domains.knowledge.models import FTSDocument
-
             existing = (
                 await self.session.execute(
                     select(FTSDocument).where(FTSDocument.entry_id == entry_id)
@@ -142,24 +141,25 @@ class PostgresFTSProvider(SearchProvider):
             await self.session.flush()
             return
 
-        # Use raw SQL for tsvector creation
-        # Insert or update on conflict
-        await self.session.execute(
-            text("""
-                INSERT INTO knowledge_fts_documents (entry_id, content, metadata, search_vector)
-                VALUES (:entry_id, :content, :metadata, to_tsvector('english', :content))
-                ON CONFLICT (entry_id) DO UPDATE SET
-                    content = EXCLUDED.content,
-                    metadata = EXCLUDED.metadata,
-                    search_vector = to_tsvector('english', EXCLUDED.content),
-                    updated_at = NOW()
-            """),
+        table = FTSDocument.__table__
+        statement = postgresql_insert(table).values(
             {
-                "entry_id": str(entry_id),
-                "content": content,
-                "metadata": metadata,
+                table.c.entry_id: entry_id,
+                table.c.content: content,
+                table.c.metadata: metadata,
+                table.c.search_vector: content,
             }
         )
+        statement = statement.on_conflict_do_update(
+            index_elements=[table.c.entry_id],
+            set_={
+                table.c.content: statement.excluded.content,
+                table.c.metadata: statement.excluded.metadata,
+                table.c.search_vector: statement.excluded.search_vector,
+                table.c.updated_at: func.now(),
+            },
+        )
+        await self.session.execute(statement)
         await self.session.flush()
 
     async def search(
@@ -188,12 +188,12 @@ class PostgresFTSProvider(SearchProvider):
         query_template = """
             SELECT
                 f.entry_id,
-                ts_rank(f.search_vector, query) as rank,
+                ts_rank(to_tsvector('english', f.content), query) as rank,
                 ts_headline('english', f.content, query, 'StartSel=<mark>, StopSel=</mark>, MaxWords=50, MinWords=20') as headline,
                 f.metadata
             FROM knowledge_fts_documents f,
                  websearch_to_tsquery('english', :query) query
-            WHERE f.search_vector @@ query
+            WHERE to_tsvector('english', f.content) @@ query
             AND f.deleted_at IS NULL
         """
 

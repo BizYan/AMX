@@ -26,6 +26,7 @@ from app.core.settings import settings
 from app.db.base import Base
 from app.db.init_schema import deduplicate_indexes
 from app.domains.identity.models import AuditLog  # noqa: F401 - registered for create_all
+from app.domains.knowledge.models import KnowledgeEntry
 from app.domains.ops.capability_activation import CapabilityActivationService
 from app.domains.ops.models import AlertRule, MetricEvent, QuotaUsage
 from app.domains.providers.models import (
@@ -39,6 +40,8 @@ from app.domains.providers.models import (
 from app.domains.providers.readiness import build_provider_readiness_summary
 from app.domains.providers.registry import ProviderRegistry
 from app.models.identity import Tenant
+from app.models.projects import Project
+from app.services.search_provider import PostgresFTSProvider
 
 
 API_ROOT = Path(__file__).resolve().parents[1]
@@ -262,6 +265,45 @@ async def _prepare_minimal_app_tables(database_url: str) -> None:
         await engine.dispose()
 
 
+async def _exercise_postgres_full_text_search(database_url: str) -> tuple[str, list]:
+    marker = f"amx postgres knowledge marker {uuid4().hex}"
+    engine = create_async_engine(database_url)
+    Session = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with Session() as session:
+            tenant = Tenant(name="Knowledge Search Compat", slug=f"knowledge-search-{uuid4().hex[:8]}")
+            session.add(tenant)
+            await session.flush()
+            project = Project(
+                tenant_id=tenant.id,
+                name="Knowledge Search Compat",
+                slug=f"knowledge-search-{uuid4().hex[:8]}",
+            )
+            session.add(project)
+            await session.flush()
+            entry = KnowledgeEntry(
+                tenant_id=tenant.id,
+                project_id=project.id,
+                entry_type="text",
+                content=marker,
+                content_hash=uuid4().hex * 2,
+            )
+            session.add(entry)
+            await session.flush()
+
+            provider = PostgresFTSProvider(session)
+            await provider.index_document(entry.id, marker, {"evidence": "schema_compatibility"})
+            await session.commit()
+            results = await provider.search(
+                marker,
+                5,
+                {"tenant_id": tenant.id, "project_id": project.id},
+            )
+            return str(entry.id), results
+    finally:
+        await engine.dispose()
+
+
 async def _exercise_minimal_app_paths(database_url: str) -> dict[str, object]:
     original_llm_key = os.environ.get("AMX_SCHEMA_COMPAT_LLM_KEY")
     os.environ["AMX_SCHEMA_COMPAT_LLM_KEY"] = "prod-live-compatibility-key"
@@ -458,8 +500,11 @@ def test_candidate_historical_baseline_fixture_upgrades_to_head():
 
         _run_alembic_upgrade_head(database_url)
         asyncio.run(_prepare_minimal_app_tables(database_url))
+        entry_id, search_results = asyncio.run(_exercise_postgres_full_text_search(database_url))
 
         assert asyncio.run(_table_exists(database_url, "projects")) is True
         assert asyncio.run(_table_exists(database_url, "documents")) is True
         assert asyncio.run(_table_exists(database_url, "provider_runs")) is True
         assert asyncio.run(_table_exists(database_url, "metric_events")) is True
+        assert search_results
+        assert str(search_results[0].entry_id) == entry_id
