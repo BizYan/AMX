@@ -507,7 +507,14 @@ test.describe('Real browser commercial delivery validation', () => {
       await expect(page.getByTestId('created-customer-portal-url')).not.toHaveText(portalUrl!, { timeout: 30000 })
       const revokedPortalUrl = await page.getByTestId('created-customer-portal-url').textContent()
       await expect(page.getByTestId(`revoke-customer-portal-${revokedLink.id}`)).toBeVisible({ timeout: 30000 })
+      const portalRevocation = page.waitForResponse((response) =>
+        response.request().method() === 'POST'
+        && response.url().includes(`/customer-portal-links/${revokedLink.id}/revoke`)
+      )
       await page.getByTestId(`revoke-customer-portal-${revokedLink.id}`).click()
+      const portalRevocationResponse = await portalRevocation
+      expect(portalRevocationResponse.status()).toBe(200)
+      expect((await portalRevocationResponse.json()).revoked_at).toBeTruthy()
 
       revokedContext = await browser.newContext()
       const revokedPage = await revokedContext.newPage()
@@ -539,17 +546,26 @@ test.describe('Real browser commercial delivery validation', () => {
       await customerPage.getByTestId('portal-contact-email').fill(customerEmail)
       await customerPage.getByTestId('portal-decision').selectOption('accepted')
       await customerPage.getByTestId('portal-acceptance-criteria').locator('select').first().selectOption('accepted')
+      const acceptanceSubmission = customerPage.waitForResponse((response) =>
+        response.request().method() === 'POST'
+        && response.url().includes('/customer-portal/')
+        && response.url().endsWith('/acceptance')
+      )
       await customerPage.getByTestId('submit-customer-acceptance').click()
+      expect((await acceptanceSubmission).status()).toBe(200)
       await expect(customerPage.getByTestId('acceptance-receipt')).toBeVisible({ timeout: 30000 })
 
       await page.goto(`${webUrl}/projects/${evidence.project_id}/acceptance`, { waitUntil: 'domcontentloaded' })
       await expect(page.getByTestId('close-formal-delivery')).toBeEnabled({ timeout: 30000 })
-      await page.getByTestId('close-formal-delivery').click()
-      const closedAcceptance = await pollFor<any>(
-        'formal delivery closeout',
-        () => apiJson<any>(request, 'get', `/projects/${evidence.project_id}/acceptance`, leadToken),
-        (acceptance) => Boolean(acceptance.closed_at),
+      const deliveryCloseout = page.waitForResponse((response) =>
+        response.request().method() === 'POST'
+        && response.url().includes(`/projects/${evidence.project_id}/acceptance/close`)
       )
+      await page.getByTestId('close-formal-delivery').click()
+      const deliveryCloseoutResponse = await deliveryCloseout
+      expect(deliveryCloseoutResponse.status()).toBe(200)
+      const closedAcceptance = await deliveryCloseoutResponse.json()
+      expect(closedAcceptance.closed_at).toBeTruthy()
       evidence.acceptance_evidence = `decision=${closedAcceptance.decision};closed=true`
 
       const auditResponse = await pollFor<any>(
