@@ -472,6 +472,8 @@ def test_real_browser_commercial_journey_uses_ui_roles_and_sanitized_artifacts()
     assert "await refreshIngestionState()" in project_files_page
     assert "document-submit-review-action" in spec
     assert "create-baseline-action" in spec
+    assert "expect(portalCreationResponse.status()).toBe(201)" in spec
+    assert "customer-portal-link-${createdPortal.id}" in spec
     assert "waitForEvent('download')" in spec
     assert "portal-unavailable" in spec
     assert "project.acceptance.close" in spec
