@@ -58,7 +58,7 @@ services:
         condition: service_healthy
     networks:
       - consultant_ai_network
-    restart: unless-stopped
+    restart: ${AMX_RESTART_POLICY:-unless-stopped}
 
   worker:
     build:
@@ -78,7 +78,7 @@ services:
         condition: service_healthy
     networks:
       - consultant_ai_network
-    restart: unless-stopped
+    restart: ${AMX_RESTART_POLICY:-unless-stopped}
 
   web:
     build:
@@ -95,7 +95,7 @@ services:
       - api
     networks:
       - consultant_ai_network
-    restart: unless-stopped
+    restart: ${AMX_RESTART_POLICY:-unless-stopped}
 
 networks:
   consultant_ai_network:

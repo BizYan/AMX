@@ -54,7 +54,7 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$REQUESTED_STAGING_SHA" =~ ^[0-9a-f]{40}$ ]]
-          [[ "$REQUESTED_STAGING_SLOT" =~ ^[a-z0-9][a-z0-9-]{0,39}$ ]]
+          [[ "$REQUESTED_STAGING_SLOT" =~ ^[a-z0-9][a-z0-9-]{0,37}$ ]]
           CHECKED_OUT_SHA="$(git rev-parse HEAD)"
           test "$CHECKED_OUT_SHA" = "$REQUESTED_STAGING_SHA"
           git fetch origin main:refs/remotes/origin/main --no-tags
@@ -104,7 +104,7 @@ jobs:
             /home/ubuntu/amx/staging|/home/ubuntu/amx/staging/*) ;;
             *) echo "staging root is outside the approved path" >&2; exit 1 ;;
           esac
-          [[ "$slot" =~ ^[a-z0-9][a-z0-9-]{0,39}$ ]]
+          [[ "$slot" =~ ^[a-z0-9][a-z0-9-]{0,37}$ ]]
           slot_path="$root/$slot"
           case "$slot_path" in
             "$root"/*) ;;
@@ -164,6 +164,7 @@ jobs:
           AMX_ENV_FILE=$REMOTE_SLOT_PATH/.env
           AMX_CONTAINER_PREFIX=$AMX_CONTAINER_PREFIX
           AMX_RUNTIME_NETWORK=$AMX_RUNTIME_NETWORK
+          AMX_RESTART_POLICY=no
           POSTGRES_USER=consultant
           POSTGRES_PASSWORD=$GENERATED_POSTGRES_PASSWORD
           POSTGRES_DB=$POSTGRES_DB
@@ -204,12 +205,29 @@ jobs:
             "chmod 600 '$REMOTE_SLOT_PATH/.env.pending' && mv '$REMOTE_SLOT_PATH/.env.pending' '$REMOTE_SLOT_PATH/.env'"
           rm -f "$RUNNER_TEMP/amx-staging.env"
 
+      - name: Validate staging isolation before startup
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/amx_oci "$OCI_USER@$OCI_HOST" \
+            "bash -lc 'cd \"$REMOTE_SLOT_PATH\" && bash infra/deploy/validate-staging-isolation.sh \
+            --env-file \"$REMOTE_SLOT_PATH/.env\" \
+            --compose-project-name \"$COMPOSE_PROJECT_NAME\" \
+            --working-directory \"$REMOTE_SLOT_PATH\" \
+            --staging-root \"$AMX_STAGING_ROOT\"'" \
+            | tee artifacts/staging-isolation.txt
+
       - name: Deploy exact SHA to isolated staging slot
         shell: bash
         run: |
           set -euo pipefail
           ssh -i ~/.ssh/amx_oci "$OCI_USER@$OCI_HOST" \
-            "bash -lc 'cd \"$REMOTE_SLOT_PATH\" && bash infra/deploy/deploy-oci.sh --env staging --base-path \"$REMOTE_SLOT_PATH\" --ref \"$STAGING_SHA\"'"
+            "bash -lc 'cd \"$REMOTE_SLOT_PATH\" && bash infra/deploy/deploy-oci.sh \
+            --env staging \
+            --base-path \"$REMOTE_SLOT_PATH\" \
+            --ref \"$STAGING_SHA\" \
+            --env-file \"$REMOTE_SLOT_PATH/.env\" \
+            --compose-project-name \"$COMPOSE_PROJECT_NAME\"'"
 
       - name: Verify staging health
         shell: bash
@@ -304,10 +322,28 @@ jobs:
           project_name="$2"
           if [[ -f "$slot_path/.env" ]]; then
             cd "$slot_path"
-            docker compose -p "$project_name" -f infra/docker-compose.yml ps
+            docker compose \
+              --env-file "$slot_path/.env" \
+              -p "$project_name" \
+              -f infra/docker-compose.yml \
+              ps -a
           else
             echo "staging env not present"
           fi
+          REMOTE
+
+            ssh -i ~/.ssh/amx_oci "$OCI_USER@$OCI_HOST" bash -s -- \
+              "$COMPOSE_PROJECT_NAME" <<'REMOTE' > artifacts/staging-container-status.txt || true
+          set -euo pipefail
+          project_name="$1"
+          container_ids="$(docker ps -aq --filter "label=com.docker.compose.project=$project_name")"
+          if [[ -z "$container_ids" ]]; then
+            echo "no isolated staging containers found"
+            exit 0
+          fi
+          for container_id in $container_ids; do
+            docker inspect -f '{{.Name}}|status={{.State.Status}}|exit={{.State.ExitCode}}|health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}|working_dir={{ index .Config.Labels "com.docker.compose.project.working_dir" }}' "$container_id"
+          done
           REMOTE
           fi
           {
@@ -338,13 +374,28 @@ jobs:
           esac
           if [[ -f "$slot_path/.env" ]]; then
             cd "$slot_path"
-            docker compose -p "$project_name" -f infra/docker-compose.yml down -v --remove-orphans
+            docker compose \
+              --env-file "$slot_path/.env" \
+              -p "$project_name" \
+              -f infra/docker-compose.yml \
+              down -v --remove-orphans
             rm -f .env .env.pending
           fi
-          remaining_containers="$(docker ps -aq --filter "name=$project_name")"
-          remaining_networks="$(docker network ls -q --filter "name=$project_name")"
-          remaining_volumes="$(docker volume ls -q --filter "name=$project_name")"
+          remaining_containers="$(docker ps -aq --filter "label=com.docker.compose.project=$project_name")"
+          remaining_networks="$(docker network ls --format '{{.Name}}' | grep -Fx "${project_name}_network" || true)"
+          remaining_volumes="$(docker volume ls --format '{{.Name}}' | grep -E "^${project_name}_(postgres_data|redis_data)$" || true)"
           test -z "$remaining_containers$remaining_networks$remaining_volumes"
+          for container in consultant_ai_postgres consultant_ai_redis consultant_ai_api consultant_ai_worker consultant_ai_web; do
+            if docker inspect "$container" >/dev/null 2>&1; then
+              working_dir="$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}' "$container")"
+              case "$working_dir" in
+                "$root"/*)
+                  echo "production container is still owned by a staging path: $container" >&2
+                  exit 1
+                  ;;
+              esac
+            fi
+          done
           echo "teardown=passed"
           REMOTE
 

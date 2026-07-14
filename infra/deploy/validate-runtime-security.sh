@@ -5,6 +5,7 @@ ENVIRONMENT="production"
 ENV_FILE=".env"
 COMPOSE_FILE="infra/docker-compose.yml"
 VERIFY_RUNNING=0
+COMPOSE_PROJECT_NAME_OVERRIDE=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -23,6 +24,10 @@ while [[ $# -gt 0 ]]; do
     --verify-running)
       VERIFY_RUNNING=1
       shift
+      ;;
+    --compose-project-name)
+      COMPOSE_PROJECT_NAME_OVERRIDE="$2"
+      shift 2
       ;;
     *)
       echo "Unknown argument: $1" >&2
@@ -121,10 +126,15 @@ for variable in \
 done
 
 if [[ "$VERIFY_RUNNING" == "1" ]]; then
+  compose_command=(docker compose --env-file "$ENV_FILE")
+  if [[ -n "$COMPOSE_PROJECT_NAME_OVERRIDE" ]]; then
+    compose_command+=(-p "$COMPOSE_PROJECT_NAME_OVERRIDE")
+  fi
+  compose_command+=(-f "$COMPOSE_FILE")
   for mapping in postgres:5432 redis:6379 api:8000 web:3000; do
     service="${mapping%%:*}"
     container_port="${mapping##*:}"
-    bindings="$(docker compose -f "$COMPOSE_FILE" port "$service" "$container_port")"
+    bindings="$("${compose_command[@]}" port "$service" "$container_port")"
     if [[ -z "$bindings" ]]; then
       echo "Running service port is not published: $service:$container_port" >&2
       exit 1
