@@ -340,10 +340,10 @@ test.describe('Real browser commercial delivery validation', () => {
 
       const generationContext = [
         `Use the exact source-backed marker phrase ${marker}.`,
-        'Generate a commercial-delivery PRD with source grounding, acceptance criteria, and export-ready language.',
+        'Generate a commercial-delivery URS with source grounding, acceptance criteria, and export-ready language.',
         `Source file id: ${evidence.source_file_id}. Knowledge entry id: ${evidence.knowledge_entry_id}.`,
       ].join('\n')
-      await page.goto(`${webUrl}/projects/${evidence.project_id}/documents/generate?sourceFileId=${evidence.source_file_id}&docType=prd`, {
+      await page.goto(`${webUrl}/projects/${evidence.project_id}/documents/generate?sourceFileId=${evidence.source_file_id}&docType=urs`, {
         waitUntil: 'domcontentloaded',
       })
       await page.locator('#context').fill(generationContext)
