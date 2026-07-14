@@ -495,6 +495,7 @@ def test_real_browser_commercial_journey_uses_ui_roles_and_sanitized_artifacts()
     assert "portal-unavailable" in spec
     assert "project.acceptance.close" in spec
     assert "commercial-delivery-evidence.json" in spec
+    assert "testInfo.outputPath('commercial-delivery-evidence.json')" in spec
     assert "portalUrl" not in spec.split("type JourneyEvidence", 1)[1].split("}", 1)[0]
     assert "runRealBrowserDelivery ? 'off' : 'on-first-retry'" in config
     assert "runRealBrowserDelivery ? 'off' : 'only-on-failure'" in config
