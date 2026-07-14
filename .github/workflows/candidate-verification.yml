@@ -70,6 +70,7 @@ jobs:
             echo "AMX_RUNTIME_NETWORK=${PROJECT_NAME}_network"
             echo "AMX_POSTGRES_VOLUME=${PROJECT_NAME}_postgres_data"
             echo "AMX_REDIS_VOLUME=${PROJECT_NAME}_redis_data"
+            echo "AMX_STORAGE_VOLUME=${PROJECT_NAME}_storage_data"
             echo "POSTGRES_DB=$PROJECT_NAME"
           } >> "$GITHUB_ENV"
 
@@ -99,6 +100,7 @@ jobs:
           AMX_RUNTIME_NETWORK=$AMX_RUNTIME_NETWORK
           AMX_POSTGRES_VOLUME=$AMX_POSTGRES_VOLUME
           AMX_REDIS_VOLUME=$AMX_REDIS_VOLUME
+          AMX_STORAGE_VOLUME=$AMX_STORAGE_VOLUME
           POSTGRES_DB=$POSTGRES_DB
           POSTGRES_USER=$POSTGRES_USER
           POSTGRES_PASSWORD=$GENERATED_POSTGRES_PASSWORD
@@ -143,6 +145,7 @@ jobs:
             echo "network=$AMX_RUNTIME_NETWORK"
             echo "postgres_volume=$AMX_POSTGRES_VOLUME"
             echo "redis_volume=$AMX_REDIS_VOLUME"
+            echo "storage_volume=$AMX_STORAGE_VOLUME"
             echo "postgres_db=$POSTGRES_DB"
             echo "api_url=http://127.0.0.1:$API_HOST_PORT"
             echo "runtime_started=postgres,redis,api"

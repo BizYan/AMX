@@ -79,6 +79,7 @@ def test_candidate_compose_override_replaces_env_and_disables_restarts():
     assert 'command: ["sh", "-c", "sleep infinity"]' in candidate
     assert "${AMX_POSTGRES_VOLUME:?AMX_POSTGRES_VOLUME must be candidate scoped}" in candidate
     assert "${AMX_REDIS_VOLUME:?AMX_REDIS_VOLUME must be candidate scoped}" in candidate
+    assert "${AMX_STORAGE_VOLUME:?AMX_STORAGE_VOLUME must be candidate scoped}" in candidate
     assert "../.env" not in candidate
 
 
@@ -94,6 +95,7 @@ def test_candidate_safety_script_fails_closed_before_compose_up():
         "AMX_RUNTIME_NETWORK must be candidate scoped",
         "AMX_POSTGRES_VOLUME must be candidate scoped",
         "AMX_REDIS_VOLUME must be candidate scoped",
+        "AMX_STORAGE_VOLUME must be candidate scoped",
         "must not use production port",
         "working directory must not be production path",
         "candidate compose config must not reference ../.env",
@@ -148,6 +150,9 @@ def test_candidate_verification_workflow_is_manual_and_non_production():
     assert 'echo "CANDIDATE_SHA=$CHECKED_OUT_SHA" >> "$GITHUB_ENV"' in workflow
     assert 'PROJECT_NAME="amx_rc_${SHORT_SHA}"' in workflow
     assert 'CANDIDATE_ENV_FILE=$RUNNER_TEMP/.env.rc.${SHORT_SHA}' in workflow
+    assert 'echo "AMX_STORAGE_VOLUME=${PROJECT_NAME}_storage_data"' in workflow
+    assert "AMX_STORAGE_VOLUME=$AMX_STORAGE_VOLUME" in workflow
+    assert 'echo "storage_volume=$AMX_STORAGE_VOLUME"' in workflow
     assert "test -f infra/docker-compose.candidate.yml" in workflow
     assert "test -f infra/deploy/validate-candidate-verification.sh" in workflow
     assert 'exec -T postgres psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' in workflow
@@ -307,6 +312,25 @@ def test_staging_real_browser_gate_uses_real_runtime_and_tears_down():
     assert "@example.test" not in spec
     assert "@staging.amx.yuanda.win" in workflow
     assert "@staging.amx.yuanda.win" in spec
+
+
+def test_runtime_images_and_compose_share_writable_local_storage():
+    compose = read("infra/docker-compose.yml")
+    api_dockerfile = read("apps/api/Dockerfile")
+    worker_dockerfile = read("apps/worker/Dockerfile")
+    runtime_validator = read("infra/deploy/validate-runtime-security.sh")
+
+    assert compose.count("- storage_data:/data/storage") == 2
+    assert "storage_data:" in compose
+    for dockerfile in (api_dockerfile, worker_dockerfile):
+        assert "mkdir -p /data/storage" in dockerfile
+        assert "chown -R appuser:appgroup /data/storage" in dockerfile
+        assert dockerfile.index("chown -R appuser:appgroup /data/storage") < dockerfile.index(
+            "USER appuser"
+        )
+    assert 'for service in api worker; do' in runtime_validator
+    assert 'eq .Destination "/data/storage"' in runtime_validator
+    assert "API and worker must mount the same /data/storage volume" in runtime_validator
 
 
 def test_staging_prepares_the_established_historical_migration_baseline():
@@ -544,6 +568,10 @@ def test_ci_exercises_production_runtime_security_preflight():
     workflow = read(".github/workflows/ci.yml")
 
     assert "Validate production runtime security preflight" in workflow
+    assert "Verify shared runtime storage" in workflow
+    assert "test -w /data/storage" in workflow
+    assert "cat /data/storage/ci-storage-contract" in workflow
+    assert "down -v --remove-orphans" in workflow
     assert "chmod 600 .env" in workflow
     assert "bash infra/deploy/validate-runtime-security.sh --environment production" in workflow
 

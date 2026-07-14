@@ -146,6 +146,26 @@ if [[ "$VERIFY_RUNNING" == "1" ]]; then
       fi
     done <<<"$bindings"
   done
+
+  shared_storage_volume=""
+  for service in api worker; do
+    container_id="$("${compose_command[@]}" ps -q "$service")"
+    [[ -n "$container_id" ]] || {
+      echo "Running service container is missing: $service" >&2
+      exit 1
+    }
+    storage_volume="$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/data/storage"}}{{.Name}}{{end}}{{end}}' "$container_id")"
+    [[ -n "$storage_volume" ]] || {
+      echo "Running service is missing the shared /data/storage volume: $service" >&2
+      exit 1
+    }
+    if [[ -z "$shared_storage_volume" ]]; then
+      shared_storage_volume="$storage_volume"
+    elif [[ "$storage_volume" != "$shared_storage_volume" ]]; then
+      echo "API and worker must mount the same /data/storage volume" >&2
+      exit 1
+    fi
+  done
 fi
 
 echo "[runtime-security] production bind addresses and .env permissions verified"
