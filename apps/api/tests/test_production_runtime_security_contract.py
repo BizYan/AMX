@@ -477,6 +477,8 @@ def test_real_browser_commercial_journey_uses_ui_roles_and_sanitized_artifacts()
     assert "expect(portalRevocationResponse.status()).toBe(200)" in spec
     assert "expect((await acceptanceSubmission).status()).toBe(200)" in spec
     assert "expect(deliveryCloseoutResponse.status()).toBe(200)" in spec
+    assert "`${apiUrl}/identity/auth/me`" in spec
+    assert "Authorization: `Bearer ${portalToken}`" in spec
     assert "waitForEvent('download')" in spec
     assert "portal-unavailable" in spec
     assert "project.acceptance.close" in spec
