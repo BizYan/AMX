@@ -625,8 +625,14 @@ test.describe('Real browser commercial delivery validation', () => {
         }).catch(() => undefined)
         evidence.application_cleanup = archiveResponse?.ok() ? 'project_archived; disposable_staging_teardown_required' : 'archive_failed; disposable_staging_teardown_required'
       }
+      const serializedEvidence = JSON.stringify(evidence, null, 2)
+      await writeFile(
+        testInfo.outputPath('commercial-delivery-evidence.json'),
+        serializedEvidence,
+        'utf-8',
+      )
       await testInfo.attach('commercial-delivery-evidence.json', {
-        body: Buffer.from(JSON.stringify(evidence, null, 2), 'utf-8'),
+        body: Buffer.from(serializedEvidence, 'utf-8'),
         contentType: 'application/json',
       })
       await Promise.all([
