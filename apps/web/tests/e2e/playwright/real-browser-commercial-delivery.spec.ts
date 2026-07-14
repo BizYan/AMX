@@ -490,8 +490,9 @@ test.describe('Real browser commercial delivery validation', () => {
       const createdPortal = await portalCreationResponse.json()
       expect(createdPortal.customer_email).toBe(customerEmail)
       evidence.portal_link_id = createdPortal.id
-      const portalUrl = await page.getByTestId('created-customer-portal-url').textContent({ timeout: 30000 })
-      expect(portalUrl).toContain('/delivery-portal/')
+      const portalUrl = `${webUrl}${createdPortal.portal_path}`
+      expect(createdPortal.portal_path).toContain('/delivery-portal/')
+      await expect(page.getByTestId('created-customer-portal-url')).toContainText(createdPortal.portal_path, { timeout: 30000 })
       await expect(page.getByTestId(`customer-portal-link-${createdPortal.id}`)).toBeVisible({ timeout: 30000 })
 
       await page.getByTestId('customer-portal-email').fill(revokedCustomerEmail)
@@ -504,8 +505,8 @@ test.describe('Real browser commercial delivery validation', () => {
       expect(revokedPortalCreationResponse.status()).toBe(201)
       const revokedLink = await revokedPortalCreationResponse.json()
       expect(revokedLink.customer_email).toBe(revokedCustomerEmail)
-      await expect(page.getByTestId('created-customer-portal-url')).not.toHaveText(portalUrl!, { timeout: 30000 })
-      const revokedPortalUrl = await page.getByTestId('created-customer-portal-url').textContent()
+      const revokedPortalUrl = `${webUrl}${revokedLink.portal_path}`
+      await expect(page.getByTestId('created-customer-portal-url')).toContainText(revokedLink.portal_path, { timeout: 30000 })
       await expect(page.getByTestId(`revoke-customer-portal-${revokedLink.id}`)).toBeVisible({ timeout: 30000 })
       const portalRevocation = page.waitForResponse((response) =>
         response.request().method() === 'POST'
@@ -518,16 +519,16 @@ test.describe('Real browser commercial delivery validation', () => {
 
       revokedContext = await browser.newContext()
       const revokedPage = await revokedContext.newPage()
-      await revokedPage.goto(revokedPortalUrl!, { waitUntil: 'domcontentloaded' })
+      await revokedPage.goto(revokedPortalUrl, { waitUntil: 'domcontentloaded' })
       await expect(revokedPage.getByTestId('portal-unavailable')).toBeVisible({ timeout: 30000 })
       evidence.blocked_paths.push('revoked_customer_token_denied')
 
       customerContext = await browser.newContext({ acceptDownloads: true })
       const customerPage = await customerContext.newPage()
-      await customerPage.goto(portalUrl!, { waitUntil: 'domcontentloaded' })
+      await customerPage.goto(portalUrl, { waitUntil: 'domcontentloaded' })
       expect(await customerPage.evaluate(() => window.localStorage.getItem('auth_token'))).toBeNull()
       await expect(customerPage.getByTestId('portal-artifacts')).toContainText(exportJob.artifacts[0].filename, { timeout: 30000 })
-      const portalToken = new URL(portalUrl!).pathname.split('/').filter(Boolean).pop()
+      const portalToken = new URL(portalUrl).pathname.split('/').filter(Boolean).pop()
       expect(portalToken, 'customer portal URL must contain its scoped token').toBeTruthy()
       const internalResponse = await customerContext.request.get(`${apiUrl}/identity/auth/me`, {
         headers: { Authorization: `Bearer ${portalToken}` },
