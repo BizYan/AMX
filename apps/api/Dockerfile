@@ -16,7 +16,9 @@ COPY apps/api/alembic ./alembic
 COPY apps/api/alembic.ini ./alembic.ini
 
 RUN groupadd --gid 1000 appgroup && \
-    useradd --uid 1000 --gid appgroup appuser
+    useradd --uid 1000 --gid appgroup appuser && \
+    mkdir -p /data/storage && \
+    chown -R appuser:appgroup /data/storage
 
 USER appuser
 

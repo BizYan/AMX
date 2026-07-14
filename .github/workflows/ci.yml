@@ -202,6 +202,19 @@ jobs:
       - name: Validate compose file
         run: docker compose -f infra/docker-compose.yml config
 
+      - name: Verify shared runtime storage
+        run: |
+          set -euo pipefail
+          cleanup() {
+            docker compose -f infra/docker-compose.yml down -v --remove-orphans >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          docker compose -f infra/docker-compose.yml build api worker
+          docker compose -f infra/docker-compose.yml run --rm --no-deps api \
+            sh -c 'test -w /data/storage && printf shared-runtime-storage > /data/storage/ci-storage-contract'
+          docker compose -f infra/docker-compose.yml run --rm --no-deps worker \
+            sh -c 'test "$(cat /data/storage/ci-storage-contract)" = shared-runtime-storage && rm /data/storage/ci-storage-contract'
+
       - name: Validate GitNexus compose file
         run: |
           cp infra/gitnexus/env.example infra/gitnexus/.env

@@ -118,6 +118,8 @@ done
 grep -Fq "name: ${COMPOSE_PROJECT_NAME}_network" "$rendered_config"
 grep -Fq "name: ${COMPOSE_PROJECT_NAME}_postgres_data" "$rendered_config"
 grep -Fq "name: ${COMPOSE_PROJECT_NAME}_redis_data" "$rendered_config"
+grep -Fq "name: ${COMPOSE_PROJECT_NAME}_storage_data" "$rendered_config"
+[[ "$(grep -Fc 'target: /data/storage' "$rendered_config")" -eq 2 ]]
 [[ "$(grep -Fc 'restart: "no"' "$rendered_config")" -eq 3 ]]
 [[ "$(grep -Fc "$env_file" "$rendered_config")" -ge 3 ]]
 for key in POSTGRES_HOST_PORT REDIS_HOST_PORT API_HOST_PORT WEB_HOST_PORT; do
@@ -137,7 +139,7 @@ if docker network inspect "${COMPOSE_PROJECT_NAME}_network" >/dev/null 2>&1; the
   echo "staging network already exists" >&2
   exit 1
 fi
-if [[ -n "$(docker volume ls --format '{{.Name}}' | grep -E "^${COMPOSE_PROJECT_NAME}_(postgres_data|redis_data)$" || true)" ]]; then
+if [[ -n "$(docker volume ls --format '{{.Name}}' | grep -E "^${COMPOSE_PROJECT_NAME}_(postgres_data|redis_data|storage_data)$" || true)" ]]; then
   echo "staging volumes already exist" >&2
   exit 1
 fi
