@@ -76,6 +76,8 @@ staging runtime:
 - Result: success, including isolation, historical migration compatibility
   baseline, health, browser journey, sanitized artifact upload, and teardown.
 - Detail: `docs/programs/browser-commercial-delivery-evidence-latest.md`.
+- Retention: the sanitized `staging-commercial-journey-evidence` artifact is
+  attached to the GitHub Actions run above.
 
 This is real staging evidence, not production-browser evidence.
 
