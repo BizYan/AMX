@@ -561,6 +561,8 @@ async def test_customer_portal_link_is_hashed_revocable_and_submits_acceptance(d
     await service.revoke_customer_portal_link(
         launched.project.id, owner.tenant_id, owner.id, created.id
     )
+    await db_session.commit()
+    db_session.expire_all()
     with pytest.raises(PermissionError, match="revoked"):
         await service.get_customer_portal(created.token)
 
@@ -756,6 +758,19 @@ async def test_customer_portal_access_download_and_submission_create_sanitized_a
     assert "Customer accepted" not in serialized
     assert "Synthetic acceptance evidence" not in serialized
     assert "secret" not in serialized.lower()
+
+    project_id = launched.project.id
+    tenant_id = owner.tenant_id
+    await db_session.commit()
+    db_session.expire_all()
+    persisted_plan = await service.get_plan(project_id, tenant_id)
+    persisted_link = persisted_plan.settings_json["customer_portal_links"][0]
+    assert persisted_link["last_accessed_at"] is not None
+    assert persisted_link["last_downloaded_at"] is not None
+    assert persisted_link["download_count"] == 1
+    assert persisted_link["submitted_at"] is not None
+    assert persisted_link["receipt_id"] is not None
+    assert persisted_plan.settings_json["customer_acceptance"]["external_portal_link_id"] == link_id
 
 
 @pytest.mark.asyncio

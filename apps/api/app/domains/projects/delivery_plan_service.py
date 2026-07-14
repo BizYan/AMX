@@ -387,7 +387,7 @@ class ProjectDeliveryPlanService:
             "download_count": 0,
             "receipt_id": None,
         }
-        links = list((plan.settings_json or {}).get("customer_portal_links", []))
+        links = [dict(item) for item in (plan.settings_json or {}).get("customer_portal_links", [])]
         links.append(record)
         plan.settings_json = {**(plan.settings_json or {}), "customer_portal_links": links}
         await self.db.flush()
@@ -402,7 +402,7 @@ class ProjectDeliveryPlanService:
         if not plan:
             raise ValueError("Project delivery plan not found")
         await self._require_project_owner(project_id, tenant_id, requested_by)
-        links = list((plan.settings_json or {}).get("customer_portal_links", []))
+        links = [dict(item) for item in (plan.settings_json or {}).get("customer_portal_links", [])]
         link = next((item for item in links if item.get("id") == str(link_id)), None)
         if not link:
             raise ValueError("Customer portal link not found")
@@ -414,7 +414,7 @@ class ProjectDeliveryPlanService:
     async def get_customer_portal(self, token: str) -> CustomerPortalSummaryResponse:
         plan, link = await self._portal_plan_and_link(token)
         link["last_accessed_at"] = datetime.now(timezone.utc).isoformat()
-        plan.settings_json = {**(plan.settings_json or {})}
+        plan.settings_json = self._settings_with_portal_link(plan, link)
         await self.db.flush()
         response = await self._customer_portal_response(plan, link)
         await AuditService(self.db).log_action(
@@ -454,7 +454,9 @@ class ProjectDeliveryPlanService:
         }
         link["submitted_at"] = now
         link["receipt_id"] = acceptance["receipt_id"]
-        plan.settings_json = {**(plan.settings_json or {}), "customer_acceptance": acceptance}
+        settings_json = self._settings_with_portal_link(plan, link)
+        settings_json["customer_acceptance"] = acceptance
+        plan.settings_json = settings_json
         project = await self._project(plan.project_id, plan.tenant_id)
         await self._sync_acceptance_follow_ups(plan, data.items, project.owner_id)
         await self.db.flush()
@@ -572,7 +574,7 @@ class ProjectDeliveryPlanService:
             raise ValueError("Customer portal artifact not found")
         link["last_downloaded_at"] = datetime.now(timezone.utc).isoformat()
         link["download_count"] = int(link.get("download_count") or 0) + 1
-        plan.settings_json = {**(plan.settings_json or {})}
+        plan.settings_json = self._settings_with_portal_link(plan, link)
         await self.db.flush()
         await AuditService(self.db).log_action(
             tenant_id=plan.tenant_id,
@@ -610,7 +612,18 @@ class ProjectDeliveryPlanService:
             expires_at = datetime.fromisoformat(link["expires_at"])
             if expires_at < datetime.now(timezone.utc):
                 raise PermissionError("Customer portal link has expired")
-            return plan, link
+            return plan, dict(link)
+        raise ValueError("Customer portal link not found")
+
+    @staticmethod
+    def _settings_with_portal_link(plan: ProjectDeliveryPlan, link: dict) -> dict:
+        settings_json = dict(plan.settings_json or {})
+        links = [dict(item) for item in settings_json.get("customer_portal_links", [])]
+        for index, existing in enumerate(links):
+            if existing.get("id") == link.get("id"):
+                links[index] = dict(link)
+                settings_json["customer_portal_links"] = links
+                return settings_json
         raise ValueError("Customer portal link not found")
 
     async def _customer_portal_response(
