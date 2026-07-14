@@ -2,110 +2,133 @@
 
 Date: 2026-07-15
 
-Status: proposed release evidence for current main. Owner Go is required before
-this document becomes promotion authority. It supersedes stale current-main
-statements that predate the successful staging commercial-delivery run.
+Status: verified release authority for v1.0.16. This record supersedes the
+pre-promotion proposal. The documentation commit that carries this record is
+not part of the released runtime; the release target below is immutable.
 
-## Release Position
+## Authoritative Release
 
-- Current `origin/main` SHA: `66a09e0dd566df2838ba62766323180d49cc3867`.
-- Current-main tag: no tag created.
-- Latest verified production: `v1.0.15` /
-  `3cadf5d0e3f4e3402e02cc5eaf1053277ae901b9`.
-- Production release: [v1.0.15](https://github.com/BizYan/AMX/releases/tag/v1.0.15).
-- Verified production candidate run:
-  [27876425481](https://github.com/BizYan/AMX/actions/runs/27876425481).
-- Verified production deployment run:
-  [27876577603](https://github.com/BizYan/AMX/actions/runs/27876577603).
-- Immediate rollback target for production: `v1.0.14` /
-  `337b41635580e60e6d72e6f208711617738da8b7`.
+- Release tag: v1.0.16.
+- Release SHA: 1a0e3111b5fa1f128d88f63d8e6ca7cca0785d33.
+- GitHub Release: [AMX v1.0.16](https://github.com/BizYan/AMX/releases/tag/v1.0.16).
+- Candidate verification: [29376255805](https://github.com/BizYan/AMX/actions/runs/29376255805).
+- Release quality gates: [29376386614](https://github.com/BizYan/AMX/actions/runs/29376386614).
+- Production deployment: [29376624267](https://github.com/BizYan/AMX/actions/runs/29376624267).
+- Production deployed ref/SHA: v1.0.16 /
+  1a0e3111b5fa1f128d88f63d8e6ca7cca0785d33.
+- Release conclusion: success.
 
-`docs/releases/v1.0.0.md` remains historical evidence only and must not be used
-as authority for this mainline promotion.
+The tag is annotated, exists remotely, and its peeled commit equals the deployed
+SHA. At release time, origin/main resolved to that same SHA.
 
-## Post-v1.0.15 Delta
+## Gate Evidence
 
-Range:
+### Candidate Runtime
 
-```text
-3cadf5d0e3f4e3402e02cc5eaf1053277ae901b9..66a09e0dd566df2838ba62766323180d49cc3867
-```
+Candidate run 29376255805 succeeded for the exact release SHA.
 
-### Runtime And Deployment Impact
+- Exact SHA and origin/main ancestry passed.
+- Candidate project: amx_rc_1a0e3111b5fa.
+- Candidate database: amx_rc_1a0e3111b5fa.
+- Candidate network and volumes were SHA-derived and isolated.
+- Rendered configuration never retained the raw candidate environment or compose
+  configuration.
+- Historical migration compatibility baseline verification passed. This is not a
+  clean empty-database full-history migration proof.
+- API health, provider commissioning, capability activation, authenticated smoke,
+  sanitized log collection, and teardown passed.
+- Runtime-started scope was PostgreSQL, Redis, and API. Worker and web remained
+  configuration-isolated but were not candidate runtime-started.
 
-- PRs [#172](https://github.com/BizYan/AMX/pull/172) and
-  [#175](https://github.com/BizYan/AMX/pull/175) add the read-only release
-  evidence console and the real staging commercial journey.
-- PRs [#176](https://github.com/BizYan/AMX/pull/176) and
-  [#177](https://github.com/BizYan/AMX/pull/177) harden isolated staging
-  Compose identity and historical-schema compatibility preparation.
-- PRs [#178](https://github.com/BizYan/AMX/pull/178) through
-  [#194](https://github.com/BizYan/AMX/pull/194) correct the real delivery
-  path: identities, source storage and search, ingestion visibility, customer
-  portal lifecycle/download, acceptance ordering, delivery milestones, document
-  type alignment, and durable sanitized evidence output.
-- PRs [#165](https://github.com/BizYan/AMX/pull/165) through
-  [#168](https://github.com/BizYan/AMX/pull/168) contain dependency and CI
-  contract maintenance. PRs [#170](https://github.com/BizYan/AMX/pull/170) and
-  [#171](https://github.com/BizYan/AMX/pull/171) record evidence boundaries.
+### Release Quality Gates
 
-The delta changes runtime, staging/deployment verification, UI delivery paths,
-tests, dependencies, and documentation. It is not docs-only and requires a new
-exact-SHA candidate verification before production promotion.
+Release run 29376386614 passed semantic-tag validation, mainline ancestry,
+delivery-state validation, Docker Compose validation, API tests, schema
+compatibility, web typecheck/build, deterministic E2E, and GitHub Release
+publication.
 
-## Evidence By Boundary
+API result: 702 passed. Warnings recorded by the test runner did not fail the
+release gate.
 
-### CI Evidence
+### Production Deployment
 
-Merged PRs passed their required checks before merge. This is regression and
-contract evidence; it is not a substitute for a runtime deployment gate.
+Production run 29376624267 passed every required step:
 
-### Candidate API Runtime Evidence
+- canonical production path validation;
+- OCI deployment of v1.0.16;
+- /health;
+- capability activation;
+- authenticated production smoke;
+- GitNexus deployment and refresh;
+- deployment provenance.
 
-The latest completed candidate verification applies only to `v1.0.15` SHA
-`3cadf5d0e3f4e3402e02cc5eaf1053277ae901b9`. No candidate verification has
-yet been recorded for `66a09e0dd566df2838ba62766323180d49cc3867`.
+Authenticated smoke verified health, browser-independent login, current-user,
+project list, document list, provider readiness, quota readiness, capability
+readiness, and capability commissioning. It rejects missing credentials, failed
+login, sandbox/mock/test-only provider readiness, and placeholder-only capability
+evidence.
 
-### Staging Browser Commercial Delivery Evidence
+Capability activation reported production_ready=true without executing new
+activation actions because the deployed runtime was already ready.
 
-The exact current SHA completed a real non-mocked browser journey in an isolated
-staging runtime:
+Deployment provenance verified:
 
-- Run: [Deploy staging 29375316574](https://github.com/BizYan/AMX/actions/runs/29375316574).
-- SHA: `66a09e0dd566df2838ba62766323180d49cc3867`.
-- Result: success, including isolation, historical migration compatibility
-  baseline, health, browser journey, sanitized artifact upload, and teardown.
-- Detail: `docs/programs/browser-commercial-delivery-evidence-latest.md`.
-- Retention: the sanitized `staging-commercial-journey-evidence` artifact is
-  attached to the GitHub Actions run above.
+~~~text
+expected_ref: v1.0.16
+recorded_ref: v1.0.16
+expected_sha: 1a0e3111b5fa1f128d88f63d8e6ca7cca0785d33
+deployed_sha: 1a0e3111b5fa1f128d88f63d8e6ca7cca0785d33
+tracked_worktree_clean: true
+running_services: postgres, redis, api, worker, web
+gitnexus_healthy: true
+gitnexus_indexed_sha: 1a0e3111b5fa1f128d88f63d8e6ca7cca0785d33
+~~~
 
-This is real staging evidence, not production-browser evidence.
+## Staging Commercial Delivery Evidence
 
-### Production Deployment Evidence
+The released runtime also has real non-mocked browser evidence in isolated
+staging, at [run 29375316574](https://github.com/BizYan/AMX/actions/runs/29375316574).
 
-Only `v1.0.15` has verified production evidence. Run `27876577603` deployed the
-tagged SHA, passed health, capability activation, authenticated smoke, GitNexus
-refresh, and deployment provenance. It does not prove the current main SHA.
+- Staging runtime SHA: 66a09e0dd566df2838ba62766323180d49cc3867, an
+  ancestor of the release SHA.
+- The journey covered source upload, ingestion, knowledge/provenance, document
+  delivery, review/approval, export, token-scoped portal download, acceptance,
+  closeout, blocked paths, and teardown.
+- Sanitized details: docs/programs/browser-commercial-delivery-evidence-latest.md.
 
-### Historical Release Evidence
+This is staging browser evidence. It is not a claim that a production browser
+journey has been executed.
 
-`v1.0.0` and `v1.0.13` evidence remain historical release records. They are
-known rollback/reference points, not current-main evidence.
+## Release Delta
 
-## Current Gaps And Decision
+v1.0.16 includes the post-v1.0.15 runtime and verification work from
+PRs [#172](https://github.com/BizYan/AMX/pull/172) and
+[#175](https://github.com/BizYan/AMX/pull/175) through
+[#195](https://github.com/BizYan/AMX/pull/195): ops evidence, isolated staging,
+historical-schema compatibility, real source-to-delivery UI path corrections,
+customer portal and acceptance closure, and durable sanitized evidence.
 
-| Gate | Current-main status |
-| --- | --- |
-| Exact-SHA candidate verification | Not recorded |
-| Staging real browser commercial journey | Passed for `66a09e0...` |
-| Current-main production deployment | Not recorded |
-| Current-main production health/smoke/provenance | Not recorded |
-| Live Jira success drill | Not recorded |
-| Live agent provider/tool interaction | Not recorded |
-| Production ops-dashboard evidence export | Not recorded |
+Open PR [#174](https://github.com/BizYan/AMX/pull/174) is not included in this
+release.
 
-Release decision: do not promote current main yet. The next required action is
-to run candidate verification for the exact immutable promotion SHA after this
-evidence update is merged. If it passes and Owner Go remains in force, create a
-new patch release tag, deploy only through the production workflow, and update
-this document with its production evidence. Do not reuse or move existing tags.
+## Rollback
+
+Immediate rollback target: v1.0.15 /
+3cadf5d0e3f4e3402e02cc5eaf1053277ae901b9.
+
+v1.0.14 and earlier releases remain older known-good references.
+docs/releases/v1.0.0.md remains historical evidence only.
+
+## Remaining Boundaries
+
+- No real production browser commercial journey has been run.
+- Live Jira success and live agent provider/tool interaction evidence remain
+  separate, unrecorded validation scopes.
+- A production ops-dashboard evidence export is not attached to this release
+  package.
+- Runtime /health reports application version 1.0.0; tag/SHA provenance is
+  the authoritative release identity.
+
+Any future runtime, dependency, workflow, migration, or deployment change needs
+a new candidate verification and promotion record. Documentation-only evidence
+updates do not alter the deployed runtime.
