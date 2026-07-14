@@ -480,26 +480,32 @@ test.describe('Real browser commercial delivery validation', () => {
       await page.getByTestId('save-acceptance').click()
       await page.getByTestId('customer-portal-email').fill(customerEmail)
       await expect(page.getByTestId('create-customer-portal')).toBeEnabled({ timeout: 30000 })
+      const portalCreation = page.waitForResponse((response) =>
+        response.request().method() === 'POST'
+        && response.url().includes(`/projects/${evidence.project_id}/customer-portal-links`)
+      )
       await page.getByTestId('create-customer-portal').click()
+      const portalCreationResponse = await portalCreation
+      expect(portalCreationResponse.status()).toBe(201)
+      const createdPortal = await portalCreationResponse.json()
+      expect(createdPortal.customer_email).toBe(customerEmail)
+      evidence.portal_link_id = createdPortal.id
       const portalUrl = await page.getByTestId('created-customer-portal-url').textContent({ timeout: 30000 })
       expect(portalUrl).toContain('/delivery-portal/')
-      const portalLinks = await pollFor<any[]>(
-        'customer portal link',
-        () => apiJson<any[]>(request, 'get', `/projects/${evidence.project_id}/customer-portal-links`, leadToken),
-        (items) => items.some((item) => item.customer_email === customerEmail),
-      )
-      evidence.portal_link_id = portalLinks.find((item) => item.customer_email === customerEmail).id
+      await expect(page.getByTestId(`customer-portal-link-${createdPortal.id}`)).toBeVisible({ timeout: 30000 })
 
       await page.getByTestId('customer-portal-email').fill(revokedCustomerEmail)
+      const revokedPortalCreation = page.waitForResponse((response) =>
+        response.request().method() === 'POST'
+        && response.url().includes(`/projects/${evidence.project_id}/customer-portal-links`)
+      )
       await page.getByTestId('create-customer-portal').click()
+      const revokedPortalCreationResponse = await revokedPortalCreation
+      expect(revokedPortalCreationResponse.status()).toBe(201)
+      const revokedLink = await revokedPortalCreationResponse.json()
+      expect(revokedLink.customer_email).toBe(revokedCustomerEmail)
       await expect(page.getByTestId('created-customer-portal-url')).not.toHaveText(portalUrl!, { timeout: 30000 })
       const revokedPortalUrl = await page.getByTestId('created-customer-portal-url').textContent()
-      const linksWithRevokedCandidate = await pollFor<any[]>(
-        'revocable customer portal link',
-        () => apiJson<any[]>(request, 'get', `/projects/${evidence.project_id}/customer-portal-links`, leadToken),
-        (items) => items.some((item) => item.customer_email === revokedCustomerEmail),
-      )
-      const revokedLink = linksWithRevokedCandidate.find((item) => item.customer_email === revokedCustomerEmail)
       await expect(page.getByTestId(`revoke-customer-portal-${revokedLink.id}`)).toBeVisible({ timeout: 30000 })
       await page.getByTestId(`revoke-customer-portal-${revokedLink.id}`).click()
 
