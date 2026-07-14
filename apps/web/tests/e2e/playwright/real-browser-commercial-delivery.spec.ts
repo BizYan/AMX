@@ -527,7 +527,11 @@ test.describe('Real browser commercial delivery validation', () => {
       await customerPage.goto(portalUrl!, { waitUntil: 'domcontentloaded' })
       expect(await customerPage.evaluate(() => window.localStorage.getItem('auth_token'))).toBeNull()
       await expect(customerPage.getByTestId('portal-artifacts')).toContainText(exportJob.artifacts[0].filename, { timeout: 30000 })
-      const internalResponse = await customerContext.request.get(`${apiUrl}/projects`)
+      const portalToken = new URL(portalUrl!).pathname.split('/').filter(Boolean).pop()
+      expect(portalToken, 'customer portal URL must contain its scoped token').toBeTruthy()
+      const internalResponse = await customerContext.request.get(`${apiUrl}/identity/auth/me`, {
+        headers: { Authorization: `Bearer ${portalToken}` },
+      })
       expect([401, 403]).toContain(internalResponse.status())
       evidence.blocked_paths.push('customer_token_cannot_access_internal_api')
 
