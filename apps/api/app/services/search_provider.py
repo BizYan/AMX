@@ -188,12 +188,12 @@ class PostgresFTSProvider(SearchProvider):
         query_template = """
             SELECT
                 f.entry_id,
-                ts_rank(f.search_vector, query) as rank,
+                ts_rank(to_tsvector('english', f.content), query) as rank,
                 ts_headline('english', f.content, query, 'StartSel=<mark>, StopSel=</mark>, MaxWords=50, MinWords=20') as headline,
                 f.metadata
             FROM knowledge_fts_documents f,
                  websearch_to_tsquery('english', :query) query
-            WHERE f.search_vector @@ query
+            WHERE to_tsvector('english', f.content) @@ query
             AND f.deleted_at IS NULL
         """
 
