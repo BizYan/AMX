@@ -474,6 +474,8 @@ def test_real_browser_commercial_journey_uses_ui_roles_and_sanitized_artifacts()
     assert "document-submit-review-action" in spec
     assert "create-baseline-action" in spec
     assert "expect(portalCreationResponse.status()).toBe(201)" in spec
+    assert "expect(acceptanceSaveResponse.status()).toBe(200)" in spec
+    assert "expect(savedAcceptance.items).toHaveLength(1)" in spec
     assert "`${webUrl}${createdPortal.portal_path}`" in spec
     assert "`${webUrl}${revokedLink.portal_path}`" in spec
     assert "customer-portal-link-${createdPortal.id}" in spec
@@ -485,6 +487,8 @@ def test_real_browser_commercial_journey_uses_ui_roles_and_sanitized_artifacts()
     assert "waitForEvent('download')" in spec
     assert "portal-download-artifact-" in customer_portal_page
     assert 'target="_blank"' not in customer_portal_page
+    acceptance_page = read("apps/web/src/app/(app)/projects/[projectId]/acceptance/page.tsx")
+    assert "|| saveMutation.isPending" in acceptance_page
     assert "portal-unavailable" in spec
     assert "project.acceptance.close" in spec
     assert "commercial-delivery-evidence.json" in spec
