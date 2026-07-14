@@ -1,6 +1,11 @@
 """Production runtime network and deployment-security contract checks."""
 
+import os
+import shutil
+import subprocess
 from pathlib import Path
+
+import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -269,6 +274,11 @@ def test_staging_workflow_fails_closed_and_isolates_runtime_resources():
     assert "staging root is outside the approved path" in workflow
     assert 'ALLOWED_CORS_ORIGINS="http://127.0.0.1:23000"' in workflow
     assert 'test -n "$STAGING_NEXT_PUBLIC_API_URL"' in workflow
+    assert "AMX_RESTART_POLICY=no" in workflow
+    assert "Validate staging isolation before startup" in workflow
+    assert "validate-staging-isolation.sh" in workflow
+    assert r'--env-file \"$REMOTE_SLOT_PATH/.env\"' in workflow
+    assert r'--compose-project-name \"$COMPOSE_PROJECT_NAME\"' in workflow
     assert "/home/ubuntu/amx/production" not in workflow
 
 
@@ -285,7 +295,99 @@ def test_staging_real_browser_gate_uses_real_runtime_and_tears_down():
     assert "down -v --remove-orphans" in workflow
     assert 'rm -f .env .env.pending' in workflow
     assert 'test -z "$remaining_containers$remaining_networks$remaining_volumes"' in workflow
+    assert 'label=com.docker.compose.project=$project_name' in workflow
+    assert "staging-container-status.txt" in workflow
+    assert "production container is still owned by a staging path" in workflow
     assert "staging-commercial-journey-evidence" in workflow
+
+
+def test_staging_isolation_validator_fails_closed_on_production_resources():
+    script = read("infra/deploy/validate-staging-isolation.sh")
+
+    for required in (
+        "working directory must be inside the approved staging root",
+        "/home/ubuntu/amx/production/AMX",
+        "^amx_staging_",
+        "AMX_CONTAINER_PREFIX",
+        "AMX_RUNTIME_NETWORK",
+        "POSTGRES_DB",
+        "AMX_RESTART_POLICY",
+        "staging must not use a production port",
+        "rendered staging config references production resources",
+        "staging Compose project already has containers",
+        "production container is owned by a staging working directory",
+        "staging_isolation=passed",
+    ):
+        assert required in script
+
+    assert '--env-file "$env_file"' in script
+    assert '-p "$COMPOSE_PROJECT_NAME"' in script
+
+
+@pytest.mark.skipif(os.name == "nt" or shutil.which("docker") is None, reason="requires Linux Docker Compose")
+def test_staging_isolation_validator_executes_against_rendered_compose(tmp_path: Path):
+    staging_root = tmp_path / "staging"
+    working_directory = staging_root / "contract-slot"
+    infra_directory = working_directory / "infra"
+    infra_directory.mkdir(parents=True)
+    shutil.copy2(REPO_ROOT / "infra/docker-compose.yml", infra_directory / "docker-compose.yml")
+    shutil.copy2(REPO_ROOT / "infra/init-db.sql", infra_directory / "init-db.sql")
+
+    project_name = "amx_staging_contract_slot_0123456789ab"
+    env_file = working_directory / ".env"
+    env_file.write_text(
+        "\n".join(
+            (
+                "ENVIRONMENT=staging",
+                f"COMPOSE_PROJECT_NAME={project_name}",
+                f"AMX_ENV_FILE={env_file}",
+                f"AMX_CONTAINER_PREFIX={project_name}",
+                f"AMX_RUNTIME_NETWORK={project_name}_network",
+                "AMX_RESTART_POLICY=no",
+                "POSTGRES_USER=consultant",
+                "POSTGRES_PASSWORD=synthetic-staging-password",
+                f"POSTGRES_DB={project_name}",
+                "POSTGRES_HOST_PORT=30123",
+                "REDIS_HOST_PORT=31123",
+                "API_HOST_PORT=32123",
+                "WEB_HOST_PORT=33123",
+                "DATABASE_URL=postgresql+asyncpg://consultant:synthetic-staging-password@postgres:5432/staging",
+                "REDIS_URL=redis://redis:6379/0",
+                "ARQ_REDIS_URL=redis://redis:6379/1",
+                "NEXT_PUBLIC_API_URL=http://127.0.0.1:28000/api/v1",
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    command = [
+        "bash",
+        str(REPO_ROOT / "infra/deploy/validate-staging-isolation.sh"),
+        "--env-file",
+        str(env_file),
+        "--compose-project-name",
+        project_name,
+        "--working-directory",
+        str(working_directory),
+        "--staging-root",
+        str(staging_root),
+    ]
+    environment = os.environ.copy()
+    environment["AMX_APPROVED_STAGING_ROOT"] = str(staging_root.resolve())
+    result = subprocess.run(command, capture_output=True, text=True, env=environment, check=False)
+
+    assert result.returncode == 0, result.stderr
+    assert "staging_isolation=passed" in result.stdout
+
+    unsafe_env = env_file.read_text(encoding="utf-8").replace(
+        f"AMX_CONTAINER_PREFIX={project_name}", "AMX_CONTAINER_PREFIX=consultant_ai"
+    )
+    env_file.write_text(unsafe_env, encoding="utf-8")
+    rejected = subprocess.run(command, capture_output=True, text=True, env=environment, check=False)
+
+    assert rejected.returncode != 0
+    assert "staging isolation mismatch: AMX_CONTAINER_PREFIX" in rejected.stderr
 
 
 def test_staging_workflow_does_not_interpolate_secrets_in_shell_blocks():
@@ -353,7 +455,15 @@ def test_runtime_containers_receive_explicit_environment():
 
     assert compose.count("ENVIRONMENT: ${ENVIRONMENT:-development}") == 2
     assert "export ENVIRONMENT" in deploy
-    assert deploy.index("export ENVIRONMENT") < deploy.index('docker compose -f "$COMPOSE_FILE" config')
+    assert 'COMPOSE_COMMAND=(docker compose --env-file "$ENV_FILE")' in deploy
+    assert 'COMPOSE_COMMAND+=(-p "$COMPOSE_PROJECT_NAME_OVERRIDE")' in deploy
+    assert '"${COMPOSE_COMMAND[@]}" config --quiet' in deploy
+    assert "/tmp/amx-compose-config.yml" not in deploy
+    assert "Non-production deployment requires explicit --env-file and --compose-project-name" in deploy
+    assert "Non-production Compose project name must not use a production identity" in deploy
+    assert "Non-production env file must stay inside its deployment path" in deploy
+    assert deploy.index("export ENVIRONMENT") < deploy.index("COMPOSE_COMMAND=(docker compose")
+    assert compose.count("restart: ${AMX_RESTART_POLICY:-unless-stopped}") == 3
 
 
 def test_api_startup_validates_runtime_security_before_side_effects():
@@ -375,13 +485,15 @@ def test_worker_image_uses_single_runtime_worker_source():
 def test_production_deploy_runs_runtime_security_preflight_before_compose():
     deploy = read("infra/deploy/deploy-oci.sh")
 
-    validator_call = 'bash infra/deploy/validate-runtime-security.sh --environment "$ENVIRONMENT"'
+    validator_call = "bash infra/deploy/validate-runtime-security.sh"
     assert validator_call in deploy
-    assert deploy.index(validator_call) < deploy.index('docker compose -f "$COMPOSE_FILE" config')
-    assert (
-        'bash infra/deploy/validate-runtime-security.sh --environment "$ENVIRONMENT" '
-        '--verify-running --compose-file "$COMPOSE_FILE"'
-    ) in deploy
+    assert '--environment "$ENVIRONMENT"' in deploy
+    assert '--env-file "$ENV_FILE"' in deploy
+    assert deploy.index(validator_call) < deploy.index("COMPOSE_COMMAND=(docker compose")
+    assert "validator_args=(" in deploy
+    assert "--verify-running" in deploy
+    assert '--compose-file "$COMPOSE_FILE"' in deploy
+    assert '--compose-project-name "$COMPOSE_PROJECT_NAME_OVERRIDE"' in deploy
 
 
 def test_deployment_evidence_rechecks_runtime_security_contract():
@@ -443,7 +555,9 @@ def test_runtime_security_validator_rejects_public_binds_and_permissive_env():
     assert "Production bind address must be loopback" in validator
     assert "Production .env must not be readable or writable by group or other users" in validator
     assert "Running service port is not loopback-only" in validator
-    assert 'docker compose -f "$COMPOSE_FILE" port "$service" "$container_port"' in validator
+    assert 'compose_command=(docker compose --env-file "$ENV_FILE")' in validator
+    assert 'compose_command+=(-p "$COMPOSE_PROJECT_NAME_OVERRIDE")' in validator
+    assert 'bindings="$("${compose_command[@]}" port "$service" "$container_port")"' in validator
     assert '[[ "$ENVIRONMENT" != "production" ]]' in validator
 
 
