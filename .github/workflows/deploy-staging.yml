@@ -7,58 +7,413 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: "Git ref, branch, tag, or SHA to deploy"
+        description: "Exact 40-character origin/main SHA to deploy"
         required: true
-        default: "feature/v0.3.0-infra-foundation"
       slot:
-        description: "Staging slot name, for example pr-123 or agent-smoke"
+        description: "Isolated staging slot name"
         required: true
         default: "manual"
+      run_real_browser_delivery:
+        description: "Run and tear down the real browser commercial journey"
+        required: true
+        type: boolean
+        default: false
 
 concurrency:
-  group: staging-${{ github.event.inputs.slot }}
+  group: staging-${{ inputs.slot }}
   cancel-in-progress: false
 
 jobs:
   deploy:
-    name: Deploy to OCI staging slot
+    name: Deploy isolated OCI staging slot
     runs-on: ubuntu-latest
     environment: staging
+    timeout-minutes: 60
+    env:
+      REQUESTED_STAGING_SHA: ${{ inputs.ref }}
+      REQUESTED_STAGING_SLOT: ${{ inputs.slot }}
+      RUN_REAL_BROWSER_DELIVERY: ${{ inputs.run_real_browser_delivery }}
+      OCI_HOST: ${{ secrets.OCI_HOST }}
+      OCI_USER: ${{ secrets.OCI_USER }}
+      AMX_STAGING_ROOT: ${{ secrets.AMX_STAGING_ROOT }}
+      OCI_SSH_PRIVATE_KEY: ${{ secrets.OCI_SSH_PRIVATE_KEY }}
+      STAGING_LLM_API_KEY: ${{ secrets.STAGING_LLM_API_KEY }}
+      STAGING_LLM_BASE_URL: ${{ vars.STAGING_LLM_BASE_URL }}
+      STAGING_LLM_MODEL: ${{ vars.STAGING_LLM_MODEL }}
+      STAGING_NEXT_PUBLIC_API_URL: ${{ vars.STAGING_NEXT_PUBLIC_API_URL }}
+      STAGING_CORS_ORIGINS: ${{ vars.STAGING_CORS_ORIGINS }}
     steps:
-      - name: Checkout
+      - name: Checkout exact staging SHA
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+
+      - name: Verify exact SHA and derive isolated resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$REQUESTED_STAGING_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$REQUESTED_STAGING_SLOT" =~ ^[a-z0-9][a-z0-9-]{0,37}$ ]]
+          CHECKED_OUT_SHA="$(git rev-parse HEAD)"
+          test "$CHECKED_OUT_SHA" = "$REQUESTED_STAGING_SHA"
+          git fetch origin main:refs/remotes/origin/main --no-tags
+          git merge-base --is-ancestor "$CHECKED_OUT_SHA" origin/main
+
+          SHORT_SHA="${CHECKED_OUT_SHA:0:12}"
+          SLOT_KEY="${REQUESTED_STAGING_SLOT//-/_}"
+          COMPOSE_PROJECT_NAME="amx_staging_${SLOT_KEY}_${SHORT_SHA}"
+          PORT_OFFSET=$((16#${CHECKED_OUT_SHA:0:4} % 1000))
+          {
+            echo "STAGING_SHA=$CHECKED_OUT_SHA"
+            echo "SHORT_SHA=$SHORT_SHA"
+            echo "COMPOSE_PROJECT_NAME=$COMPOSE_PROJECT_NAME"
+            echo "AMX_CONTAINER_PREFIX=$COMPOSE_PROJECT_NAME"
+            echo "AMX_RUNTIME_NETWORK=${COMPOSE_PROJECT_NAME}_network"
+            echo "POSTGRES_DB=$COMPOSE_PROJECT_NAME"
+            echo "POSTGRES_HOST_PORT=$((30000 + PORT_OFFSET))"
+            echo "REDIS_HOST_PORT=$((31000 + PORT_OFFSET))"
+            echo "API_HOST_PORT=$((32000 + PORT_OFFSET))"
+            echo "WEB_HOST_PORT=$((33000 + PORT_OFFSET))"
+            echo "REMOTE_SLOT_PATH=$AMX_STAGING_ROOT/$REQUESTED_STAGING_SLOT"
+          } >> "$GITHUB_ENV"
+          mkdir -p artifacts
 
       - name: Install SSH key
+        shell: bash
         run: |
+          set -euo pipefail
           mkdir -p ~/.ssh
-          printf '%s\n' "${{ secrets.OCI_SSH_PRIVATE_KEY }}" > ~/.ssh/amx_oci
+          printf '%s\n' "$OCI_SSH_PRIVATE_KEY" > ~/.ssh/amx_oci
           chmod 600 ~/.ssh/amx_oci
-          ssh-keyscan -H "${{ secrets.OCI_HOST }}" >> ~/.ssh/known_hosts
+          ssh-keyscan -H "$OCI_HOST" >> ~/.ssh/known_hosts
 
-      - name: Deploy staging slot
-        env:
-          OCI_HOST: ${{ secrets.OCI_HOST }}
-          OCI_USER: ${{ secrets.OCI_USER }}
-          REF: ${{ github.event.inputs.ref }}
-          SLOT: ${{ github.event.inputs.slot }}
-          AMX_STAGING_ROOT: ${{ secrets.AMX_STAGING_ROOT }}
+      - name: Prepare isolated staging slot
+        shell: bash
         run: |
-          ssh -i ~/.ssh/amx_oci "$OCI_USER@$OCI_HOST" \
-            "bash -lc 'mkdir -p \"$AMX_STAGING_ROOT\" && \
-            if [ ! -d \"$AMX_STAGING_ROOT/$SLOT/.git\" ]; then git clone git@github.com:BizYan/AMX.git \"$AMX_STAGING_ROOT/$SLOT\"; fi && \
-            cd \"$AMX_STAGING_ROOT/$SLOT\" && \
-            git remote set-url origin git@github.com:BizYan/AMX.git && \
-            git fetch origin --prune --tags && \
-            git checkout --force \"$REF\" && \
-            bash infra/deploy/deploy-oci.sh --env staging --base-path \"$AMX_STAGING_ROOT/$SLOT\" --ref \"$REF\"'"
+          set -euo pipefail
+          ssh -i ~/.ssh/amx_oci "$OCI_USER@$OCI_HOST" bash -s -- \
+            "$AMX_STAGING_ROOT" "$REQUESTED_STAGING_SLOT" "$REQUESTED_STAGING_SHA" \
+            "$POSTGRES_HOST_PORT" "$REDIS_HOST_PORT" "$API_HOST_PORT" "$WEB_HOST_PORT" <<'REMOTE'
+          set -euo pipefail
+          root="$1"
+          slot="$2"
+          sha="$3"
+          shift 3
+          case "$root" in
+            /home/ubuntu/amx/staging|/home/ubuntu/amx/staging/*) ;;
+            *) echo "staging root is outside the approved path" >&2; exit 1 ;;
+          esac
+          [[ "$slot" =~ ^[a-z0-9][a-z0-9-]{0,37}$ ]]
+          slot_path="$root/$slot"
+          case "$slot_path" in
+            "$root"/*) ;;
+            *) echo "staging slot escaped the approved root" >&2; exit 1 ;;
+          esac
+          for port in "$@"; do
+            if ss -ltnH | awk '{print $4}' | grep -Eq "(^|:)${port}$"; then
+              echo "isolated staging port is already in use: $port" >&2
+              exit 1
+            fi
+          done
+          mkdir -p "$root"
+          if [[ ! -d "$slot_path/.git" ]]; then
+            git clone git@github.com:BizYan/AMX.git "$slot_path"
+          fi
+          cd "$slot_path"
+          git remote set-url origin git@github.com:BizYan/AMX.git
+          git fetch origin --prune --no-tags
+          git checkout --force "$sha"
+          test "$(git rev-parse HEAD)" = "$sha"
+          REMOTE
 
-      - name: Health check
-        env:
-          OCI_HOST: ${{ secrets.OCI_HOST }}
-          OCI_USER: ${{ secrets.OCI_USER }}
-          SLOT: ${{ github.event.inputs.slot }}
-          AMX_STAGING_ROOT: ${{ secrets.AMX_STAGING_ROOT }}
-          STAGING_BASE_URL: ${{ secrets.STAGING_BASE_URL || 'http://127.0.0.1:18000' }}
+      - name: Generate isolated staging environment
+        shell: bash
         run: |
+          set -euo pipefail
+          if [[ "$RUN_REAL_BROWSER_DELIVERY" == "true" ]]; then
+            test -n "$STAGING_LLM_API_KEY"
+          fi
+          [[ "$STAGING_LLM_API_KEY" != *$'\n'* ]]
+          GENERATED_POSTGRES_PASSWORD="$(openssl rand -hex 24)"
+          GENERATED_JWT_SECRET_KEY="$(openssl rand -hex 32)"
+          GENERATED_ADMIN_PASSWORD="$(openssl rand -hex 24)"
+          GENERATED_ADMIN_EMAIL="amx-staging-${SHORT_SHA}@staging.amx.yuanda.win"
+          LLM_BASE_URL="${STAGING_LLM_BASE_URL:-https://api.minimax.chat/v1}"
+          LLM_MODEL="${STAGING_LLM_MODEL:-MiniMax-Text-01}"
+          if [[ "$RUN_REAL_BROWSER_DELIVERY" == "true" ]]; then
+            PUBLIC_API_URL="http://127.0.0.1:28000/api/v1"
+            ALLOWED_CORS_ORIGINS="http://127.0.0.1:23000"
+          else
+            test -n "$STAGING_NEXT_PUBLIC_API_URL"
+            test -n "$STAGING_CORS_ORIGINS"
+            PUBLIC_API_URL="$STAGING_NEXT_PUBLIC_API_URL"
+            ALLOWED_CORS_ORIGINS="$STAGING_CORS_ORIGINS"
+          fi
+          for value in "$GENERATED_POSTGRES_PASSWORD" "$GENERATED_JWT_SECRET_KEY" "$GENERATED_ADMIN_PASSWORD" "$GENERATED_ADMIN_EMAIL" "$STAGING_LLM_API_KEY"; do
+            test -z "$value" || echo "::add-mask::$value"
+          done
+          {
+            echo "E2E_USER_EMAIL=$GENERATED_ADMIN_EMAIL"
+            echo "E2E_PASSWORD=$GENERATED_ADMIN_PASSWORD"
+          } >> "$GITHUB_ENV"
+
+          cat > "$RUNNER_TEMP/amx-staging.env" <<EOF
+          ENVIRONMENT=staging
+          COMPOSE_PROJECT_NAME=$COMPOSE_PROJECT_NAME
+          AMX_ENV_FILE=$REMOTE_SLOT_PATH/.env
+          AMX_CONTAINER_PREFIX=$AMX_CONTAINER_PREFIX
+          AMX_RUNTIME_NETWORK=$AMX_RUNTIME_NETWORK
+          AMX_RESTART_POLICY=no
+          POSTGRES_USER=consultant
+          POSTGRES_PASSWORD=$GENERATED_POSTGRES_PASSWORD
+          POSTGRES_DB=$POSTGRES_DB
+          DATABASE_URL=postgresql+asyncpg://consultant:$GENERATED_POSTGRES_PASSWORD@postgres:5432/$POSTGRES_DB
+          POSTGRES_BIND_ADDRESS=127.0.0.1
+          POSTGRES_HOST_PORT=$POSTGRES_HOST_PORT
+          REDIS_BIND_ADDRESS=127.0.0.1
+          REDIS_HOST_PORT=$REDIS_HOST_PORT
+          API_BIND_ADDRESS=127.0.0.1
+          API_HOST_PORT=$API_HOST_PORT
+          WEB_BIND_ADDRESS=127.0.0.1
+          WEB_HOST_PORT=$WEB_HOST_PORT
+          REDIS_URL=redis://redis:6379/0
+          ARQ_REDIS_URL=redis://redis:6379/1
+          CONTAINER_REDIS_URL=redis://redis:6379/0
+          CONTAINER_ARQ_REDIS_URL=redis://redis:6379/1
+          BOOTSTRAP_ADMIN_EMAIL=$GENERATED_ADMIN_EMAIL
+          BOOTSTRAP_ADMIN_PASSWORD=$GENERATED_ADMIN_PASSWORD
+          BOOTSTRAP_ADMIN_NAME=Staging Admin
+          JWT_SECRET_KEY=$GENERATED_JWT_SECRET_KEY
+          JWT_ACCESS_TOKEN_EXPIRE_MINUTES=120
+          OPENAI_BASE_URL=$LLM_BASE_URL
+          OPENAI_API_KEY=$STAGING_LLM_API_KEY
+          OPENAI_MODEL=$LLM_MODEL
+          AMX_REQUIRED_PROVIDER_TYPES=llm
+          NEXT_PUBLIC_API_URL=$PUBLIC_API_URL
+          CORS_ORIGINS=$ALLOWED_CORS_ORIGINS
+          STORAGE_BACKEND=local
+          STORAGE_LOCAL_PATH=/data/storage
+          VECTOR_STORE_PROVIDER=pgvector
+          SEARCH_PROVIDER=postgresql
+          GRAPH_STORE_PROVIDER=postgresql
+          LOG_LEVEL=INFO
+          EOF
+          chmod 600 "$RUNNER_TEMP/amx-staging.env"
+          scp -i ~/.ssh/amx_oci "$RUNNER_TEMP/amx-staging.env" "$OCI_USER@$OCI_HOST:$REMOTE_SLOT_PATH/.env.pending"
           ssh -i ~/.ssh/amx_oci "$OCI_USER@$OCI_HOST" \
-            "bash -lc 'cd \"$AMX_STAGING_ROOT/$SLOT\" && bash infra/deploy/health-check.sh --base-url \"$STAGING_BASE_URL\"'"
+            "chmod 600 '$REMOTE_SLOT_PATH/.env.pending' && mv '$REMOTE_SLOT_PATH/.env.pending' '$REMOTE_SLOT_PATH/.env'"
+          rm -f "$RUNNER_TEMP/amx-staging.env"
+
+      - name: Validate staging isolation before startup
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/amx_oci "$OCI_USER@$OCI_HOST" \
+            "bash -lc 'cd \"$REMOTE_SLOT_PATH\" && bash infra/deploy/validate-staging-isolation.sh \
+            --env-file \"$REMOTE_SLOT_PATH/.env\" \
+            --compose-project-name \"$COMPOSE_PROJECT_NAME\" \
+            --working-directory \"$REMOTE_SLOT_PATH\" \
+            --staging-root \"$AMX_STAGING_ROOT\"'" \
+            | tee artifacts/staging-isolation.txt
+
+      - name: Prepare historical migration compatibility baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/amx_oci "$OCI_USER@$OCI_HOST" \
+            "bash -lc 'cd \"$REMOTE_SLOT_PATH\" && bash infra/deploy/prepare-historical-migration-baseline.sh \
+            --env-file \"$REMOTE_SLOT_PATH/.env\" \
+            --compose-project-name \"$COMPOSE_PROJECT_NAME\"'" \
+            | tee artifacts/staging-migration-baseline.txt
+
+      - name: Deploy exact SHA to isolated staging slot
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/amx_oci "$OCI_USER@$OCI_HOST" \
+            "bash -lc 'cd \"$REMOTE_SLOT_PATH\" && bash infra/deploy/deploy-oci.sh \
+            --env staging \
+            --base-path \"$REMOTE_SLOT_PATH\" \
+            --ref \"$STAGING_SHA\" \
+            --env-file \"$REMOTE_SLOT_PATH/.env\" \
+            --compose-project-name \"$COMPOSE_PROJECT_NAME\"'"
+
+      - name: Verify staging health
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/amx_oci "$OCI_USER@$OCI_HOST" bash -s -- "$API_HOST_PORT" <<'REMOTE' | tee artifacts/staging-health.txt
+          set -euo pipefail
+          api_port="$1"
+          for attempt in {1..40}; do
+            if curl -fsS "http://127.0.0.1:${api_port}/health"; then
+              echo
+              echo "staging_health=passed"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "staging health did not become ready" >&2
+          exit 1
+          REMOTE
+
+      - name: Set up pnpm
+        if: ${{ inputs.run_real_browser_delivery }}
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node
+        if: ${{ inputs.run_real_browser_delivery }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+
+      - name: Install real browser dependencies
+        if: ${{ inputs.run_real_browser_delivery }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm --dir apps/web install --frozen-lockfile
+          pnpm --dir apps/web exec playwright install --with-deps chromium
+
+      - name: Open isolated staging tunnel
+        if: ${{ inputs.run_real_browser_delivery }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/amx_oci -N -o ExitOnForwardFailure=yes \
+            -L 23000:127.0.0.1:"$WEB_HOST_PORT" \
+            -L 28000:127.0.0.1:"$API_HOST_PORT" \
+            "$OCI_USER@$OCI_HOST" &
+          TUNNEL_PID=$!
+          echo "TUNNEL_PID=$TUNNEL_PID" >> "$GITHUB_ENV"
+          for attempt in {1..20}; do
+            if curl -fsS http://127.0.0.1:28000/health >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "staging SSH tunnel did not become ready" >&2
+          exit 1
+
+      - name: Run real browser commercial journey
+        if: ${{ inputs.run_real_browser_delivery }}
+        shell: bash
+        env:
+          RUN_REAL_BROWSER_DELIVERY_TEST: "true"
+          E2E_TARGET: staging
+          E2E_BASE_URL: http://127.0.0.1:23000
+          E2E_WEB_URL: http://127.0.0.1:23000
+          E2E_API_URL: http://127.0.0.1:28000
+        run: |
+          set -euo pipefail
+          export E2E_GIT_SHA="$STAGING_SHA"
+          pnpm --dir apps/web exec playwright test \
+            tests/e2e/playwright/real-browser-commercial-delivery.spec.ts \
+            --project=chromium \
+            --reporter=list \
+            --retries=0 \
+            --trace=off \
+            --output=../../artifacts/playwright
+
+      - name: Collect sanitized staging evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${REMOTE_SLOT_PATH:-}" ]]; then
+            ssh -i ~/.ssh/amx_oci "$OCI_USER@$OCI_HOST" bash -s -- \
+              "$REMOTE_SLOT_PATH" "$COMPOSE_PROJECT_NAME" <<'REMOTE' > artifacts/staging-compose-ps.txt || true
+          set -euo pipefail
+          slot_path="$1"
+          project_name="$2"
+          if [[ -f "$slot_path/.env" ]]; then
+            cd "$slot_path"
+            docker compose \
+              --env-file "$slot_path/.env" \
+              -p "$project_name" \
+              -f infra/docker-compose.yml \
+              ps -a
+          else
+            echo "staging env not present"
+          fi
+          REMOTE
+
+            ssh -i ~/.ssh/amx_oci "$OCI_USER@$OCI_HOST" bash -s -- \
+              "$COMPOSE_PROJECT_NAME" <<'REMOTE' > artifacts/staging-container-status.txt || true
+          set -euo pipefail
+          project_name="$1"
+          container_ids="$(docker ps -aq --filter "label=com.docker.compose.project=$project_name")"
+          if [[ -z "$container_ids" ]]; then
+            echo "no isolated staging containers found"
+            exit 0
+          fi
+          for container_id in $container_ids; do
+            docker inspect -f '{{.Name}}|status={{.State.Status}}|exit={{.State.ExitCode}}|health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}|working_dir={{ index .Config.Labels "com.docker.compose.project.working_dir" }}' "$container_id"
+          done
+          REMOTE
+          fi
+          {
+            echo "staging_sha=${STAGING_SHA:-not_recorded}"
+            echo "slot=$REQUESTED_STAGING_SLOT"
+            echo "compose_project=${COMPOSE_PROJECT_NAME:-not_recorded}"
+            echo "database=${POSTGRES_DB:-not_recorded}"
+            echo "network=${AMX_RUNTIME_NETWORK:-not_recorded}"
+            echo "browser_requested=$RUN_REAL_BROWSER_DELIVERY"
+          } > artifacts/staging-runtime-summary.txt
+
+      - name: Teardown disposable browser staging slot
+        if: ${{ always() && inputs.run_real_browser_delivery }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "${TUNNEL_PID:-}" || kill "$TUNNEL_PID" 2>/dev/null || true
+          ssh -i ~/.ssh/amx_oci "$OCI_USER@$OCI_HOST" bash -s -- \
+            "$AMX_STAGING_ROOT" "$REQUESTED_STAGING_SLOT" "$COMPOSE_PROJECT_NAME" <<'REMOTE' | tee artifacts/staging-teardown.txt
+          set -euo pipefail
+          root="$1"
+          slot="$2"
+          project_name="$3"
+          slot_path="$root/$slot"
+          case "$slot_path" in
+            /home/ubuntu/amx/staging/*) ;;
+            *) echo "refusing teardown outside approved staging root" >&2; exit 1 ;;
+          esac
+          if [[ -f "$slot_path/.env" ]]; then
+            cd "$slot_path"
+            docker compose \
+              --env-file "$slot_path/.env" \
+              -p "$project_name" \
+              -f infra/docker-compose.yml \
+              down -v --remove-orphans
+            rm -f .env .env.pending
+          fi
+          remaining_containers="$(docker ps -aq --filter "label=com.docker.compose.project=$project_name")"
+          remaining_networks="$(docker network ls --format '{{.Name}}' | grep -Fx "${project_name}_network" || true)"
+          remaining_volumes="$(docker volume ls --format '{{.Name}}' | grep -E "^${project_name}_(postgres_data|redis_data)$" || true)"
+          test -z "$remaining_containers$remaining_networks$remaining_volumes"
+          for container in consultant_ai_postgres consultant_ai_redis consultant_ai_api consultant_ai_worker consultant_ai_web; do
+            if docker inspect "$container" >/dev/null 2>&1; then
+              working_dir="$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}' "$container")"
+              case "$working_dir" in
+                "$root"/*)
+                  echo "production container is still owned by a staging path: $container" >&2
+                  exit 1
+                  ;;
+              esac
+            fi
+          done
+          echo "teardown=passed"
+          REMOTE
+
+      - name: Upload staging commercial journey evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-commercial-journey-evidence
+          path: artifacts
+          if-no-files-found: warn

@@ -88,6 +88,26 @@ from app.models.projects import ProjectMember
 router = APIRouter()
 
 
+def _download_content_disposition(download_name: str, fallback_name: str) -> str:
+    """Build an ASCII-safe attachment header while preserving the UTF-8 filename."""
+    raw_extension = fallback_name.rsplit(".", 1)[1] if "." in fallback_name else ""
+    safe_extension = "".join(
+        character
+        for character in raw_extension
+        if character.isascii() and character.isalnum()
+    )[:16]
+    extension = f".{safe_extension}" if safe_extension else ""
+    header_name = download_name.replace("\r", "").replace("\n", "")
+    ascii_name = header_name.encode("ascii", "ignore").decode().strip()
+    ascii_name = ascii_name.replace("\\", "_").replace("/", "_").replace('"', "")
+    if not ascii_name or ascii_name.startswith("."):
+        ascii_name = f"download{extension}"
+    return (
+        f'attachment; filename="{ascii_name}"; '
+        f"filename*=UTF-8''{quote(header_name, safe='')}"
+    )
+
+
 def _invitation_token_digest(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
@@ -201,7 +221,9 @@ async def download_customer_delivery_artifact(
         iter([content]),
         media_type=artifact.content_type,
         headers={
-            "Content-Disposition": f'attachment; filename="{artifact.filename}"',
+            "Content-Disposition": _download_content_disposition(
+                artifact.filename, artifact.filename
+            ),
             "Content-Length": str(artifact.file_size),
         },
     )
@@ -1899,17 +1921,13 @@ async def download_source_file(
         raise HTTPException(status_code=404, detail="File content not found")
 
     download_name = source_file.original_filename or source_file.filename
-    extension = f".{source_file.filename.rsplit('.', 1)[1]}" if "." in source_file.filename else ""
-    ascii_name = download_name.encode("ascii", "ignore").decode().strip()
-    ascii_name = ascii_name.replace("\\", "_").replace('"', "")
-    if not ascii_name or ascii_name.startswith("."):
-        ascii_name = f"download{extension}"
-    filename_encoded = quote(download_name)
     return StreamingResponse(
         BytesIO(content),
         media_type=source_file.content_type,
         headers={
-            "Content-Disposition": f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{filename_encoded}"
+            "Content-Disposition": _download_content_disposition(
+                download_name, source_file.filename
+            )
         },
     )
 

@@ -49,6 +49,8 @@ services:
       ENVIRONMENT: ${ENVIRONMENT:-development}
       REDIS_URL: ${CONTAINER_REDIS_URL:-redis://redis:6379/0}
       ARQ_REDIS_URL: ${CONTAINER_ARQ_REDIS_URL:-redis://redis:6379/1}
+    volumes:
+      - storage_data:/data/storage
     ports:
       - "${API_BIND_ADDRESS:-127.0.0.1}:${API_HOST_PORT:-18000}:8000"
     depends_on:
@@ -58,7 +60,7 @@ services:
         condition: service_healthy
     networks:
       - consultant_ai_network
-    restart: unless-stopped
+    restart: ${AMX_RESTART_POLICY:-unless-stopped}
 
   worker:
     build:
@@ -71,6 +73,8 @@ services:
       ENVIRONMENT: ${ENVIRONMENT:-development}
       REDIS_URL: ${CONTAINER_REDIS_URL:-redis://redis:6379/0}
       ARQ_REDIS_URL: ${CONTAINER_ARQ_REDIS_URL:-redis://redis:6379/1}
+    volumes:
+      - storage_data:/data/storage
     depends_on:
       postgres:
         condition: service_healthy
@@ -78,7 +82,7 @@ services:
         condition: service_healthy
     networks:
       - consultant_ai_network
-    restart: unless-stopped
+    restart: ${AMX_RESTART_POLICY:-unless-stopped}
 
   web:
     build:
@@ -95,7 +99,7 @@ services:
       - api
     networks:
       - consultant_ai_network
-    restart: unless-stopped
+    restart: ${AMX_RESTART_POLICY:-unless-stopped}
 
 networks:
   consultant_ai_network:
@@ -105,3 +109,4 @@ networks:
 volumes:
   postgres_data:
   redis_data:
+  storage_data:

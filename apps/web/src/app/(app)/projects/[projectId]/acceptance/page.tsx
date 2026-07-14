@@ -200,12 +200,22 @@ export default function ProjectAcceptancePage({ params }: { params: Promise<{ pr
             />
             <Button
               data-testid="create-customer-portal"
-              disabled={!portalEmail || createPortalMutation.isPending}
+              disabled={
+                !portalEmail
+                || !acceptance.package_ready
+                || saveMutation.isPending
+                || createPortalMutation.isPending
+              }
               onClick={() => createPortalMutation.mutate()}
             >
               <Link2 className="mr-2 h-4 w-4" />创建 14 天链接
             </Button>
           </div>
+          {!acceptance.package_ready && (
+            <p data-testid="customer-portal-package-blocker" className="text-sm text-amber-600">
+              正式交付包尚未就绪，完成发布和导出后才能创建客户门户。
+            </p>
+          )}
           {createdPortal && (
             <div className="rounded-md border border-emerald-300 bg-emerald-50 p-3 text-sm dark:border-emerald-800 dark:bg-emerald-950/30">
               <p className="font-medium">一次性可见门户地址</p>
@@ -224,7 +234,11 @@ export default function ProjectAcceptancePage({ params }: { params: Promise<{ pr
           )}
           <div className="space-y-2">
             {(portalLinksQuery.data || []).map((link) => (
-              <div key={link.id} className="flex flex-col gap-2 rounded-md border border-slate-200 p-3 text-sm sm:flex-row sm:items-center sm:justify-between dark:border-slate-700">
+              <div
+                key={link.id}
+                data-testid={`customer-portal-link-${link.id}`}
+                className="flex flex-col gap-2 rounded-md border border-slate-200 p-3 text-sm sm:flex-row sm:items-center sm:justify-between dark:border-slate-700"
+              >
                 <div>
                   <p className="font-medium">{link.label} · {link.customer_email}</p>
                   <p className="text-slate-500">
@@ -236,7 +250,12 @@ export default function ProjectAcceptancePage({ params }: { params: Promise<{ pr
                   </p>
                 </div>
                 {!link.revoked_at && (
-                  <Button variant="ghost" size="sm" onClick={() => revokePortalMutation.mutate(link.id)}>
+                  <Button
+                    data-testid={`revoke-customer-portal-${link.id}`}
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => revokePortalMutation.mutate(link.id)}
+                  >
                     <XCircle className="mr-2 h-4 w-4" />撤销
                   </Button>
                 )}

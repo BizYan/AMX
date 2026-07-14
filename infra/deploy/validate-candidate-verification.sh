@@ -98,8 +98,10 @@ CONTAINER_PREFIX="$(read_env_value AMX_CONTAINER_PREFIX)"
 
 POSTGRES_VOLUME="$(read_env_value AMX_POSTGRES_VOLUME)"
 REDIS_VOLUME="$(read_env_value AMX_REDIS_VOLUME)"
+STORAGE_VOLUME="$(read_env_value AMX_STORAGE_VOLUME)"
 [[ "$POSTGRES_VOLUME" == amx_rc_* ]] || fail "AMX_POSTGRES_VOLUME must be candidate scoped"
 [[ "$REDIS_VOLUME" == amx_rc_* ]] || fail "AMX_REDIS_VOLUME must be candidate scoped"
+[[ "$STORAGE_VOLUME" == amx_rc_* ]] || fail "AMX_STORAGE_VOLUME must be candidate scoped"
 
 for entry in \
   "POSTGRES_HOST_PORT:15432" \
@@ -127,6 +129,7 @@ if [[ -n "$COMPOSE_CONFIG" ]]; then
   grep -Fq "name: $NETWORK" "$COMPOSE_CONFIG" || fail "candidate network name missing from rendered compose config"
   grep -Fq "name: $POSTGRES_VOLUME" "$COMPOSE_CONFIG" || fail "candidate postgres volume missing from rendered compose config"
   grep -Fq "name: $REDIS_VOLUME" "$COMPOSE_CONFIG" || fail "candidate redis volume missing from rendered compose config"
+  grep -Fq "name: $STORAGE_VOLUME" "$COMPOSE_CONFIG" || fail "candidate storage volume missing from rendered compose config"
   grep -Fq 'restart: "no"' "$COMPOSE_CONFIG" || grep -Fq "restart: 'no'" "$COMPOSE_CONFIG" || grep -Fq "restart: no" "$COMPOSE_CONFIG" \
     || fail "candidate API/worker/web restart policy must be no"
 fi

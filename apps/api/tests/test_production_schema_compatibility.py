@@ -26,6 +26,7 @@ from app.core.settings import settings
 from app.db.base import Base
 from app.db.init_schema import deduplicate_indexes
 from app.domains.identity.models import AuditLog  # noqa: F401 - registered for create_all
+from app.domains.knowledge.models import KnowledgeEntry
 from app.domains.ops.capability_activation import CapabilityActivationService
 from app.domains.ops.models import AlertRule, MetricEvent, QuotaUsage
 from app.domains.providers.models import (
@@ -39,10 +40,16 @@ from app.domains.providers.models import (
 from app.domains.providers.readiness import build_provider_readiness_summary
 from app.domains.providers.registry import ProviderRegistry
 from app.models.identity import Tenant
+from app.models.projects import Project
+from app.services.search_provider import PostgresFTSProvider
 
 
 API_ROOT = Path(__file__).resolve().parents[1]
 HISTORICAL_REVISION = "0026_conflict_risk"
+CANDIDATE_HISTORICAL_REVISION = "0021_invitation_delivery"
+CANDIDATE_HISTORICAL_FIXTURE = (
+    API_ROOT.parent.parent / "infra/deploy/fixtures/historical-migration-baseline-0021.sql"
+)
 LEGACY_PROVIDER = "legacy-llm"
 LEGACY_ERROR = "legacy timeout"
 
@@ -105,6 +112,31 @@ def _run_alembic_upgrade_head(database_url: str) -> None:
             os.environ.pop("DATABASE_URL", None)
         else:
             os.environ["DATABASE_URL"] = original_env_url
+
+
+def _run_alembic_stamp(database_url: str, revision: str) -> None:
+    original_settings_url = settings.DATABASE_URL
+    original_env_url = os.environ.get("DATABASE_URL")
+    try:
+        settings.DATABASE_URL = database_url
+        os.environ["DATABASE_URL"] = database_url
+        config = Config(str(API_ROOT / "alembic.ini"))
+        config.set_main_option("script_location", str(API_ROOT / "alembic"))
+        command.stamp(config, revision)
+    finally:
+        settings.DATABASE_URL = original_settings_url
+        if original_env_url is None:
+            os.environ.pop("DATABASE_URL", None)
+        else:
+            os.environ["DATABASE_URL"] = original_env_url
+
+
+async def _load_candidate_historical_fixture(database_url: str) -> None:
+    connection = await asyncpg.connect(database_url.replace("postgresql+asyncpg://", "postgresql://"))
+    try:
+        await connection.execute(CANDIDATE_HISTORICAL_FIXTURE.read_text(encoding="utf-8"))
+    finally:
+        await connection.close()
 
 
 async def _create_historical_schema(database_url: str, *, include_legacy_tables: bool = True) -> None:
@@ -229,6 +261,45 @@ async def _prepare_minimal_app_tables(database_url: str) -> None:
     try:
         async with engine.begin() as connection:
             await connection.run_sync(Base.metadata.create_all)
+    finally:
+        await engine.dispose()
+
+
+async def _exercise_postgres_full_text_search(database_url: str) -> tuple[str, list]:
+    marker = f"amx postgres knowledge marker {uuid4().hex}"
+    engine = create_async_engine(database_url)
+    Session = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with Session() as session:
+            tenant = Tenant(name="Knowledge Search Compat", slug=f"knowledge-search-{uuid4().hex[:8]}")
+            session.add(tenant)
+            await session.flush()
+            project = Project(
+                tenant_id=tenant.id,
+                name="Knowledge Search Compat",
+                slug=f"knowledge-search-{uuid4().hex[:8]}",
+            )
+            session.add(project)
+            await session.flush()
+            entry = KnowledgeEntry(
+                tenant_id=tenant.id,
+                project_id=project.id,
+                entry_type="text",
+                content=marker,
+                content_hash=uuid4().hex * 2,
+            )
+            session.add(entry)
+            await session.flush()
+
+            provider = PostgresFTSProvider(session)
+            await provider.index_document(entry.id, marker, {"evidence": "schema_compatibility"})
+            await session.commit()
+            results = await provider.search(
+                marker,
+                5,
+                {"tenant_id": tenant.id, "project_id": project.id},
+            )
+            return str(entry.id), results
     finally:
         await engine.dispose()
 
@@ -420,3 +491,20 @@ def test_historical_schema_upgrade_skips_missing_legacy_tables_safely():
 
         assert asyncio.run(_table_exists(database_url, "provider_runs")) is False
         assert asyncio.run(_table_exists(database_url, "metric_events")) is False
+
+
+def test_candidate_historical_baseline_fixture_upgrades_to_head():
+    with temporary_postgres_database() as database_url:
+        asyncio.run(_load_candidate_historical_fixture(database_url))
+        _run_alembic_stamp(database_url, CANDIDATE_HISTORICAL_REVISION)
+
+        _run_alembic_upgrade_head(database_url)
+        asyncio.run(_prepare_minimal_app_tables(database_url))
+        entry_id, search_results = asyncio.run(_exercise_postgres_full_text_search(database_url))
+
+        assert asyncio.run(_table_exists(database_url, "projects")) is True
+        assert asyncio.run(_table_exists(database_url, "documents")) is True
+        assert asyncio.run(_table_exists(database_url, "provider_runs")) is True
+        assert asyncio.run(_table_exists(database_url, "metric_events")) is True
+        assert search_results
+        assert str(search_results[0].entry_id) == entry_id

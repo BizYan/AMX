@@ -46,7 +46,7 @@ export default function CustomerDeliveryPortalPage({ params }: { params: Promise
   }
 
   if (portalQuery.isLoading) return <main className="mx-auto max-w-5xl p-8 text-center text-sm text-slate-500">正在验证客户交付门户...</main>
-  if (!portalQuery.data) return <main className="mx-auto max-w-3xl p-8 text-center"><h1 className="text-xl font-semibold">客户交付门户不可用</h1><p className="mt-2 text-sm text-slate-500">{portalQuery.error instanceof Error ? portalQuery.error.message : '链接无效、已过期或已撤销。'}</p></main>
+  if (!portalQuery.data) return <main data-testid="portal-unavailable" className="mx-auto max-w-3xl p-8 text-center"><h1 className="text-xl font-semibold">客户交付门户不可用</h1><p className="mt-2 text-sm text-slate-500">{portalQuery.error instanceof Error ? portalQuery.error.message : '链接无效、已过期或已撤销。'}</p></main>
 
   const portal = portalQuery.data
   return (
@@ -92,8 +92,6 @@ export default function CustomerDeliveryPortalPage({ params }: { params: Promise
                 <a
                   data-testid={`portal-download-artifact-${artifact.id}`}
                   href={customerPortalApi.downloadArtifact(token, artifact.id)}
-                  target="_blank"
-                  rel="noreferrer"
                 >
                   <Download className="mr-2 h-4 w-4" />下载
                 </a>

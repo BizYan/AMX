@@ -19,7 +19,11 @@ settings.DATABASE_URL = os.environ["DATABASE_URL"]
 settings.REDIS_URL = os.environ["REDIS_URL"]
 settings.ARQ_REDIS_URL = os.environ["ARQ_REDIS_URL"]
 
-from app.domains.projects.router import download_source_file, upload_project_file
+from app.domains.projects.router import (
+    download_customer_delivery_artifact,
+    download_source_file,
+    upload_project_file,
+)
 from app.domains.projects.models import SourceFileStatus
 from app.services.storage import StorageHandle, StorageProvider
 
@@ -221,4 +225,46 @@ class TestUploadProjectFile:
             disposition = response.headers["content-disposition"]
             assert 'filename="download.txt"' in disposition
             assert "filename*=UTF-8''%E9%9C%80%E6%B1%82%20%E6%96%87%E6%A1%A3.txt" in disposition
+            mock_storage.download.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_customer_portal_download_encodes_unicode_artifact_filename(
+        self, mock_db, mock_storage
+    ):
+        """Customer package downloads must remain valid with non-ASCII filenames."""
+        artifact_id = uuid4()
+        file_bytes = b"synthetic customer package"
+        mock_storage.download.return_value = file_bytes
+
+        artifact = MagicMock()
+        artifact.id = artifact_id
+        artifact.filename = "\u5ba2\u6237\u4ea4\u4ed8\u5305.md"
+        artifact.content_type = "text/markdown"
+        artifact.file_size = len(file_bytes)
+        artifact.file_hash = "c" * 64
+        artifact.storage_path = "exports/customer-package.md"
+
+        with patch(
+            "app.domains.projects.router.ProjectDeliveryPlanService"
+        ) as mock_service_class, patch(
+            "app.domains.projects.router.get_storage_provider",
+            return_value=mock_storage,
+        ):
+            mock_service = AsyncMock()
+            mock_service.get_customer_portal_artifact.return_value = artifact
+            mock_service_class.return_value = mock_service
+
+            response = await download_customer_delivery_artifact(
+                token="synthetic-scoped-token",
+                artifact_id=artifact_id,
+                db=mock_db,
+            )
+
+            assert response.media_type == "text/markdown"
+            disposition = response.headers["content-disposition"]
+            assert 'filename="download.md"' in disposition
+            assert (
+                "filename*=UTF-8''%E5%AE%A2%E6%88%B7%E4%BA%A4%E4%BB%98%E5%8C%85.md"
+                in disposition
+            )
             mock_storage.download.assert_awaited_once()

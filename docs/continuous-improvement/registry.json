@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-06-20",
+  "updated_at": "2026-07-14",
   "entries": [
     {
       "id": "IMP-001",
@@ -222,6 +222,46 @@
         "summary": "Forward-fix governance now requires stopping repeated rollback loops for the same production gate failure, preserving evidence, comparing candidate and production gates, classifying the failure, and retrying only after CI and Owner Go while preserving normal rollback for unrelated catastrophic failures."
       },
       "next_review": "2026-07-20"
+    },
+    {
+      "id": "IMP-008",
+      "title": "Fail closed when non-production Compose identity is not explicit",
+      "category": "environment-isolation",
+      "priority": "P0",
+      "status": "adopted",
+      "recurrence": 1,
+      "summary": "A staging workflow generated isolated names and ports but invoked Docker Compose without an explicit env file or project name. Compose used production-default container identities, briefly replacing production containers while the staging health check targeted a different port.",
+      "evidence": [
+        {
+          "kind": "workflow-run",
+          "reference": "https://github.com/BizYan/AMX/actions/runs/29300453730"
+        },
+        {
+          "kind": "workflow-run",
+          "reference": "https://github.com/BizYan/AMX/actions/runs/29300851138"
+        },
+        {
+          "kind": "pull-request",
+          "reference": "https://github.com/BizYan/AMX/pull/175"
+        },
+        {
+          "kind": "workflow-run",
+          "reference": "https://github.com/BizYan/AMX/actions/runs/29301640466"
+        }
+      ],
+      "proposed_change": "Require non-production deployments to pass an explicit Compose env file and project name, validate the fully rendered resource identity before startup, capture status by Compose project label, and verify teardown cannot report success while production containers are owned by a staging path.",
+      "destinations": [
+        "infra/deploy/deploy-oci.sh",
+        "infra/deploy/validate-staging-isolation.sh",
+        ".github/workflows/deploy-staging.yml",
+        "apps/api/tests/test_production_runtime_security_contract.py"
+      ],
+      "validation": {
+        "result": "passed",
+        "reference": "https://github.com/BizYan/AMX/actions/runs/29301640466",
+        "summary": "The merged isolation fix rendered and started only SHA-scoped staging containers, ports, network, volumes, database, and working directory while production remained healthy and production-owned containers remained on the canonical production path. Exact staging teardown passed. The run then failed at the separate historical migration baseline gate."
+      },
+      "next_review": "2026-07-21"
     }
   ]
 }
