@@ -1,113 +1,85 @@
 # Browser Commercial Delivery Evidence Latest
 
-Date: 2026-06-21
+Date: 2026-07-15
 
-Status: blocked before live evidence. This document records the latest real
-browser commercial-delivery execution attempt and the evidence boundary. It is
-not a production browser readiness claim.
+Status: successful isolated staging evidence. This is real browser evidence for
+the verified staging SHA. It is not a production-browser readiness claim and
+does not authorize a release by itself.
 
-## Target
+## Verified Target
 
-- Target environment: not selected.
-- Approved SHA under review:
-  `50e2d5ee4405a31797297cf13a78f70bd196d2c6`
-- Latest verified production remains `v1.0.15` /
-  `3cadf5d0e3f4e3402e02cc5eaf1053277ae901b9`.
+- Target: disposable isolated staging slot.
+- SHA: `66a09e0dd566df2838ba62766323180d49cc3867`.
+- Workflow: [Deploy staging run 29375316574](https://github.com/BizYan/AMX/actions/runs/29375316574).
+- Conclusion: `success`.
+- Staging slot: `real-browser-66a09e0d`.
+- Compose project: `amx_staging_real_browser_66a09e0d_66a09e0dd566`.
+- Database: `amx_staging_real_browser_66a09e0d_66a09e0dd566`.
+- Network: `amx_staging_real_browser_66a09e0d_66a09e0dd566_network`.
+- Isolation, historical migration compatibility baseline, health, and teardown:
+  passed.
 
-The required Owner target decision was not present in the executable
-environment. No candidate, staging, or production browser journey was claimed.
+The application returned `{"status":"healthy","version":"1.0.0"}`. The
+workflow checkout and staging runtime summary bind this evidence to the full
+SHA above; the application version field is not release provenance.
 
-## Runtime Inputs
+## Real Browser Journey
 
-The real browser spec requires:
+The gated Playwright journey ran with real browser login and real backend calls.
+It did not use `setupApiMocks`, `page.route`, fake JWTs, or fixture-only data.
+All created business records used synthetic material and the staging slot was
+torn down after evidence collection.
 
-- `RUN_REAL_BROWSER_DELIVERY_TEST=true`
-- `E2E_WEB_URL`
-- `E2E_API_URL`
-- `E2E_USER_EMAIL`
-- `E2E_PASSWORD`
-
-Local input status:
-
-| Input | Status |
+| Evidence | Sanitized value |
 | --- | --- |
-| `RUN_REAL_BROWSER_DELIVERY_TEST` | Missing before explicit fail-closed run |
-| `E2E_WEB_URL` | Missing |
-| `E2E_API_URL` | Missing |
-| `E2E_USER_EMAIL` | Missing |
-| `E2E_PASSWORD` | Missing |
+| Source marker | `AMX-REAL-BROWSER-1784070819072` |
+| Project | `648c7163-ed0d-4882-b43a-760a4a2a511c` |
+| Source file | `4fbd241d-0057-4316-aec1-14567615b76c` |
+| Ingestion job | `27fe82d4-3a45-46c6-a47f-474f7e1e14ae` |
+| Knowledge entry | `1310a740-d66a-4467-8504-abfd3823d5f0` |
+| Document | `1bb1d8d6-d616-430c-800b-878215d13acd` |
+| Version / baseline | `85099113-c90e-4199-b8ab-30cc81c995a2` / `1c04f201-7d46-42cd-af86-2395f0086755` |
+| Export job / artifact | `06f85288-e58b-4f07-9df6-0022d7f53c71` / `1ed7e291-3702-43c1-8d4a-dfda192171ac` |
+| Portal link | `8caa36b9-68ee-4a44-94a3-acc8803b30f3` |
+| Acceptance / closeout | `decision=accepted;closed=true` |
+| Sanitized audit evidence | `04546704-afd2-4531-a0bb-21d49e17bb8f` |
 
-No credentials were printed, inspected, copied, or persisted.
+The successful path covers login, synthetic project creation, source upload,
+ingestion, knowledge/provenance, provider-backed document selection or
+generation through the normal UI path, review resolution, approval/publication,
+package export, token-scoped portal download, acceptance, delivery closeout, and
+sanitized audit visibility.
 
-## Spec Boundary
+## Blocked-Path Evidence
 
-Checked spec:
+The same run verified these enforced boundaries:
 
-- `apps/web/tests/e2e/playwright/real-browser-commercial-delivery.spec.ts`
+- unresolved comment blocks approval;
+- package-not-ready blocks customer portal delivery;
+- revoked customer token is denied;
+- customer token cannot access internal API routes.
 
-The spec does not import or call `setupApiMocks`, does not use `page.route`,
-does not set a fake JWT, and asserts that the browser login token does not
-contain `mock-jwt`.
+## Evidence Artifacts
 
-## Execution Attempt
+The workflow artifact `staging-commercial-journey-evidence` contains sanitized
+runtime summary, health, isolation, historical-migration-baseline, teardown,
+Playwright screenshots, and `commercial-delivery-evidence.json`.
 
-Command:
+Screenshots:
 
-```powershell
-RUN_REAL_BROWSER_DELIVERY_TEST=true pnpm --dir apps/web exec playwright test tests/e2e/playwright/real-browser-commercial-delivery.spec.ts --reporter=list
-```
+- `01-source-knowledge.png`
+- `02-customer-portal.png`
+- `03-sanitized-audit.png`
 
-Result:
+No credentials, tokens, raw customer content, or environment files are part of
+the recorded evidence.
 
-```text
-failed closed
-reason: E2E_WEB_URL is required when RUN_REAL_BROWSER_DELIVERY_TEST=true
-```
+## Cleanup And Limitations
 
-This proves the gated spec does not silently skip or fall back to mock evidence
-when real-runtime inputs are missing.
-
-## Evidence Not Produced
-
-No live evidence was produced for:
-
-- project ID;
-- uploaded source marker;
-- ingestion result;
-- knowledge/provenance evidence;
-- provider-backed document generation evidence;
-- review, publish, and export evidence;
-- customer portal download evidence;
-- acceptance and closeout evidence.
-
-## Verification
-
-Completed locally:
-
-```text
-pnpm --dir apps/web typecheck
-pnpm --dir apps/web build
-git diff --check
-```
-
-The first typecheck/build attempt failed because local dependencies were stale
-after the Playwright dependency merge. Rebuilding `apps/web/node_modules` from
-the committed lockfile and reinstalling the Playwright Chromium browser fixed
-the local toolchain; the final typecheck and build passed.
-
-## Required Next Action
-
-Before this can become real browser evidence, Owner must select exactly one
-target:
-
-- candidate;
-- staging;
-- production.
-
-Then provide the real-runtime inputs in that target's approved secret or local
-execution boundary. For production, Owner Go must explicitly state that the
-synthetic browser journey may create and clean up production project/document
-delivery records.
-
-After target selection and inputs exist, rerun the real browser spec and replace
-this blocked evidence boundary with the successful sanitized evidence report.
+- Application cleanup: the synthetic project was archived.
+- Infrastructure cleanup: `teardown=passed` for the disposable staging slot.
+- This does not prove a production browser journey, production deployment,
+  production provenance, or customer-data handling.
+- Current-main promotion still requires exact-SHA candidate verification, normal
+  release gates, and a production deployment workflow before it can supersede
+  the verified production release.
