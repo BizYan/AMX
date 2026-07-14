@@ -453,6 +453,7 @@ def test_staging_workflow_does_not_interpolate_secrets_in_shell_blocks():
 
 def test_real_browser_commercial_journey_uses_ui_roles_and_sanitized_artifacts():
     spec = read("apps/web/tests/e2e/playwright/real-browser-commercial-delivery.spec.ts")
+    project_files_page = read("apps/web/src/app/(app)/projects/[projectId]/files/page.tsx")
     config = read("apps/web/playwright.config.ts")
 
     assert "setupApiMocks" not in spec
@@ -467,6 +468,8 @@ def test_real_browser_commercial_journey_uses_ui_roles_and_sanitized_artifacts()
     assert "browser login API failed with HTTP" in spec
     assert "browser auth/me failed with HTTP" in spec
     assert "item.filename === 'real-browser-delivery-source.md'" in spec
+    assert "await expect(executeIngestion).toBeVisible({ timeout: 30000 })" in spec
+    assert "await refreshIngestionState()" in project_files_page
     assert "document-submit-review-action" in spec
     assert "create-baseline-action" in spec
     assert "waitForEvent('download')" in spec
