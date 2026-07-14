@@ -283,7 +283,7 @@ test.describe('Real browser commercial delivery validation', () => {
           const files = await apiJson<any>(request, 'get', `/projects/${evidence.project_id}/files`, leadToken, {
             params: { page_size: '100' },
           })
-          return responseItems<any>(files).find((item) => item.name === 'real-browser-delivery-source.md')
+          return responseItems<any>(files).find((item) => item.filename === 'real-browser-delivery-source.md')
         },
         (item) => Boolean(item.id),
       )
