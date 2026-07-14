@@ -138,7 +138,7 @@ jobs:
           GENERATED_POSTGRES_PASSWORD="$(openssl rand -hex 24)"
           GENERATED_JWT_SECRET_KEY="$(openssl rand -hex 32)"
           GENERATED_ADMIN_PASSWORD="$(openssl rand -hex 24)"
-          GENERATED_ADMIN_EMAIL="amx-staging-${SHORT_SHA}@example.test"
+          GENERATED_ADMIN_EMAIL="amx-staging-${SHORT_SHA}@staging.amx.yuanda.win"
           LLM_BASE_URL="${STAGING_LLM_BASE_URL:-https://api.minimax.chat/v1}"
           LLM_MODEL="${STAGING_LLM_MODEL:-MiniMax-Text-01}"
           if [[ "$RUN_REAL_BROWSER_DELIVERY" == "true" ]]; then
@@ -316,6 +316,7 @@ jobs:
             tests/e2e/playwright/real-browser-commercial-delivery.spec.ts \
             --project=chromium \
             --reporter=list \
+            --retries=0 \
             --trace=off \
             --output=../../artifacts/playwright
 
