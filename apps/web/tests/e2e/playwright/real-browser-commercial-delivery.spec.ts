@@ -119,7 +119,7 @@ async function createSyntheticMember(
 ): Promise<SyntheticMember> {
   const suffix = randomUUID()
   const password = `Amx-${suffix}!`
-  const email = `${roleName.toLowerCase().replace(/[^a-z]+/g, '-')}-${suffix}@example.test`
+  const email = `${roleName.toLowerCase().replace(/[^a-z]+/g, '-')}-${suffix}@staging.amx.yuanda.win`
   const role = await apiJson<any>(request, 'post', '/identity/roles', adminToken, {
     data: {
       name: `${roleName} ${marker}`.slice(0, 100),
@@ -178,8 +178,8 @@ test.describe('Real browser commercial delivery validation', () => {
     requireRealBrowserDeliveryEnv()
 
     const marker = `AMX-REAL-BROWSER-${Date.now()}`
-    const customerEmail = `customer-${randomUUID()}@example.test`
-    const revokedCustomerEmail = `revoked-${randomUUID()}@example.test`
+    const customerEmail = `customer-${randomUUID()}@staging.amx.yuanda.win`
+    const revokedCustomerEmail = `revoked-${randomUUID()}@staging.amx.yuanda.win`
     const tempDir = await mkdtemp(path.join(os.tmpdir(), 'amx-real-browser-delivery-'))
     const sourcePath = path.join(tempDir, 'real-browser-delivery-source.md')
     const evidence: JourneyEvidence = {

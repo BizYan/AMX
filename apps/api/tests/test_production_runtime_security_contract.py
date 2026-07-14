@@ -286,10 +286,12 @@ def test_staging_workflow_fails_closed_and_isolates_runtime_resources():
 
 def test_staging_real_browser_gate_uses_real_runtime_and_tears_down():
     workflow = read(".github/workflows/deploy-staging.yml")
+    spec = read("apps/web/tests/e2e/playwright/real-browser-commercial-delivery.spec.ts")
 
     assert 'RUN_REAL_BROWSER_DELIVERY_TEST: "true"' in workflow
     assert "E2E_TARGET: staging" in workflow
     assert "real-browser-commercial-delivery.spec.ts" in workflow
+    assert "--retries=0" in workflow
     assert "--trace=off" in workflow
     assert "setupApiMocks" not in workflow
     assert "page.route" not in workflow
@@ -301,6 +303,10 @@ def test_staging_real_browser_gate_uses_real_runtime_and_tears_down():
     assert "staging-container-status.txt" in workflow
     assert "production container is still owned by a staging path" in workflow
     assert "staging-commercial-journey-evidence" in workflow
+    assert "@example.test" not in workflow
+    assert "@example.test" not in spec
+    assert "@staging.amx.yuanda.win" in workflow
+    assert "@staging.amx.yuanda.win" in spec
 
 
 def test_staging_prepares_the_established_historical_migration_baseline():
