@@ -112,16 +112,14 @@ async function loginThroughBrowser(page: Page, email: string, password: string) 
   )
   await page.locator('button[type="submit"]').click()
   const loginResponse = await loginResponsePromise
-  const loginBody = await loginResponse.text()
   expect(
     loginResponse.ok(),
-    `browser login API failed with HTTP ${loginResponse.status()}: ${loginBody.slice(0, 300)}`,
+    `browser login API failed with HTTP ${loginResponse.status()}`,
   ).toBeTruthy()
   const meResponse = await meResponsePromise
-  const meBody = await meResponse.text()
   expect(
     meResponse.ok(),
-    `browser auth/me failed with HTTP ${meResponse.status()}: ${meBody.slice(0, 300)}`,
+    `browser auth/me failed with HTTP ${meResponse.status()}`,
   ).toBeTruthy()
   await page.waitForFunction(() => Boolean(window.localStorage.getItem('auth_token')), null, { timeout: 30000 })
   const token = await page.evaluate(() => window.localStorage.getItem('auth_token') || '')
