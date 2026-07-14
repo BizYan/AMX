@@ -477,7 +477,16 @@ test.describe('Real browser commercial delivery validation', () => {
       await acceptanceItems.locator('input').nth(0).fill('Commercial delivery artifact accepted')
       await acceptanceItems.locator('select').nth(0).selectOption('pending')
       await acceptanceItems.locator('input').nth(1).fill(`Synthetic evidence for ${marker}`)
+      const acceptanceSave = page.waitForResponse((response) =>
+        response.request().method() === 'PUT'
+        && response.url().endsWith(`/projects/${evidence.project_id}/acceptance`)
+      )
       await page.getByTestId('save-acceptance').click()
+      const acceptanceSaveResponse = await acceptanceSave
+      expect(acceptanceSaveResponse.status()).toBe(200)
+      const savedAcceptance = await acceptanceSaveResponse.json()
+      expect(savedAcceptance.items).toHaveLength(1)
+      expect(savedAcceptance.items[0].title).toBe('Commercial delivery artifact accepted')
       await page.getByTestId('customer-portal-email').fill(customerEmail)
       await expect(page.getByTestId('create-customer-portal')).toBeEnabled({ timeout: 30000 })
       const portalCreation = page.waitForResponse((response) =>
@@ -527,6 +536,7 @@ test.describe('Real browser commercial delivery validation', () => {
       const customerPage = await customerContext.newPage()
       await customerPage.goto(portalUrl, { waitUntil: 'domcontentloaded' })
       expect(await customerPage.evaluate(() => window.localStorage.getItem('auth_token'))).toBeNull()
+      await expect(customerPage.getByTestId('portal-acceptance-criteria').locator('select').first()).toBeVisible({ timeout: 30000 })
       await expect(customerPage.getByTestId('portal-artifacts')).toContainText(exportJob.artifacts[0].filename, { timeout: 30000 })
       const portalToken = new URL(portalUrl).pathname.split('/').filter(Boolean).pop()
       expect(portalToken, 'customer portal URL must contain its scoped token').toBeTruthy()

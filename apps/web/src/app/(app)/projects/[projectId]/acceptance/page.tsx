@@ -200,7 +200,12 @@ export default function ProjectAcceptancePage({ params }: { params: Promise<{ pr
             />
             <Button
               data-testid="create-customer-portal"
-              disabled={!portalEmail || !acceptance.package_ready || createPortalMutation.isPending}
+              disabled={
+                !portalEmail
+                || !acceptance.package_ready
+                || saveMutation.isPending
+                || createPortalMutation.isPending
+              }
               onClick={() => createPortalMutation.mutate()}
             >
               <Link2 className="mr-2 h-4 w-4" />创建 14 天链接
