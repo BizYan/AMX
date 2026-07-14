@@ -217,6 +217,16 @@ jobs:
             --staging-root \"$AMX_STAGING_ROOT\"'" \
             | tee artifacts/staging-isolation.txt
 
+      - name: Prepare historical migration compatibility baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/amx_oci "$OCI_USER@$OCI_HOST" \
+            "bash -lc 'cd \"$REMOTE_SLOT_PATH\" && bash infra/deploy/prepare-historical-migration-baseline.sh \
+            --env-file \"$REMOTE_SLOT_PATH/.env\" \
+            --compose-project-name \"$COMPOSE_PROJECT_NAME\"'" \
+            | tee artifacts/staging-migration-baseline.txt
+
       - name: Deploy exact SHA to isolated staging slot
         shell: bash
         run: |
