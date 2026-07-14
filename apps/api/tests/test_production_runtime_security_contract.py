@@ -454,6 +454,7 @@ def test_staging_workflow_does_not_interpolate_secrets_in_shell_blocks():
 def test_real_browser_commercial_journey_uses_ui_roles_and_sanitized_artifacts():
     spec = read("apps/web/tests/e2e/playwright/real-browser-commercial-delivery.spec.ts")
     project_files_page = read("apps/web/src/app/(app)/projects/[projectId]/files/page.tsx")
+    customer_portal_page = read("apps/web/src/app/delivery-portal/[token]/page.tsx")
     config = read("apps/web/playwright.config.ts")
 
     assert "setupApiMocks" not in spec
@@ -482,6 +483,8 @@ def test_real_browser_commercial_journey_uses_ui_roles_and_sanitized_artifacts()
     assert "`${apiUrl}/identity/auth/me`" in spec
     assert "Authorization: `Bearer ${portalToken}`" in spec
     assert "waitForEvent('download')" in spec
+    assert "portal-download-artifact-" in customer_portal_page
+    assert 'target="_blank"' not in customer_portal_page
     assert "portal-unavailable" in spec
     assert "project.acceptance.close" in spec
     assert "commercial-delivery-evidence.json" in spec

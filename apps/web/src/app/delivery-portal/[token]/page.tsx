@@ -92,8 +92,6 @@ export default function CustomerDeliveryPortalPage({ params }: { params: Promise
                 <a
                   data-testid={`portal-download-artifact-${artifact.id}`}
                   href={customerPortalApi.downloadArtifact(token, artifact.id)}
-                  target="_blank"
-                  rel="noreferrer"
                 >
                   <Download className="mr-2 h-4 w-4" />下载
                 </a>
