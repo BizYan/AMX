@@ -43,6 +43,10 @@ from app.models.identity import Tenant
 
 API_ROOT = Path(__file__).resolve().parents[1]
 HISTORICAL_REVISION = "0026_conflict_risk"
+CANDIDATE_HISTORICAL_REVISION = "0021_invitation_delivery"
+CANDIDATE_HISTORICAL_FIXTURE = (
+    API_ROOT.parent.parent / "infra/deploy/fixtures/historical-migration-baseline-0021.sql"
+)
 LEGACY_PROVIDER = "legacy-llm"
 LEGACY_ERROR = "legacy timeout"
 
@@ -105,6 +109,31 @@ def _run_alembic_upgrade_head(database_url: str) -> None:
             os.environ.pop("DATABASE_URL", None)
         else:
             os.environ["DATABASE_URL"] = original_env_url
+
+
+def _run_alembic_stamp(database_url: str, revision: str) -> None:
+    original_settings_url = settings.DATABASE_URL
+    original_env_url = os.environ.get("DATABASE_URL")
+    try:
+        settings.DATABASE_URL = database_url
+        os.environ["DATABASE_URL"] = database_url
+        config = Config(str(API_ROOT / "alembic.ini"))
+        config.set_main_option("script_location", str(API_ROOT / "alembic"))
+        command.stamp(config, revision)
+    finally:
+        settings.DATABASE_URL = original_settings_url
+        if original_env_url is None:
+            os.environ.pop("DATABASE_URL", None)
+        else:
+            os.environ["DATABASE_URL"] = original_env_url
+
+
+async def _load_candidate_historical_fixture(database_url: str) -> None:
+    connection = await asyncpg.connect(database_url.replace("postgresql+asyncpg://", "postgresql://"))
+    try:
+        await connection.execute(CANDIDATE_HISTORICAL_FIXTURE.read_text(encoding="utf-8"))
+    finally:
+        await connection.close()
 
 
 async def _create_historical_schema(database_url: str, *, include_legacy_tables: bool = True) -> None:
@@ -420,3 +449,17 @@ def test_historical_schema_upgrade_skips_missing_legacy_tables_safely():
 
         assert asyncio.run(_table_exists(database_url, "provider_runs")) is False
         assert asyncio.run(_table_exists(database_url, "metric_events")) is False
+
+
+def test_candidate_historical_baseline_fixture_upgrades_to_head():
+    with temporary_postgres_database() as database_url:
+        asyncio.run(_load_candidate_historical_fixture(database_url))
+        _run_alembic_stamp(database_url, CANDIDATE_HISTORICAL_REVISION)
+
+        _run_alembic_upgrade_head(database_url)
+        asyncio.run(_prepare_minimal_app_tables(database_url))
+
+        assert asyncio.run(_table_exists(database_url, "projects")) is True
+        assert asyncio.run(_table_exists(database_url, "documents")) is True
+        assert asyncio.run(_table_exists(database_url, "provider_runs")) is True
+        assert asyncio.run(_table_exists(database_url, "metric_events")) is True

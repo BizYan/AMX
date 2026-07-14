@@ -106,6 +106,7 @@ def test_candidate_safety_script_fails_closed_before_compose_up():
 
 def test_candidate_verification_workflow_is_manual_and_non_production():
     workflow = read(".github/workflows/candidate-verification.yml")
+    fixture = read("infra/deploy/fixtures/historical-migration-baseline-0021.sql")
 
     assert "workflow_dispatch:" in workflow
     assert "push:" not in workflow
@@ -150,14 +151,15 @@ def test_candidate_verification_workflow_is_manual_and_non_production():
     assert "test -f infra/docker-compose.candidate.yml" in workflow
     assert "test -f infra/deploy/validate-candidate-verification.sh" in workflow
     assert 'exec -T postgres psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' in workflow
-    assert 'CREATE EXTENSION IF NOT EXISTS "uuid-ossp";' in workflow
-    assert "CREATE EXTENSION IF NOT EXISTS vector;" in workflow
-    assert "CREATE TABLE IF NOT EXISTS projects (" in workflow
-    assert "owner_id uuid" in workflow
-    assert "status varchar(20) NOT NULL DEFAULT" in workflow
-    assert "CREATE TABLE IF NOT EXISTS documents (" in workflow
-    assert "project_id uuid NOT NULL" in workflow
-    assert "metadata_json jsonb" in workflow
+    assert "infra/deploy/fixtures/historical-migration-baseline-0021.sql" in workflow
+    assert 'CREATE EXTENSION IF NOT EXISTS "uuid-ossp";' in fixture
+    assert "CREATE EXTENSION IF NOT EXISTS vector;" in fixture
+    assert "CREATE TABLE IF NOT EXISTS projects (" in fixture
+    assert "owner_id uuid" in fixture
+    assert "status varchar(20) NOT NULL DEFAULT" in fixture
+    assert "CREATE TABLE IF NOT EXISTS documents (" in fixture
+    assert "project_id uuid NOT NULL" in fixture
+    assert "metadata_json jsonb" in fixture
     assert "Verify historical migration compatibility baseline" in workflow
     assert "historical migration compatibility baseline verification" in workflow
     assert "not a clean empty-database full-history migration proof" in workflow
@@ -299,6 +301,29 @@ def test_staging_real_browser_gate_uses_real_runtime_and_tears_down():
     assert "staging-container-status.txt" in workflow
     assert "production container is still owned by a staging path" in workflow
     assert "staging-commercial-journey-evidence" in workflow
+
+
+def test_staging_prepares_the_established_historical_migration_baseline():
+    workflow = read(".github/workflows/deploy-staging.yml")
+    script = read("infra/deploy/prepare-historical-migration-baseline.sh")
+    fixture = read("infra/deploy/fixtures/historical-migration-baseline-0021.sql")
+
+    assert "Prepare historical migration compatibility baseline" in workflow
+    assert "prepare-historical-migration-baseline.sh" in workflow
+    assert "staging-migration-baseline.txt" in workflow
+    assert workflow.index("Prepare historical migration compatibility baseline") < workflow.index(
+        "Deploy exact SHA to isolated staging slot"
+    )
+    assert 'HISTORICAL_REVISION="0021_invitation_delivery"' in script
+    assert "historical-migration-baseline-0021.sql" in script
+    assert '"${compose[@]}" up -d postgres redis' in script
+    assert '"${compose[@]}" run --rm --no-deps api' in script
+    assert '/app/.venv/bin/alembic stamp "$HISTORICAL_REVISION"' in script
+    assert "/app/.venv/bin/alembic upgrade head" in script
+    assert "historical migration compatibility baseline verification" in script
+    assert "not a clean empty-database full-history migration proof" in script
+    assert "CREATE TABLE IF NOT EXISTS projects" in fixture
+    assert "CREATE TABLE IF NOT EXISTS documents" in fixture
 
 
 def test_staging_isolation_validator_fails_closed_on_production_resources():
