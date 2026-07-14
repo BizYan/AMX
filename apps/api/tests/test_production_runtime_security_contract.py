@@ -438,6 +438,10 @@ def test_real_browser_commercial_journey_uses_ui_roles_and_sanitized_artifacts()
     assert "Project Lead" in spec
     assert "Reviewer" in spec
     assert "Approver" in spec
+    assert "waitUntil: 'networkidle'" in spec
+    assert "page.waitForResponse(" in spec
+    assert "browser login API failed with HTTP" in spec
+    assert "browser auth/me failed with HTTP" in spec
     assert "document-submit-review-action" in spec
     assert "create-baseline-action" in spec
     assert "waitForEvent('download')" in spec

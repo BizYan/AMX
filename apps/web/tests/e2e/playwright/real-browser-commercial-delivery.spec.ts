@@ -99,10 +99,30 @@ async function loginViaApi(request: APIRequestContext, email: string, password: 
 }
 
 async function loginThroughBrowser(page: Page, email: string, password: string) {
-  await page.goto(`${webUrl}/login`, { waitUntil: 'domcontentloaded' })
+  await page.goto(`${webUrl}/login`, { waitUntil: 'networkidle' })
   await page.locator('#email').fill(email)
   await page.locator('#password').fill(password)
+  const loginResponsePromise = page.waitForResponse(
+    (response) => response.url() === `${apiUrl}/identity/auth/login` && response.request().method() === 'POST',
+    { timeout: 30000 },
+  )
+  const meResponsePromise = page.waitForResponse(
+    (response) => response.url() === `${apiUrl}/identity/auth/me` && response.request().method() === 'GET',
+    { timeout: 30000 },
+  )
   await page.locator('button[type="submit"]').click()
+  const loginResponse = await loginResponsePromise
+  const loginBody = await loginResponse.text()
+  expect(
+    loginResponse.ok(),
+    `browser login API failed with HTTP ${loginResponse.status()}: ${loginBody.slice(0, 300)}`,
+  ).toBeTruthy()
+  const meResponse = await meResponsePromise
+  const meBody = await meResponse.text()
+  expect(
+    meResponse.ok(),
+    `browser auth/me failed with HTTP ${meResponse.status()}: ${meBody.slice(0, 300)}`,
+  ).toBeTruthy()
   await page.waitForFunction(() => Boolean(window.localStorage.getItem('auth_token')), null, { timeout: 30000 })
   const token = await page.evaluate(() => window.localStorage.getItem('auth_token') || '')
   expect(token, 'browser login must store a real auth token').toBeTruthy()
