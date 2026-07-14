@@ -469,6 +469,7 @@ def test_real_browser_commercial_journey_uses_ui_roles_and_sanitized_artifacts()
     assert "browser login API failed with HTTP" in spec
     assert "browser auth/me failed with HTTP" in spec
     assert "item.filename === 'real-browser-delivery-source.md'" in spec
+    assert "docType=urs" in spec
     assert "await expect(executeIngestion).toBeVisible({ timeout: 30000 })" in spec
     assert "await refreshIngestionState()" in project_files_page
     assert "document-submit-review-action" in spec
