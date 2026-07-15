@@ -600,6 +600,20 @@ def test_ci_exercises_production_runtime_security_preflight():
     assert "bash infra/deploy/validate-runtime-security.sh --environment production" in workflow
 
 
+def test_ci_uses_bulk_advisory_client_without_changing_web_build_runtime():
+    workflow = read(".github/workflows/ci.yml")
+    audit_job = workflow.split("  web-security-audit:", 1)[1].split("  web-build:", 1)[0]
+    web_build_job = workflow.split("  web-build:", 1)[1].split("  web-e2e:", 1)[0]
+
+    assert "Web production dependency audit" in audit_job
+    assert 'node-version: "24"' in audit_job
+    assert "version: 11.13.0" in audit_job
+    assert "pnpm audit --prod --audit-level high" in audit_job
+    assert 'node-version: "20"' in web_build_job
+    assert "version: 10" in web_build_job
+    assert "pnpm audit" not in web_build_job
+
+
 def test_ci_replaces_placeholder_jwt_secret_before_production_preflight():
     workflow = read(".github/workflows/ci.yml")
 

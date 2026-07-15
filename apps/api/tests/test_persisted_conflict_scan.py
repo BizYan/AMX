@@ -591,7 +591,7 @@ async def prepare_decision_conflict(db_session):
 @pytest.mark.asyncio
 async def test_project_owner_accepts_conflict_risk_with_expiring_mitigation(db_session):
     tenant, project, _, _, ready, service = await prepare_decision_conflict(db_session)
-    expires_at = datetime(2026, 7, 15, tzinfo=timezone.utc)
+    expires_at = datetime.now(timezone.utc) + timedelta(days=30)
 
     accepted = await service.accept_risk(
         tenant_id=tenant.id,
@@ -683,7 +683,7 @@ async def test_accept_risk_requires_decision_status_and_future_expiry(db_session
             actor_id=project.owner_id,
             reason="Too late",
             mitigation_plan="Review later",
-            accepted_until=datetime(2026, 7, 15, tzinfo=timezone.utc),
+            accepted_until=datetime.now(timezone.utc) + timedelta(days=30),
             evidence={},
         )
 
